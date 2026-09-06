@@ -9,6 +9,8 @@ export type Theme = {
   th2: string;
   pivot: string;
   previewAxis: string;
+  pieTrack: string;
+  pieZero: string;
   zoomFrame: string;
   axisShadow: string;
 };
@@ -19,6 +21,8 @@ export function theme(): Theme {
     th2: cssVar('--th2', '#2d7bff'),
     pivot: cssVar('--pivot', '#fff'),
     previewAxis: cssVar('--preview-axis', '#8a8a8a'),
+    pieTrack: cssVar('--pie-track', 'rgba(255, 255, 255, 0.08)'),
+    pieZero: cssVar('--pie-zero', 'rgba(255, 255, 255, 0.55)'),
     zoomFrame: cssVar('--zoom-frame', '#ffe600'),
     axisShadow: cssVar('--shadow', '#000'),
   };

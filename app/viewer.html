@@ -45,6 +45,10 @@
             </div>
             <div id="preview-wrap">
                 <canvas id="preview" width="160" height="160" aria-label="Point preview"></canvas>
+                <div id="preview-angles" aria-hidden="true">
+                    <span id="preview-th1"></span>
+                    <span id="preview-th2"></span>
+                </div>
                 <div id="preview-meta" hidden>
                     <span id="preview-swatch" aria-hidden="true"></span>
                     <span id="preview-steps" aria-live="polite"></span>
@@ -57,9 +61,17 @@
             </div>
             <canvas id="map-back" class="map-view map-pending" width="256" height="256" aria-hidden="true"></canvas>
             <canvas id="map-axes" aria-hidden="true"></canvas>
+            <div id="map-scale-x" aria-hidden="true"></div>
+            <div id="map-scale-y" aria-hidden="true"></div>
         </div>
         <svg id="pointer-link" aria-hidden="true">
-            <line id="pointer-link-line" visibility="hidden" />
+            <defs>
+                <mask id="pointer-link-mask" maskUnits="userSpaceOnUse">
+                    <rect id="pointer-link-mask-bg" fill="white" x="0" y="0" width="4096" height="4096" />
+                    <rect id="pointer-link-hole" fill="black" x="0" y="0" width="0" height="0" />
+                </mask>
+            </defs>
+            <line id="pointer-link-line" visibility="hidden" mask="url(#pointer-link-mask)" />
         </svg>
     </div>
 
@@ -76,12 +88,9 @@
         <div class="control-group">
             <label class="checkbox-label"><input type="checkbox" id="invertCheck"> Invert</label>
         </div>
-        <div class="control-group">
-            <label class="checkbox-label"><input type="checkbox" id="animateCheck"> Animate preview</label>
-        </div>
         <button type="button" id="resetParams" class="text-button">Reset parameters</button>
         <div class="hint">
-            Hover or tap the map to pose the pendulum. Click to zoom in.
+            Hover or tap the map to pose the pendulum. Click or double-tap to zoom in.
             Drag to pan, wheel or pinch to zoom. Right-click goes back.
             Use + / − to zoom.
         </div>

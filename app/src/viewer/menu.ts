@@ -13,7 +13,6 @@ export type ExplorerControls = {
   invert: boolean;
   median: number;
   targetFrameMs: number;
-  animatePreview: boolean;
 };
 
 function formatValue(kind: 'float' | 'int', value: number): string {
@@ -24,6 +23,13 @@ let hideMenu: (() => void) | null = null;
 
 export function closeMenu(): void {
   hideMenu?.();
+}
+
+export function syncBudgetReadout(ms: number, iters: number): void {
+  const el = document.getElementById('targetValue');
+  if (!el) return;
+  const n = Math.max(0, Math.round(iters || 0));
+  el.textContent = `${Math.round(ms)} ms · ${n}`;
 }
 
 export function bindMenu(
@@ -75,8 +81,6 @@ export function bindMenu(
   const median = document.getElementById('medianSlider') as HTMLInputElement;
   const medianValue = document.getElementById('medianValue');
   const target = document.getElementById('targetSlider') as HTMLInputElement;
-  const targetValue = document.getElementById('targetValue');
-  const animate = document.getElementById('animateCheck') as HTMLInputElement;
   const reset = document.getElementById('resetParams');
 
   function syncParams(): void {
@@ -97,8 +101,7 @@ export function bindMenu(
     target.min = String(TARGET_FRAME_MS_MIN);
     target.max = String(TARGET_FRAME_MS_MAX);
     target.value = String(controls.targetFrameMs);
-    if (targetValue) targetValue.textContent = `${Math.round(controls.targetFrameMs)} ms`;
-    animate.checked = controls.animatePreview;
+    syncBudgetReadout(controls.targetFrameMs, controls.params.MAX_ITERATIONS);
   }
 
   invert.addEventListener('change', () => {
@@ -117,13 +120,9 @@ export function bindMenu(
   });
   target.addEventListener('input', () => {
     controls.targetFrameMs = Number(target.value);
-    if (targetValue) targetValue.textContent = `${Math.round(controls.targetFrameMs)} ms`;
+    syncBudgetReadout(controls.targetFrameMs, controls.params.MAX_ITERATIONS);
     markPrefsDirty();
     onParamsChange();
-  });
-  animate.addEventListener('change', () => {
-    controls.animatePreview = animate.checked;
-    markPrefsDirty();
   });
   reset?.addEventListener('click', () => {
     for (const spec of map.params) {

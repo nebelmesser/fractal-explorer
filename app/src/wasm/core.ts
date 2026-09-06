@@ -1,3 +1,4 @@
+import { PENDULUM_MIN_ITER } from '../constants';
 import type { MapParams } from '../maps/types';
 
 export type Trajectory = {
@@ -14,7 +15,7 @@ const ESCAPE = Math.PI * 2;
 
 function afterKernelStep(traj: Trajectory, params: MapParams): void {
   traj.steps += 1;
-  const cap = Math.max(1, Math.round(params.MAX_ITERATIONS ?? 3000));
+  const cap = Math.max(PENDULUM_MIN_ITER, Math.round(params.MAX_ITERATIONS ?? PENDULUM_MIN_ITER));
   if (Math.abs(traj.th1) > ESCAPE || traj.steps >= cap) traj.done = true;
 }
 

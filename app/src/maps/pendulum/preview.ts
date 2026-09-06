@@ -9,6 +9,76 @@ function replayLength(point: { x: number; y: number }, params: MapParams): numbe
   return traj.steps;
 }
 
+/** Principal angle so the wedge matches the visible rod, not a winding count. */
+function wrapPi(theta: number): number {
+  let a = theta % (Math.PI * 2);
+  if (a > Math.PI) a -= Math.PI * 2;
+  if (a < -Math.PI) a += Math.PI * 2;
+  return a;
+}
+
+/** Same (sin, cos) as the rods: θ = 0 hangs down, +θ goes right. */
+function drawAnglePie(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+  theta: number,
+  color: string,
+): void {
+  const pal = theme();
+  const a = wrapPi(theta);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = pal.pieTrack;
+  ctx.fill();
+  ctx.strokeStyle = pal.previewAxis;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  const steps = Math.max(6, Math.round(Math.abs(a) / 0.07));
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx, cy + r);
+  for (let i = 1; i <= steps; i++) {
+    const t = a * (i / steps);
+    ctx.lineTo(cx + Math.sin(t) * r, cy + Math.cos(t) * r);
+  }
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.88;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx, cy + r);
+  ctx.strokeStyle = pal.pieZero;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.sin(a) * r, cy + Math.cos(a) * r);
+  ctx.strokeStyle = color;
+  ctx.stroke();
+  ctx.restore();
+}
+
+const PIE_PAD = 6;
+const PIE_R = 8;
+const PIE_GAP = 6;
+
+function drawAngleRow(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  theta: number,
+  color: string,
+): void {
+  drawAnglePie(ctx, x + PIE_R, y, PIE_R, theta, color);
+}
+
 function drawDownAxis(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -32,14 +102,26 @@ export function pendulumPivot(width: number, height: number): { x: number; y: nu
   return { x: width / 2, y: height / 2 + 8 };
 }
 
+function previewCssSize(canvas: HTMLCanvasElement): { width: number; height: number } {
+  return {
+    width: Math.max(1, canvas.clientWidth),
+    height: Math.max(1, canvas.clientHeight),
+  };
+}
+
 function drawPose(
   ctx: CanvasRenderingContext2D,
   th1: number,
   th2: number,
   params: MapParams,
+  start: { th1: number; th2: number },
+  _digits: number,
 ): void {
   const pal = theme();
-  const { width, height } = ctx.canvas;
+  const { width, height } = previewCssSize(ctx.canvas);
+  const sx = ctx.canvas.width / width;
+  const sy = ctx.canvas.height / height;
+  ctx.setTransform(sx, 0, 0, sy, 0, 0);
   ctx.clearRect(0, 0, width, height);
 
   const L1 = params.L1;
@@ -76,6 +158,11 @@ function drawPose(
   dot(ctx, x2, y2, 6);
   ctx.fillStyle = pal.pivot;
   dot(ctx, x0, y0, 4);
+
+  const pieY0 = PIE_PAD + PIE_R;
+  const pieY1 = pieY0 + PIE_R * 2 + PIE_GAP;
+  drawAngleRow(ctx, PIE_PAD, pieY0, start.th1, pal.th1);
+  drawAngleRow(ctx, PIE_PAD, pieY1, start.th2, pal.th2);
 }
 
 function dot(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): void {
@@ -85,8 +172,8 @@ function dot(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): vo
 }
 
 export const pendulumPreview: PointVisualizer = {
-  draw(ctx, point, params) {
-    drawPose(ctx, point.x, point.y, params);
+  draw(ctx, point, params, degDigits = 1) {
+    drawPose(ctx, point.x, point.y, params, { th1: point.x, th2: point.y }, degDigits);
   },
   anchor(canvas) {
     return pendulumPivot(canvas.width, canvas.height);
@@ -99,9 +186,9 @@ export const pendulumPreview: PointVisualizer = {
     traj.step(params, dt);
     return traj;
   },
-  drawState(ctx, state, params) {
+  drawState(ctx, state, params, degDigits = 1) {
     const traj = state as Trajectory;
-    drawPose(ctx, traj.th1, traj.th2, params);
+    drawPose(ctx, traj.th1, traj.th2, params, { th1: traj.startTh1, th2: traj.startTh2 }, degDigits);
   },
   replayDt(params) {
     return params.DT;

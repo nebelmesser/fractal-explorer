@@ -4,6 +4,10 @@ import {
   MAX_COMPUTE_PX,
   MAX_OVERSCAN_PX,
   MIN_COMPUTE_PX,
+  PENDULUM_MAX_ITER,
+  PENDULUM_MIN_ITER,
+  TARGET_FRAME_MS_MAX,
+  TARGET_FRAME_MS_MIN,
 } from '../constants';
 
 export type MapSize = { width: number; height: number };
@@ -18,20 +22,53 @@ function snapWorkgroup(side: number): number {
   return Math.round(side / 8) * 8;
 }
 
+export function snapIters(n: number): number {
+  const stepped = Math.round(n / 50) * 50;
+  return Math.min(PENDULUM_MAX_ITER, Math.max(PENDULUM_MIN_ITER, stepped));
+}
+
+/** Iteration cap implied by the frame-budget slider. Measurement may only lower it. */
+export function preferredIters(targetMs: number): number {
+  const span = TARGET_FRAME_MS_MAX - TARGET_FRAME_MS_MIN;
+  const t = span > 0
+    ? Math.min(1, Math.max(0, (targetMs - TARGET_FRAME_MS_MIN) / span))
+    : 0;
+  return snapIters(PENDULUM_MIN_ITER + t * (PENDULUM_MAX_ITER - PENDULUM_MIN_ITER));
+}
+
 /**
- * Move compute resolution toward the side length that would have taken
- * targetMs, blending so a noisy timer cannot oscillate the grain.
+ * Split the frame-time budget between pixels and iteration cap.
+ * Fill the screen at the minimum 1000 steps first; leftover time raises iterations.
  */
-export function nextComputePx(
-  current: number,
+export function nextWorkBudget(
+  current: { shortPx: number; iters: number },
   measuredMs: number,
   targetMs: number,
-): number {
-  const safeMs = Math.max(measuredMs, 1);
-  const pixelScale = targetMs / safeMs;
-  const targetSide = current * Math.sqrt(pixelScale);
-  const blended = current * (1 - BUDGET_BLEND) + targetSide * BUDGET_BLEND;
-  return snapComputePx(blended);
+  display: MapSize,
+): { shortPx: number; iters: number } {
+  const vis = computeSize(display, current.shortPx);
+  const pixels = Math.max(1, vis.width * vis.height);
+  const iters = snapIters(current.iters);
+  const scale = targetMs / Math.max(measuredMs, 1);
+  const blended = 1 - BUDGET_BLEND + scale * BUDGET_BLEND;
+  const targetWork = pixels * iters * blended;
+
+  const full = computeSize(display, snapComputePx(Math.min(display.width, display.height)));
+  const fullPixels = Math.max(1, full.width * full.height);
+  const cap = preferredIters(targetMs);
+  const itersAtFull = targetWork / fullPixels;
+  if (itersAtFull >= PENDULUM_MIN_ITER) {
+    return {
+      shortPx: snapComputePx(Math.min(display.width, display.height)),
+      iters: snapIters(Math.min(cap, Math.max(PENDULUM_MIN_ITER, itersAtFull))),
+    };
+  }
+
+  const targetPixels = targetWork / PENDULUM_MIN_ITER;
+  const area = Math.max(1, display.width * display.height);
+  const short = Math.max(1, Math.min(display.width, display.height));
+  const shortPx = short * Math.sqrt(targetPixels / area);
+  return { shortPx: snapComputePx(shortPx), iters: PENDULUM_MIN_ITER };
 }
 
 /** CSS size of the fullscreen map. */

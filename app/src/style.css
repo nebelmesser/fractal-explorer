@@ -16,6 +16,8 @@
     --pivot: #fff;
     --th1: #f37b7b;
     --th2: #72a2f6;
+    --pie-track: rgba(255, 255, 255, 0.08);
+    --pie-zero: rgba(255, 255, 255, 0.55);
     --zoom-frame: #ffe600;
     --link: #e24b4b;
     --shadow: #000;
@@ -152,11 +154,33 @@ html, body {
     border-color: var(--muted);
 }
 
+#preview-angles {
+    position: absolute;
+    left: 26px;
+    top: 6px;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    pointer-events: none;
+    font: 12px Rubik, sans-serif;
+    font-variant-numeric: tabular-nums;
+    line-height: 16px;
+    white-space: nowrap;
+    text-size-adjust: 100%;
+    -webkit-text-size-adjust: 100%;
+    text-shadow: 0 1px 2px var(--shadow), 0 0 4px var(--shadow);
+}
+
+#preview-th1 { color: var(--th1); }
+#preview-th2 { color: var(--th2); }
+
 #preview-meta {
     position: absolute;
-    left: 7px;
+    left: 6px;
     right: auto;
-    bottom: 7px;
+    bottom: 6px;
+    z-index: 2;
     display: flex;
     align-items: center;
     justify-content: flex-start;
@@ -190,6 +214,32 @@ html, body {
     height: 100%;
     pointer-events: none;
     z-index: 1;
+}
+
+#map-scale-x,
+#map-scale-y {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2;
+    font: 11px Rubik, sans-serif;
+    font-variant-numeric: tabular-nums;
+}
+
+#map-scale-x span {
+    position: absolute;
+    bottom: 20px;
+    color: var(--th1);
+    transform: translateX(-50%);
+    white-space: nowrap;
+}
+
+#map-scale-y span {
+    position: absolute;
+    right: 22px;
+    color: var(--th2);
+    transform: translateY(-50%);
+    white-space: nowrap;
 }
 
 #map-clip {

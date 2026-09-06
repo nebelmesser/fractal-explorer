@@ -25,10 +25,10 @@ import {
   type ViewRect,
 } from './maps/types';
 import { initMapCore } from './wasm/core';
-import { computeSize, fitMapDisplay, nextComputePx, scaleSize, snapComputePx } from './viewer/budget';
-import { bindMapInput } from './viewer/input';
-import { bindMenu, type ExplorerControls } from './viewer/menu';
-import { drawMapAxes } from './viewer/axes';
+import { computeSize, fitMapDisplay, nextWorkBudget, preferredIters, scaleSize, snapComputePx } from './viewer/budget';
+import { bindMapInput, followScreenCenter } from './viewer/input';
+import { bindMenu, syncBudgetReadout, type ExplorerControls } from './viewer/menu';
+import { angleDigits, drawMapAxes, formatAngleDeg } from './viewer/axes';
 import { drawOverviewFrame } from './viewer/minimap';
 import { bindPrefs, consumeResetQuery, loadPrefs, markPrefsDirty } from './viewer/prefs';
 import {
@@ -67,22 +67,34 @@ async function boot(): Promise<void> {
   const previewSteps = document.getElementById('preview-steps');
   const previewMeta = document.getElementById('preview-meta');
   const previewSwatch = document.getElementById('preview-swatch');
+  const previewTh1 = document.getElementById('preview-th1');
+  const previewTh2 = document.getElementById('preview-th2');
   const axesCanvas = document.getElementById('map-axes') as HTMLCanvasElement | null;
+  const scaleX = document.getElementById('map-scale-x');
+  const scaleY = document.getElementById('map-scale-y');
   const shiftEl = document.getElementById('map-shift');
   const linkLine = document.getElementById('pointer-link-line') as SVGLineElement | null;
+  const linkHoleEl = document.getElementById('pointer-link-hole') as SVGRectElement | null;
+  const linkMaskBgEl = document.getElementById('pointer-link-mask-bg') as SVGRectElement | null;
   const zoomOutEl = document.getElementById('zoom-out') as HTMLButtonElement | null;
   const zoomInEl = document.getElementById('zoom-in') as HTMLButtonElement | null;
   const zoomResetEl = document.getElementById('zoom-reset') as HTMLButtonElement | null;
-  if (!mapCanvas || !mapBack || !mapClip || !stage || !sidebar || !miniCanvas || !miniOverlay || !previewCanvas || !previewSteps || !previewMeta || !previewSwatch || !axesCanvas || !shiftEl || !linkLine || !zoomInEl || !zoomOutEl || !zoomResetEl) {
+  if (!mapCanvas || !mapBack || !mapClip || !stage || !sidebar || !miniCanvas || !miniOverlay || !previewCanvas || !previewSteps || !previewMeta || !previewSwatch || !previewTh1 || !previewTh2 || !axesCanvas || !scaleX || !scaleY || !shiftEl || !linkLine || !linkHoleEl || !linkMaskBgEl || !zoomInEl || !zoomOutEl || !zoomResetEl) {
     throw new Error('Explorer DOM is incomplete');
   }
   const zoomIn = zoomInEl;
   const zoomOut = zoomOutEl;
   const zoomReset = zoomResetEl;
+  const xScale = scaleX;
+  const yScale = scaleY;
+  const th1Readout = previewTh1;
+  const th2Readout = previewTh2;
   const mapShift = shiftEl;
   const clip = mapClip;
   const stageEl = stage;
   const link = linkLine;
+  const linkHole = linkHoleEl;
+  const linkMaskBg = linkMaskBgEl;
   const stepsEl = previewSteps;
   const metaEl = previewMeta;
   const swatchEl = previewSwatch;
@@ -100,6 +112,7 @@ async function boot(): Promise<void> {
   consumeResetQuery();
   const saved = loadPrefs();
   const params: MapParams = { ...defaultParams(mapDef), ...saved?.params };
+  params.MAX_ITERATIONS = preferredIters(saved?.targetFrameMs ?? TARGET_FRAME_MS);
   let display = fitMapDisplay(stage);
   let world = worldFromDisplay(display.width, display.height);
   let view: ViewRect = copyView(world);
@@ -114,6 +127,8 @@ async function boot(): Promise<void> {
   let previewReplay = false;
   let previewPinned = false;
   let lastScreen: { x: number; y: number } | null = null;
+  let lastProbeKey = '';
+  let stopCoast = (): void => {};
   let idleTimer = 0;
   let rendering = false;
   let wantRefine = true;
@@ -124,13 +139,15 @@ async function boot(): Promise<void> {
   let zoomToken = 0;
   let lastRenderSize = { width: 0, height: 0 };
   let lastOverscanPad = 0;
+  let mapEpoch = 0;
+  let forcedView: ViewRect | null = null;
+  let forcedDone: (() => void) | null = null;
 
   const controls: ExplorerControls = {
     params,
     invert: saved?.invert ?? false,
     median: saved?.median ?? MEDIAN_DEFAULT,
     targetFrameMs: saved?.targetFrameMs ?? TARGET_FRAME_MS,
-    animatePreview: saved?.animatePreview ?? false,
   };
 
   let frontCanvas = mapCanvas;
@@ -148,14 +165,17 @@ async function boot(): Promise<void> {
   }
   let overview: GpuMapRenderer | null = null;
 
-  bindPrefs(() => ({
-    params: { ...params },
-    invert: controls.invert,
-    median: controls.median,
-    targetFrameMs: controls.targetFrameMs,
-    animatePreview: controls.animatePreview,
-    lastComputePx: settledPx,
-  }));
+  bindPrefs(() => {
+    const stored = { ...params };
+    delete stored.MAX_ITERATIONS;
+    return {
+      params: stored,
+      invert: controls.invert,
+      median: controls.median,
+      targetFrameMs: controls.targetFrameMs,
+      lastComputePx: settledPx,
+    };
+  });
 
   let viewTimer = 0;
 
@@ -177,9 +197,20 @@ async function boot(): Promise<void> {
   }
 
   function applyBudget(): void {
-    if (!Number.isFinite(lastRefineMs)) return;
-    // Halo time must not shrink the visible pass — budget is for the on-screen map.
-    settledPx = Math.min(screenPx(), nextComputePx(settledPx, lastRefineMs, controls.targetFrameMs));
+    if (!Number.isFinite(lastRefineMs)) {
+      params.MAX_ITERATIONS = preferredIters(controls.targetFrameMs);
+      syncBudgetReadout(controls.targetFrameMs, params.MAX_ITERATIONS);
+      return;
+    }
+    const next = nextWorkBudget(
+      { shortPx: settledPx, iters: params.MAX_ITERATIONS },
+      lastRefineMs,
+      controls.targetFrameMs,
+      display,
+    );
+    settledPx = Math.min(screenPx(), next.shortPx);
+    params.MAX_ITERATIONS = next.iters;
+    syncBudgetReadout(controls.targetFrameMs, params.MAX_ITERATIONS);
   }
 
   function requestVisible(): void {
@@ -215,6 +246,7 @@ async function boot(): Promise<void> {
 
   function scheduleParams(): void {
     overviewKey = '';
+    lastProbeKey = '';
     previewState = mapDef.pointView?.createState?.(picked, params);
     if (hovering || previewPinned) {
       showFinalSteps();
@@ -236,32 +268,72 @@ async function boot(): Promise<void> {
   }
 
   function drawChrome(): void {
-    drawMapAxes(axes, view);
+    if (followScreenCenter()) {
+      const c = viewCenter(view);
+      picked = { x: c.x, y: c.y };
+      previewPinned = true;
+      hovering = true;
+    }
+    if (hovering || previewPinned) showFinalSteps();
+    const box = clip.getBoundingClientRect();
+    const digits = angleDigits(view, box.width, box.height);
+    th1Readout.textContent = formatAngleDeg(picked.x, digits);
+    th2Readout.textContent = formatAngleDeg(picked.y, digits);
+    const previewCss = Math.max(1, Math.round(previewCanvas.clientWidth));
+    const previewDpr = Math.min(window.devicePixelRatio || 1, 2);
+    const previewPx = Math.round(previewCss * previewDpr);
+    if (previewCanvas.width !== previewPx || previewCanvas.height !== previewPx) {
+      previewCanvas.width = previewPx;
+      previewCanvas.height = previewPx;
+    }
+    const ctx = previewCanvas.getContext('2d');
+    if (ctx && mapDef.pointView) mapDef.pointView.draw(ctx, picked, params, digits);
+    drawMapAxes(axes, view, xScale, yScale);
     drawOverviewFrame(miniOverlay, mapDef.defaultView, view);
     updatePointerLink();
-    const ctx = previewCanvas.getContext('2d');
-    if (!ctx || !mapDef.pointView) return;
-    mapDef.pointView.draw(ctx, picked, params);
   }
 
   function updatePointerLink(): void {
-    if (!lastScreen) {
+    if (!lastScreen || metaEl.hidden) {
       link.setAttribute('visibility', 'hidden');
       return;
     }
     const stageBox = stageEl.getBoundingClientRect();
-    const previewBox = previewCanvas.getBoundingClientRect();
-    const pivot = mapDef.pointView?.anchor?.(previewCanvas, params) ?? {
-      x: previewCanvas.width / 2,
-      y: previewCanvas.height / 2,
-    };
-    const bw = Math.max(previewCanvas.width, 1);
-    const bh = Math.max(previewCanvas.height, 1);
+    const swatch = swatchEl.getBoundingClientRect();
+    linkMaskBg.setAttribute('width', String(Math.ceil(stageBox.width)));
+    linkMaskBg.setAttribute('height', String(Math.ceil(stageBox.height)));
+    linkHole.setAttribute('x', String(swatch.left - stageBox.left));
+    linkHole.setAttribute('y', String(swatch.top - stageBox.top));
+    linkHole.setAttribute('width', String(swatch.width));
+    linkHole.setAttribute('height', String(swatch.height));
     link.setAttribute('visibility', 'visible');
     link.setAttribute('x1', String(lastScreen.x - stageBox.left));
     link.setAttribute('y1', String(lastScreen.y - stageBox.top));
-    link.setAttribute('x2', String(previewBox.left + (pivot.x / bw) * previewBox.width - stageBox.left));
-    link.setAttribute('y2', String(previewBox.top + (pivot.y / bh) * previewBox.height - stageBox.top));
+    link.setAttribute('x2', String(swatch.left + swatch.width / 2 - stageBox.left));
+    link.setAttribute('y2', String(swatch.top + swatch.height / 2 - stageBox.top));
+  }
+
+  function worldToClient(p: { x: number; y: number }): { x: number; y: number } {
+    const box = clip.getBoundingClientRect();
+    return {
+      x: box.left + ((p.x - view.xMin) / viewSpanX(view)) * box.width,
+      y: box.top + ((p.y - view.yMin) / viewSpanY(view)) * box.height,
+    };
+  }
+
+  function snapProbeToMapPixel(): void {
+    const nx = (picked.x - computedView.xMin) / viewSpanX(computedView);
+    const ny = (picked.y - computedView.yMin) / viewSpanY(computedView);
+    const texel = nx >= 0 && nx <= 1 && ny >= 0 && ny <= 1 ? renderer.mapTexel(nx, ny) : null;
+    if (texel) {
+      const xDen = Math.max(texel.width - 1, 1);
+      const yDen = Math.max(texel.height - 1, 1);
+      picked = {
+        x: computedView.xMin + (viewSpanX(computedView) * texel.ix) / xDen,
+        y: computedView.yMin + (viewSpanY(computedView) * texel.iy) / yDen,
+      };
+    }
+    lastScreen = worldToClient(picked);
   }
 
   function setSwatch(gray: number): void {
@@ -271,15 +343,22 @@ async function boot(): Promise<void> {
 
   function showFinalSteps(): void {
     previewCanvas.classList.add('is-live');
-    const n = mapDef.pointView?.replayLength?.(picked, params) ?? 0;
-    stepsEl.textContent = String(n);
-    const live = renderer.grayForSteps(n, controls.invert);
-    setSwatch(live ?? 0);
+    snapProbeToMapPixel();
     metaEl.hidden = false;
-    void refineSwatch();
+    const nx = (picked.x - computedView.xMin) / viewSpanX(computedView);
+    const ny = (picked.y - computedView.yMin) / viewSpanY(computedView);
+    const n = renderer.mapSteps(nx, ny);
+    if (n == null) return;
+    const steps = Math.round(n);
+    const key = `${mapEpoch}:${picked.x},${picked.y},${steps},${controls.invert}`;
+    if (key === lastProbeKey) return;
+    lastProbeKey = key;
+    stepsEl.textContent = String(steps);
+    setSwatch(renderer.grayForSteps(n, controls.invert) ?? 0);
   }
 
   function hidePreviewSteps(): void {
+    lastProbeKey = '';
     stepsEl.textContent = '';
     metaEl.hidden = true;
     previewCanvas.classList.remove('is-live');
@@ -297,18 +376,42 @@ async function boot(): Promise<void> {
     resetPreviewBg();
   }
 
-  async function refineSwatch(): Promise<void> {
-    const nx = (picked.x - computedView.xMin) / viewSpanX(computedView);
-    const ny = (picked.y - computedView.yMin) / viewSpanY(computedView);
-    if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return;
-    const g = await renderer.sampleGray(nx, ny);
-    if (g == null) return;
-    setSwatch(g);
-  }
-
   function cancelZoomAnim(): void {
     zoomToken += 1;
     animating = false;
+    forcedView = null;
+    if (forcedDone) {
+      forcedDone();
+      forcedDone = null;
+    }
+  }
+
+  function computeForced(target: ViewRect): Promise<void> {
+    return new Promise((resolve) => {
+      forcedView = copyView(target);
+      forcedDone = resolve;
+      requestVisible();
+    });
+  }
+
+  async function resetToWorld(): Promise<void> {
+    if (viewsEqual(view, world) && viewsEqual(computedView, world)) return;
+    stopCoast();
+    cancelZoomAnim();
+    const token = zoomToken;
+    if (!viewsEqual(view, world)) history.push(copyView(view));
+    markPrefsDirty();
+    const from = copyView(view);
+    await computeForced(copyView(world));
+    if (token !== zoomToken) return;
+    view = from;
+    applyShift();
+    drawChrome();
+    syncZoomBar();
+    animateViewTo(copyView(world), () => {
+      wantHalo = true;
+      scheduleView({});
+    });
   }
 
   function animateViewTo(target: ViewRect, then: () => void): void {
@@ -336,7 +439,8 @@ async function boot(): Promise<void> {
     requestAnimationFrame(step);
   }
 
-  function applyView(next: ViewRect, opts?: { pushHistory?: boolean; animate?: boolean; immediate?: boolean; navigating?: boolean }): void {
+  function applyView(next: ViewRect, opts?: { pushHistory?: boolean; animate?: boolean; immediate?: boolean; navigating?: boolean; coasting?: boolean }): void {
+    if (!opts?.coasting) stopCoast();
     cancelZoomAnim();
     if (opts?.pushHistory && !viewsEqual(next, view)) history.push(copyView(view));
     markPrefsDirty();
@@ -350,7 +454,17 @@ async function boot(): Promise<void> {
 
   bindMenu(mapDef, controls, scheduleParams);
 
-  bindMapInput(clip, {
+  window.matchMedia('(hover: none)').addEventListener('change', () => {
+    if (!followScreenCenter()) {
+      previewPinned = false;
+      hovering = false;
+      lastScreen = null;
+      hidePreviewSteps();
+    }
+    drawChrome();
+  });
+
+  stopCoast = bindMapInput(clip, {
     getView: () => view,
     getWorld: () => world,
     setView(next, opts) {
@@ -358,6 +472,7 @@ async function boot(): Promise<void> {
     },
     popHistory() {
       if (history.length <= 1) return;
+      stopCoast();
       cancelZoomAnim();
       history.pop();
       view = copyView(history[history.length - 1]);
@@ -365,25 +480,27 @@ async function boot(): Promise<void> {
       scheduleView({ immediate: true });
     },
     pickPoint(x, y, clientX, clientY) {
+      if (followScreenCenter()) {
+        drawChrome();
+        return;
+      }
       picked = { x, y };
       hovering = false;
       previewPinned = true;
       lastScreen = { x: clientX, y: clientY };
-      showFinalSteps();
       armPreviewIdle();
       drawChrome();
     },
-    hoverPoint(x, y, clientX, clientY) {
+    hoverPoint(x, y, _clientX, _clientY) {
+      if (followScreenCenter()) return;
       hovering = true;
       previewPinned = false;
       picked = { x, y };
-      lastScreen = { x: clientX, y: clientY };
-      showFinalSteps();
       armPreviewIdle();
       drawChrome();
     },
     hoverEnd() {
-      if (previewPinned) return;
+      if (followScreenCenter() || previewPinned) return;
       hovering = false;
       previewPlaying = false;
       previewReplay = false;
@@ -393,7 +510,7 @@ async function boot(): Promise<void> {
       previewState = mapDef.pointView?.createState?.(picked, params);
       drawChrome();
     },
-  });
+  }).stopCoast;
 
   function buttonZoom(factor: number): void {
     const c = viewCenter(view);
@@ -403,11 +520,12 @@ async function boot(): Promise<void> {
   zoomOut.addEventListener('click', () => buttonZoom(1 / BUTTON_ZOOM_FACTOR));
   zoomIn.addEventListener('click', () => buttonZoom(BUTTON_ZOOM_FACTOR));
   zoomReset.addEventListener('click', () => {
-    applyView(copyView(world), { pushHistory: true, animate: true });
+    void resetToWorld();
   });
   syncZoomBar();
 
   const layout = (): void => {
+    stopCoast();
     const next = fitMapDisplay(stage);
     const resized = next.width !== display.width || next.height !== display.height;
     display = next;
@@ -436,7 +554,8 @@ async function boot(): Promise<void> {
     if (rendering) return;
     if (!wantRefine && !wantHalo) return;
     const zooming = animating;
-    const halo = !wantRefine && wantHalo && !zooming;
+    const forced = !zooming && forcedView ? copyView(forcedView) : null;
+    const halo = !wantRefine && wantHalo && !zooming && !forced;
     const gen = renderGen;
     rendering = true;
     wantRefine = false;
@@ -451,7 +570,8 @@ async function boot(): Promise<void> {
           : vis;
       // Visible first; the half-screen halo waits until that texture is up.
       // Zoom keeps a frozen start texture so scale does not jump then ease back.
-      const renderView = copyView(zooming ? computedView : padView(view, pad));
+      // Reset computes the world map first, then the zoom-out eases that texture.
+      const renderView = copyView(zooming ? computedView : padView(forced ?? view, pad));
       // Halo pixels must not move the stretch — only the current screen does.
       const normView = unpadView(renderView, pad);
       renderer.setCanvas(backCanvas);
@@ -483,12 +603,22 @@ async function boot(): Promise<void> {
       backCanvas = prevCanvas;
       computedView = renderView;
       lastRenderSize = size;
+      mapEpoch += 1;
       lastOverscanPad = pad;
-      if (!zooming && !halo) {
-        const prev = settledPx;
+      if (forced) {
+        forcedView = null;
+        const done = forcedDone;
+        forcedDone = null;
+        done?.();
+      } else if (!zooming && !halo) {
+        const prevPx = settledPx;
+        const prevIters = params.MAX_ITERATIONS;
         applyBudget();
         markPrefsDirty();
-        if (settledPx > prev && lastRefineMs < controls.targetFrameMs * 0.85) {
+        if (
+          (settledPx > prevPx || params.MAX_ITERATIONS > prevIters)
+          && lastRefineMs < controls.targetFrameMs * 0.85
+        ) {
           wantRefine = true;
         } else {
           wantHalo = true;
@@ -507,6 +637,12 @@ async function boot(): Promise<void> {
       syncZoomBar();
       drawChrome();
     } catch (error) {
+      if (forced) {
+        forcedView = null;
+        const done = forcedDone;
+        forcedDone = null;
+        done?.();
+      }
       console.error(error);
       const hint = document.getElementById('gpu-missing');
       if (hint) {

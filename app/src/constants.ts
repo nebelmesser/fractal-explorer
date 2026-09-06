@@ -14,8 +14,14 @@ export const SMOOTH_ZOOM_MS = 840; // click / +/− zoom; 3× the original 280 m
 // Navigation. Click, +, and − share the same step (2× in / 2× out).
 export const CLICK_ZOOM_FACTOR = 0.5; // new span = old span × this; matches −
 export const BUTTON_ZOOM_FACTOR = 0.5; // + / − beside the overview; two clicks = 4×
-export const WHEEL_ZOOM = 0.0015; // per wheel-delta scale of ln(span)
+export const WHEEL_ZOOM = 0.004; // per wheel-delta scale of ln(span); two-finger trackpad scroll
+export const WHEEL_ZOOM_PINCH = 0.01; // Mac/Chrome trackpad pinch arrives as ctrl+wheel
 export const PINCH_ZOOM = 1; // pinch ratio maps 1:1 onto span
+export const COAST_FRICTION = 3.2; // 1/s; flick speed halves in ~200 ms
+export const COAST_VEL_TAU = 0.05; // seconds; smooth the release velocity
+export const COAST_STALE_MS = 64; // ignore a flick if the finger already stopped
+export const COAST_MIN_PX = 48; // stop when |pan| falls below this (px/s)
+export const COAST_MIN_ZOOM = 0.06; // stop when |d ln span / s| falls below this
 export const VIEW_DEBOUNCE_MS = 140; // after a zoom gesture, recompute at the budgeted size
 export const MIN_VIEW_SPAN = 1e-5; // radians; stop zooming before float32 collapses
 export const OVERSCAN_PAD = 0.5; // half a screen on each side (N,S,E,W and the four corners)
@@ -36,14 +42,15 @@ export const PENDULUM_M1 = 1;
 export const PENDULUM_M2 = 1;
 export const PENDULUM_G = 9.81;
 export const PENDULUM_DT = 0.2; // coarse step used by the escape-time map
-export const PENDULUM_MAX_ITER = 3000;
+export const PENDULUM_MIN_ITER = 1000; // floor the budget will not go below
+export const PENDULUM_MAX_ITER = 8000; // cap when the frame budget has room
 export const PENDULUM_SINGULAR = 1e-9; // treat a vanishing denominator as α = 0
 
 // Overview + preview chrome. These are UI tiles, not the main map.
 export const OVERVIEW_PX = 160; // CSS and GPU side of the overview map
 export const PREVIEW_PX = 160; // pendulum sketch under the overview
-export const PREVIEW_SPEED = 1; // one kernel Euler step per frame; brightness is the running step count
-export const PREVIEW_IDLE_MS = 1000; // hover/tap stillness before the preview integrates
+export const DOUBLE_TAP_MS = 320;
+export const DOUBLE_TAP_PX = 36;
 export const SCALE_BAR_TARGET_PX = 80; // Google-maps-like bar aims at this length
 export const SCALE_BAR_MIN_PX = 48;
 export const SCALE_BAR_MAX_PX = 120;

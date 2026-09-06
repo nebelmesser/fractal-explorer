@@ -35,6 +35,9 @@ export class GpuMapRenderer {
   private buffers: GpuBuffers | null = null;
   private readonly cache: GpuBuffers[] = [];
   private lastGray: { tex: GPUTexture; width: number; height: number } | null = null;
+  private lastCounts: { data: Float32Array; width: number; height: number } | null = null;
+  private countRead: GPUBuffer | null = null;
+  private countReadSize = 0;
   private gpuTail: Promise<void> = Promise.resolve();
   private readonly canvasPx = new WeakMap<HTMLCanvasElement, { w: number; h: number }>();
   private readonly computeLayout: GPUBindGroupLayout;
@@ -266,6 +269,10 @@ export class GpuMapRenderer {
     blitPass.draw(3);
     blitPass.end();
 
+    const read = this.countReadBuffer(width, height);
+    encoder.copyBufferToBuffer(this.buffers!.minmax, 0, read, 0, 8);
+    encoder.copyBufferToBuffer(this.buffers!.raw, 0, read, 256, width * height * 4);
+
     device.pushErrorScope('validation');
     device.pushErrorScope('internal');
     const t0 = performance.now();
@@ -282,7 +289,7 @@ export class GpuMapRenderer {
     this.target.canvas.dataset.ready = '1';
     const grayTex = median > 1 ? this.buffers!.median : this.buffers!.color;
     this.lastGray = { tex: grayTex, width, height };
-    await this.refreshScale();
+    await this.pullCounts(width, height);
     return performance.now() - t0;
   }
 
@@ -295,6 +302,35 @@ export class GpuMapRenderer {
     t = Math.min(1, Math.max(0, t));
     if (invert) t = 1 - t;
     return t * 255;
+  }
+
+  /** Compute-buffer size of the last map, or null before the first pass. */
+  mapSize(): { width: number; height: number } | null {
+    const src = this.lastCounts;
+    return src ? { width: src.width, height: src.height } : null;
+  }
+
+  /** Nearest compute texel for a point in the last map's 0–1 UV space. */
+  mapTexel(nx: number, ny: number): { ix: number; iy: number; width: number; height: number } | null {
+    const src = this.lastCounts;
+    if (!src) return null;
+    const xDen = Math.max(src.width - 1, 1);
+    const yDen = Math.max(src.height - 1, 1);
+    return {
+      ix: Math.min(src.width - 1, Math.max(0, Math.round(nx * xDen))),
+      iy: Math.min(src.height - 1, Math.max(0, Math.round(ny * yDen))),
+      width: src.width,
+      height: src.height,
+    };
+  }
+
+  /** Escape count already computed for this map texel, or null. */
+  mapSteps(nx: number, ny: number): number | null {
+    const src = this.lastCounts;
+    const texel = this.mapTexel(nx, ny);
+    if (!src || !texel || src.width !== texel.width || src.height !== texel.height) return null;
+    const value = src.data[texel.iy * src.width + texel.ix];
+    return Number.isFinite(value) ? value : null;
   }
 
   /** One grayscale byte (0–255) from the last computed map, or null. */
@@ -328,21 +364,33 @@ export class GpuMapRenderer {
     return Math.round(Math.min(1, Math.max(0, value)) * 255);
   }
 
-  private async refreshScale(): Promise<void> {
-    const src = this.buffers;
-    if (!src) return;
-    const { device } = this.gpu;
-    const staging = device.createBuffer({
-      size: 256,
+  private countReadBuffer(width: number, height: number): GPUBuffer {
+    const size = 256 + width * height * 4;
+    if (this.countRead && this.countReadSize === size) return this.countRead;
+    this.countRead?.destroy();
+    this.countRead = this.gpu.device.createBuffer({
+      size,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
-    const encoder = device.createCommandEncoder();
-    encoder.copyBufferToBuffer(src.minmax, 0, staging, 0, 8);
-    device.queue.submit([encoder.finish()]);
-    await staging.mapAsync(GPUMapMode.READ);
-    const [lo, hi] = new Float32Array(staging.getMappedRange().slice(0, 8));
-    staging.unmap();
-    staging.destroy();
+    this.countReadSize = size;
+    return this.countRead;
+  }
+
+  private async pullCounts(width: number, height: number): Promise<void> {
+    const read = this.countRead;
+    if (!read) return;
+    await read.mapAsync(GPUMapMode.READ);
+    const bytes = read.getMappedRange();
+    const [lo, hi] = new Float32Array(bytes.slice(0, 8));
+    const pixels = width * height;
+    if (!this.lastCounts || this.lastCounts.data.length !== pixels) {
+      this.lastCounts = { data: new Float32Array(pixels), width, height };
+    } else {
+      this.lastCounts.width = width;
+      this.lastCounts.height = height;
+    }
+    this.lastCounts.data.set(new Float32Array(bytes, 256, pixels));
+    read.unmap();
     if (Number.isFinite(lo) && Number.isFinite(hi)) this.lastScale = { lo, hi };
   }
 
@@ -423,7 +471,7 @@ export class GpuMapRenderer {
       }),
       raw: device.createBuffer({
         size: pixels * 4,
-        usage: GPUBufferUsage.STORAGE,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
       }),
       minmax: device.createBuffer({
         size: 8,

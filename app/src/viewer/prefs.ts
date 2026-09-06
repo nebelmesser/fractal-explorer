@@ -6,7 +6,6 @@ export type StoredPrefs = {
   invert: boolean;
   median: number;
   targetFrameMs: number;
-  animatePreview: boolean;
   lastComputePx?: number;
 };
 
@@ -56,7 +55,6 @@ function sanitize(data: Record<string, unknown>): Partial<StoredPrefs> {
   if (median !== null) out.median = median;
   const target = num(data.targetFrameMs);
   if (target !== null) out.targetFrameMs = target;
-  if (typeof data.animatePreview === 'boolean') out.animatePreview = data.animatePreview;
   const last = num(data.lastComputePx);
   if (last !== null) out.lastComputePx = last;
   return out;

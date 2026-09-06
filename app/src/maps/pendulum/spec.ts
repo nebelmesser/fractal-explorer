@@ -5,7 +5,7 @@ import {
   PENDULUM_L2,
   PENDULUM_M1,
   PENDULUM_M2,
-  PENDULUM_MAX_ITER,
+  PENDULUM_MIN_ITER,
   VIEW_HALF,
 } from '../../constants';
 import {
@@ -43,7 +43,7 @@ export function packPendulumUniforms(
   f32[9] = params.DT;
   f32[10] = 0;
   f32[11] = 0;
-  u32[12] = Math.max(1, Math.round(params.MAX_ITERATIONS));
+  u32[12] = Math.max(PENDULUM_MIN_ITER, Math.round(params.MAX_ITERATIONS ?? PENDULUM_MIN_ITER));
   u32[13] = width;
   u32[14] = height;
   u32[15] = post.invert ? 1 : 0;
@@ -79,15 +79,6 @@ export const pendulumMap: MapDefinition = {
     { key: 'M2', label: 'M2', kind: 'float', min: 0.2, max: 5, step: 0.01, default: PENDULUM_M2 },
     { key: 'G', label: 'G', kind: 'float', min: 0.5, max: 25, step: 0.01, default: PENDULUM_G },
     { key: 'DT', label: 'DT', kind: 'float', min: 0.01, max: 0.5, step: 0.01, default: PENDULUM_DT },
-    {
-      key: 'MAX_ITERATIONS',
-      label: 'Iterations',
-      kind: 'int',
-      min: 100,
-      max: 8000,
-      step: 50,
-      default: PENDULUM_MAX_ITER,
-    },
   ],
   gpu,
   pointView: pendulumPreview,
