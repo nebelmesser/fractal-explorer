@@ -1,6 +1,8 @@
 import {
   PENDULUM_DT,
+  PENDULUM_FRICTION,
   PENDULUM_G,
+  PENDULUM_SNAP,
   PENDULUM_L1,
   PENDULUM_L2,
   PENDULUM_M1,
@@ -41,7 +43,7 @@ export function packPendulumUniforms(
   f32[7] = params.M2;
   f32[8] = params.G;
   f32[9] = params.DT;
-  f32[10] = 0;
+  f32[10] = params.F ?? 0;
   f32[11] = 0;
   u32[12] = Math.max(PENDULUM_MIN_ITER, Math.round(params.MAX_ITERATIONS ?? PENDULUM_MIN_ITER));
   u32[13] = width;
@@ -73,11 +75,13 @@ export const pendulumMap: MapDefinition = {
     yMax: VIEW_HALF,
   },
   params: [
-    { key: 'L1', label: 'L1', kind: 'float', min: 0.2, max: 3, step: 0.01, default: PENDULUM_L1 },
-    { key: 'L2', label: 'L2', kind: 'float', min: 0.2, max: 3, step: 0.01, default: PENDULUM_L2 },
-    { key: 'M1', label: 'M1', kind: 'float', min: 0.2, max: 5, step: 0.01, default: PENDULUM_M1 },
-    { key: 'M2', label: 'M2', kind: 'float', min: 0.2, max: 5, step: 0.01, default: PENDULUM_M2 },
+    { key: 'L1', label: 'L1', kind: 'float', min: 0.2, max: 3, step: 0.01, default: PENDULUM_L1, tone: 'th1' },
+    { key: 'L2', label: 'L2', kind: 'float', min: 0.2, max: 3, step: 0.01, default: PENDULUM_L2, tone: 'th2' },
+    { key: 'M1', label: 'M1', kind: 'float', min: 0.2, max: 5, step: 0.01, default: PENDULUM_M1, tone: 'th1' },
+    { key: 'M2', label: 'M2', kind: 'float', min: 0.2, max: 5, step: 0.01, default: PENDULUM_M2, tone: 'th2' },
     { key: 'G', label: 'G', kind: 'float', min: 0.5, max: 25, step: 0.01, default: PENDULUM_G },
+    { key: 'F', label: 'Friction', kind: 'float', min: 0, max: 0.5, step: 0.01, default: PENDULUM_FRICTION },
+    { key: 'SNAP', label: 'Snap speed', kind: 'float', min: 0, max: 20, step: 0.1, default: PENDULUM_SNAP },
     { key: 'DT', label: 'DT', kind: 'float', min: 0.01, max: 0.5, step: 0.01, default: PENDULUM_DT },
   ],
   gpu,

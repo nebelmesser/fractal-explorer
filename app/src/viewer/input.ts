@@ -39,15 +39,11 @@ export type InputHandlers = {
   getWorld(): ViewRect;
   setView(view: ViewRect, opts?: ViewOpts): void;
   popHistory(): void;
-  pickPoint(x: number, y: number, clientX: number, clientY: number): void;
+  /** Return true when the tap launched the center probes (do not zoom). */
+  pickPoint(x: number, y: number, clientX: number, clientY: number): boolean;
   hoverPoint?(x: number, y: number, clientX: number, clientY: number): void;
   hoverEnd?(): void;
 };
-
-/** Phone / tablet: no hovering cursor, so the probe stays on the screen center. */
-export function followScreenCenter(): boolean {
-  return window.matchMedia('(hover: none)').matches;
-}
 
 export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { stopCoast(): void } {
   const pointers = new Map<number, { x: number; y: number }>();
@@ -288,23 +284,27 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
     if (moved) startCoast(pinchAnchor);
     if (event.button === 0 && dragging && !moved) {
       const point = at(event.clientX, event.clientY);
-      handlers.pickPoint(point.x, point.y, event.clientX, event.clientY);
-      const now = performance.now();
-      const doubled = Boolean(
-        event.pointerType === 'touch'
-        && lastTap
-        && now - lastTap.t < DOUBLE_TAP_MS
-        && Math.hypot(event.clientX - lastTap.x, event.clientY - lastTap.y) < DOUBLE_TAP_PX,
-      );
-      lastTap = event.pointerType === 'touch' && !doubled
-        ? { t: now, x: event.clientX, y: event.clientY }
-        : null;
-      // Mouse click zooms. A phone tap only poses; a second tap zooms about that point.
-      if (event.pointerType !== 'touch' || doubled) {
-        handlers.setView(
-          zoomAbout(handlers.getView(), point.x, point.y, CLICK_ZOOM_FACTOR, handlers.getWorld()),
-          { pushHistory: true, animate: true },
+      const launched = handlers.pickPoint(point.x, point.y, event.clientX, event.clientY);
+      if (launched) {
+        lastTap = null;
+      } else {
+        const now = performance.now();
+        const doubled = Boolean(
+          event.pointerType === 'touch'
+          && lastTap
+          && now - lastTap.t < DOUBLE_TAP_MS
+          && Math.hypot(event.clientX - lastTap.x, event.clientY - lastTap.y) < DOUBLE_TAP_PX,
         );
+        lastTap = event.pointerType === 'touch' && !doubled
+          ? { t: now, x: event.clientX, y: event.clientY }
+          : null;
+        // Mouse click zooms. A phone tap only poses; a second tap zooms about that point.
+        if (event.pointerType !== 'touch' || doubled) {
+          handlers.setView(
+            zoomAbout(handlers.getView(), point.x, point.y, CLICK_ZOOM_FACTOR, handlers.getWorld()),
+            { pushHistory: true, animate: true },
+          );
+        }
       }
     }
     dragging = false;

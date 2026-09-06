@@ -15,7 +15,7 @@ export default defineConfig({
     emptyOutDir: false,
     sourcemap: false,
     rollupOptions: {
-      input: resolve(__dirname, 'viewer.html'),
+        input: resolve(__dirname, 'double-pendulum.html'),
       output: {
         entryFileNames: 'assets/explorer.js',
         chunkFileNames: 'assets/explorer-[name].js',
@@ -28,8 +28,8 @@ export default defineConfig({
       },
     },
   },
-  server: {
-    open: '/viewer.html',
+    server: {
+    open: '/double-pendulum.html',
   },
   plugins: [
     wasm(),
@@ -44,6 +44,7 @@ export default defineConfig({
       buildStart() {
         const assets = resolve(outDir, 'assets');
         rmSync(resolve(outDir, 'explorer.html'), { force: true });
+        rmSync(resolve(outDir, 'viewer.html'), { force: true });
         rmSync(resolve(assets, 'explorer.js'), { force: true });
         rmSync(resolve(assets, 'explorer.css'), { force: true });
       },
@@ -53,7 +54,7 @@ export default defineConfig({
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
           if (req.url === '/' || req.url === '/index.html') {
-            res.writeHead(302, { Location: '/viewer.html' });
+            res.writeHead(302, { Location: '/double-pendulum.html' });
             res.end();
             return;
           }

@@ -11,12 +11,25 @@ const MINOR_LEN = 4;
 type NiceStep = { coeff: number; exp: number; step: number };
 type AxisTick = { deg: number; major: boolean; label: string };
 
+export type ProbeAxisMarks = {
+  leftX: number;
+  rightX: number;
+  leftRad: number;
+  rightRad: number;
+  leftY: number;
+  rightY: number;
+  leftYRad: number;
+  rightYRad: number;
+  divergeText: string;
+};
+
 /** θ₁ along the bottom, θ₂ along the right — values in degrees. */
 export function drawMapAxes(
   canvas: HTMLCanvasElement,
   view: ViewRect,
   xRoot: HTMLElement,
   yRoot: HTMLElement,
+  probes?: ProbeAxisMarks,
 ): void {
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
@@ -43,9 +56,14 @@ export function drawMapAxes(
 
   ctx.strokeStyle = pal.th1;
   const xLabels: HTMLSpanElement[] = [];
+  const probeBand = probes
+    ? { lo: Math.min(probes.leftX, probes.rightX) - 28, hi: Math.max(probes.leftX, probes.rightX) + 28 }
+    : null;
   for (const tick of xTicks) {
     const x = ((tick.deg / RAD2DEG - view.xMin) / (view.xMax - view.xMin)) * w;
     if (x < 2 || x > w - 2) continue;
+    const nearProbe = probeBand != null && x >= probeBand.lo && x <= probeBand.hi;
+    if (nearProbe) continue;
     const len = tick.major ? MAJOR_LEN : MINOR_LEN;
     ctx.globalAlpha = tick.major ? 1 : 0.6;
     ctx.lineWidth = tick.major ? 1.25 : 1;
@@ -59,14 +77,20 @@ export function drawMapAxes(
     label.style.left = `${x}px`;
     xLabels.push(label);
   }
+  if (probes) xLabels.push(...probeTickLabels(ctx, w, h, view, probes));
   ctx.globalAlpha = 1;
   xRoot.replaceChildren(...xLabels);
 
   ctx.strokeStyle = pal.th2;
   const yLabels: HTMLSpanElement[] = [];
+  const probeYBand = probes
+    ? { lo: Math.min(probes.leftY, probes.rightY) - 22, hi: Math.max(probes.leftY, probes.rightY) + 22 }
+    : null;
   for (const tick of yTicks) {
     const y = ((tick.deg / RAD2DEG - view.yMin) / (view.yMax - view.yMin)) * h;
     if (y < 2 || y > h - 2) continue;
+    const nearProbe = probeYBand != null && y >= probeYBand.lo && y <= probeYBand.hi;
+    if (nearProbe) continue;
     const len = tick.major ? MAJOR_LEN : MINOR_LEN;
     ctx.globalAlpha = tick.major ? 1 : 0.6;
     ctx.lineWidth = tick.major ? 1.25 : 1;
@@ -80,8 +104,105 @@ export function drawMapAxes(
     label.style.top = `${y}px`;
     yLabels.push(label);
   }
+  if (probes) yLabels.push(...probeYTickLabels(ctx, w, h, view, probes));
   ctx.globalAlpha = 1;
   yRoot.replaceChildren(...yLabels);
+}
+
+function probeTickLabels(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  view: ViewRect,
+  probes: ProbeAxisMarks,
+): HTMLSpanElement[] {
+  const digits = angleDigits(view, w, h);
+  const left = Math.min(probes.leftX, probes.rightX);
+  const right = Math.max(probes.leftX, probes.rightX);
+  const leftRad = probes.leftX <= probes.rightX ? probes.leftRad : probes.rightRad;
+  const rightRad = probes.leftX <= probes.rightX ? probes.rightRad : probes.leftRad;
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = theme().th1;
+  for (const x of [left, right]) {
+    if (x < 2 || x > w - 2) continue;
+    ctx.beginPath();
+    ctx.moveTo(x, h);
+    ctx.lineTo(x, h - (MAJOR_LEN + 6));
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  const leftLabel = document.createElement('span');
+  leftLabel.className = 'probe-mark probe-mark-left';
+  leftLabel.textContent = formatAngleDeg(leftRad, digits);
+  leftLabel.style.left = `${left}px`;
+
+  const rightLabel = document.createElement('span');
+  rightLabel.className = 'probe-mark probe-mark-right';
+  rightLabel.textContent = formatAngleDeg(rightRad, digits);
+  rightLabel.style.left = `${right}px`;
+
+  const mid = (left + right) / 2;
+  const delta = document.createElement('span');
+  delta.className = 'probe-delta';
+  delta.textContent = formatDeltaDeg(rightRad - leftRad, digits);
+  delta.style.left = `${mid}px`;
+
+  const diverge = document.createElement('span');
+  diverge.className = 'probe-diverge';
+  diverge.textContent = probes.divergeText;
+  diverge.style.left = `${mid}px`;
+  return [leftLabel, rightLabel, delta, diverge];
+}
+
+function probeYTickLabels(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  view: ViewRect,
+  probes: ProbeAxisMarks,
+): HTMLSpanElement[] {
+  const digits = angleDigits(view, w, h);
+  const top = Math.min(probes.leftY, probes.rightY);
+  const bottom = Math.max(probes.leftY, probes.rightY);
+  const topRad = probes.leftY <= probes.rightY ? probes.leftYRad : probes.rightYRad;
+  const bottomRad = probes.leftY <= probes.rightY ? probes.rightYRad : probes.leftYRad;
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = theme().th2;
+  for (const y of [top, bottom]) {
+    if (y < 2 || y > h - 2) continue;
+    ctx.beginPath();
+    ctx.moveTo(w, y);
+    ctx.lineTo(w - (MAJOR_LEN + 6), y);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  const same = Math.abs(top - bottom) < 0.5;
+  const topLabel = document.createElement('span');
+  topLabel.className = same ? 'probe-mark' : 'probe-mark probe-mark-top';
+  topLabel.textContent = formatAngleDeg(topRad, digits);
+  topLabel.style.top = `${top}px`;
+  if (same) return [topLabel];
+
+  const bottomLabel = document.createElement('span');
+  bottomLabel.className = 'probe-mark probe-mark-bottom';
+  bottomLabel.textContent = formatAngleDeg(bottomRad, digits);
+  bottomLabel.style.top = `${bottom}px`;
+  return [topLabel, bottomLabel];
+}
+
+function formatDeltaDeg(rad: number, digits: number): string {
+  const deg = Math.abs(rad * RAD2DEG);
+  if (!Number.isFinite(deg)) return '0° difference';
+  const places = Math.min(8, Math.max(2, digits));
+  const n = Number(deg.toFixed(places));
+  if (n === 0) return `${(0).toFixed(places)}° difference`;
+  return `${n.toFixed(places)}° difference`;
 }
 
 function axisTicks(

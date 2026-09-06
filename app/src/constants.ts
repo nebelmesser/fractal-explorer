@@ -42,13 +42,26 @@ export const PENDULUM_M1 = 1;
 export const PENDULUM_M2 = 1;
 export const PENDULUM_G = 9.81;
 export const PENDULUM_DT = 0.2; // coarse step used by the escape-time map
+export const PENDULUM_FRICTION = 0; // linear drag on ω; 0 = conservative
+export const PENDULUM_SNAP = 8; // |ω₁| L1 that tears the first rod off the pin; 0 = never
 export const PENDULUM_MIN_ITER = 1000; // floor the budget will not go below
 export const PENDULUM_MAX_ITER = 8000; // cap when the frame budget has room
 export const PENDULUM_SINGULAR = 1e-9; // treat a vanishing denominator as α = 0
 
-// Overview + preview chrome. These are UI tiles, not the main map.
+// Overview + on-map probes.
 export const OVERVIEW_PX = 160; // CSS and GPU side of the overview map
-export const PREVIEW_PX = 160; // pendulum sketch under the overview
+export const PROBE_SEP_PX = 48; // horizontal gap between the two screen-center samples
+export const PROBE_HIT_PX = 88; // click/tap half-size of the center launch zone
+export const PROBE_PX_PER_LEN = 38; // CSS px for L=1; L1/L2 draw absolutely, not normalized
+export const PROBE_CROSS_PX = 7; // half-length of the reticle
+export const PROBE_PIVOT_DOWN_PX = 18; // hang the rods this far below the sights
+export const PROBE_PIVOT_R = 2; // CSS px; keep smaller than the sights
+export const PROBE_BOB_R = 4; // CSS px radius at mass = 1; area scales with M
+export const PROBE_DIVERGE_DEG = 10; // |Δθ₁| that counts as diverged
+export const PROBE_ALPHA = 0.5; // overlay pendulums stay see-through
+export const PROBE_PLAY_FPS = 24; // overlay steps once per frame at this rate
+export const PROBE_ESTIMATE_STEPS = 600; // lookahead steps per frame for the countdown
+export const PROBE_MAX_STEPS = 40000; // fine dt would hit the map cap too soon
 export const DOUBLE_TAP_MS = 320;
 export const DOUBLE_TAP_PX = 36;
 export const SCALE_BAR_TARGET_PX = 80; // Google-maps-like bar aims at this length

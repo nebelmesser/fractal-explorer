@@ -51,20 +51,24 @@ export function bindMenu(
   for (const spec of map.params) {
     const label = document.createElement('label');
     label.className = 'slider-label';
+    if (spec.tone) label.dataset.tone = spec.tone;
+    const raw = controls.params[spec.key] ?? spec.default;
+    const start = Math.min(spec.max, Math.max(spec.min, raw));
+    controls.params[spec.key] = spec.kind === 'int' ? Math.round(start) : start;
     const row = document.createElement('span');
     row.className = 'row';
     const name = document.createElement('span');
     name.textContent = spec.label;
     const readout = document.createElement('span');
     readout.dataset.paramValue = spec.key;
-    readout.textContent = formatValue(spec.kind, controls.params[spec.key] ?? spec.default);
+    readout.textContent = formatValue(spec.kind, controls.params[spec.key]);
     row.append(name, readout);
     const input = document.createElement('input');
     input.type = 'range';
     input.min = String(spec.min);
     input.max = String(spec.max);
     input.step = String(spec.step);
-    input.value = String(controls.params[spec.key] ?? spec.default);
+    input.value = String(controls.params[spec.key]);
     input.addEventListener('input', () => {
       const raw = Number(input.value);
       controls.params[spec.key] = spec.kind === 'int' ? Math.round(raw) : raw;

@@ -6,6 +6,17 @@ import {
   OVERSCAN_PAD,
   OVERSCAN_RELOAD,
   OVERVIEW_PX,
+  PROBE_ALPHA,
+  PROBE_CROSS_PX,
+  PROBE_DIVERGE_DEG,
+  PROBE_ESTIMATE_STEPS,
+  PROBE_HIT_PX,
+  PROBE_MAX_STEPS,
+  PROBE_PLAY_FPS,
+  PROBE_PIVOT_DOWN_PX,
+  PROBE_PIVOT_R,
+  PROBE_PX_PER_LEN,
+  PROBE_SEP_PX,
   SMOOTH_ZOOM_MS,
   TARGET_FRAME_MS,
   VIEW_DEBOUNCE_MS,
@@ -24,13 +35,24 @@ import {
   type MapParams,
   type ViewRect,
 } from './maps/types';
-import { initMapCore } from './wasm/core';
+import { createTrajectory, initMapCore, type Trajectory } from './wasm/core';
 import { computeSize, fitMapDisplay, nextWorkBudget, preferredIters, scaleSize, snapComputePx } from './viewer/budget';
-import { bindMapInput, followScreenCenter } from './viewer/input';
+import { bindMapInput } from './viewer/input';
 import { bindMenu, syncBudgetReadout, type ExplorerControls } from './viewer/menu';
-import { angleDigits, drawMapAxes, formatAngleDeg } from './viewer/axes';
+import { drawMapAxes } from './viewer/axes';
 import { drawOverviewFrame } from './viewer/minimap';
 import { bindPrefs, consumeResetQuery, loadPrefs, markPrefsDirty } from './viewer/prefs';
+import {
+  drawOverlayFly,
+  drawOverlayPendulum,
+  drawProbeCross,
+  drawProbePivot,
+  firstBobSpeed,
+  flyOffscreen,
+  startFly,
+  stepFly,
+  type FlyState,
+} from './maps/pendulum/preview';
 import {
   canZoomIn,
   canZoomOut,
@@ -63,23 +85,15 @@ async function boot(): Promise<void> {
   const sidebar = document.getElementById('sidebar');
   const miniCanvas = document.getElementById('minimap') as HTMLCanvasElement;
   const miniOverlay = document.getElementById('minimap-overlay') as HTMLCanvasElement;
-  const previewCanvas = document.getElementById('preview') as HTMLCanvasElement;
-  const previewSteps = document.getElementById('preview-steps');
-  const previewMeta = document.getElementById('preview-meta');
-  const previewSwatch = document.getElementById('preview-swatch');
-  const previewTh1 = document.getElementById('preview-th1');
-  const previewTh2 = document.getElementById('preview-th2');
   const axesCanvas = document.getElementById('map-axes') as HTMLCanvasElement | null;
+  const overlayCanvas = document.getElementById('probe-overlay') as HTMLCanvasElement | null;
   const scaleX = document.getElementById('map-scale-x');
   const scaleY = document.getElementById('map-scale-y');
   const shiftEl = document.getElementById('map-shift');
-  const linkLine = document.getElementById('pointer-link-line') as SVGLineElement | null;
-  const linkHoleEl = document.getElementById('pointer-link-hole') as SVGRectElement | null;
-  const linkMaskBgEl = document.getElementById('pointer-link-mask-bg') as SVGRectElement | null;
   const zoomOutEl = document.getElementById('zoom-out') as HTMLButtonElement | null;
   const zoomInEl = document.getElementById('zoom-in') as HTMLButtonElement | null;
   const zoomResetEl = document.getElementById('zoom-reset') as HTMLButtonElement | null;
-  if (!mapCanvas || !mapBack || !mapClip || !stage || !sidebar || !miniCanvas || !miniOverlay || !previewCanvas || !previewSteps || !previewMeta || !previewSwatch || !previewTh1 || !previewTh2 || !axesCanvas || !scaleX || !scaleY || !shiftEl || !linkLine || !linkHoleEl || !linkMaskBgEl || !zoomInEl || !zoomOutEl || !zoomResetEl) {
+  if (!mapCanvas || !mapBack || !mapClip || !stage || !sidebar || !miniCanvas || !miniOverlay || !axesCanvas || !overlayCanvas || !scaleX || !scaleY || !shiftEl || !zoomInEl || !zoomOutEl || !zoomResetEl) {
     throw new Error('Explorer DOM is incomplete');
   }
   const zoomIn = zoomInEl;
@@ -87,17 +101,9 @@ async function boot(): Promise<void> {
   const zoomReset = zoomResetEl;
   const xScale = scaleX;
   const yScale = scaleY;
-  const th1Readout = previewTh1;
-  const th2Readout = previewTh2;
   const mapShift = shiftEl;
   const clip = mapClip;
-  const stageEl = stage;
-  const link = linkLine;
-  const linkHole = linkHoleEl;
-  const linkMaskBg = linkMaskBgEl;
-  const stepsEl = previewSteps;
-  const metaEl = previewMeta;
-  const swatchEl = previewSwatch;
+  const overlay = overlayCanvas;
   const axes = axesCanvas;
 
   const gpu = await requestGpu();
@@ -120,16 +126,23 @@ async function boot(): Promise<void> {
   const history: ViewRect[] = [copyView(view)];
   let settledPx = snapComputePx(Math.min(display.width, display.height));
   let animating = false;
-  let picked = viewCenter(view);
-  let previewState = mapDef.pointView?.createState?.(picked, params);
-  let hovering = false;
-  let previewPlaying = false;
-  let previewReplay = false;
-  let previewPinned = false;
-  let lastScreen: { x: number; y: number } | null = null;
-  let lastProbeKey = '';
+  let probes: [Trajectory, Trajectory] | null = null;
+  let flies: [FlyState | null, FlyState | null] = [null, null];
+  let probePlaying = false;
+  let probeView: ViewRect | null = null;
+  let probeSimTime = 0;
+  let probePlayAcc = 0;
+  let probePlayLast = 0;
+  let probeDivergeSec: number | null = null;
+  let divergeJob: {
+    key: string;
+    a: Trajectory;
+    b: Trajectory;
+    time: number;
+    result: number | null;
+    done: boolean;
+  } | null = null;
   let stopCoast = (): void => {};
-  let idleTimer = 0;
   let rendering = false;
   let wantRefine = true;
   let wantHalo = false;
@@ -139,7 +152,6 @@ async function boot(): Promise<void> {
   let zoomToken = 0;
   let lastRenderSize = { width: 0, height: 0 };
   let lastOverscanPad = 0;
-  let mapEpoch = 0;
   let forcedView: ViewRect | null = null;
   let forcedDone: (() => void) | null = null;
 
@@ -246,12 +258,7 @@ async function boot(): Promise<void> {
 
   function scheduleParams(): void {
     overviewKey = '';
-    lastProbeKey = '';
-    previewState = mapDef.pointView?.createState?.(picked, params);
-    if (hovering || previewPinned) {
-      showFinalSteps();
-      armPreviewIdle();
-    }
+    resetProbes();
     applyBudget();
     requestVisible();
   }
@@ -268,112 +275,260 @@ async function boot(): Promise<void> {
   }
 
   function drawChrome(): void {
-    if (followScreenCenter()) {
-      const c = viewCenter(view);
-      picked = { x: c.x, y: c.y };
-      previewPinned = true;
-      hovering = true;
-    }
-    if (hovering || previewPinned) showFinalSteps();
-    const box = clip.getBoundingClientRect();
-    const digits = angleDigits(view, box.width, box.height);
-    th1Readout.textContent = formatAngleDeg(picked.x, digits);
-    th2Readout.textContent = formatAngleDeg(picked.y, digits);
-    const previewCss = Math.max(1, Math.round(previewCanvas.clientWidth));
-    const previewDpr = Math.min(window.devicePixelRatio || 1, 2);
-    const previewPx = Math.round(previewCss * previewDpr);
-    if (previewCanvas.width !== previewPx || previewCanvas.height !== previewPx) {
-      previewCanvas.width = previewPx;
-      previewCanvas.height = previewPx;
-    }
-    const ctx = previewCanvas.getContext('2d');
-    if (ctx && mapDef.pointView) mapDef.pointView.draw(ctx, picked, params, digits);
-    drawMapAxes(axes, view, xScale, yScale);
+    const origins = probeOrigins();
+    const worlds = syncProbeWorlds();
+    drawMapAxes(axes, view, xScale, yScale, {
+      leftX: origins[0].x,
+      rightX: origins[1].x,
+      leftRad: worlds[0].x,
+      rightRad: worlds[1].x,
+      leftY: origins[0].y,
+      rightY: origins[1].y,
+      leftYRad: worlds[0].y,
+      rightYRad: worlds[1].y,
+      divergeText: divergeReadout(),
+    });
     drawOverviewFrame(miniOverlay, mapDef.defaultView, view);
-    updatePointerLink();
+    drawProbes(origins, worlds);
   }
 
-  function updatePointerLink(): void {
-    if (!lastScreen || metaEl.hidden) {
-      link.setAttribute('visibility', 'hidden');
-      return;
-    }
-    const stageBox = stageEl.getBoundingClientRect();
-    const swatch = swatchEl.getBoundingClientRect();
-    linkMaskBg.setAttribute('width', String(Math.ceil(stageBox.width)));
-    linkMaskBg.setAttribute('height', String(Math.ceil(stageBox.height)));
-    linkHole.setAttribute('x', String(swatch.left - stageBox.left));
-    linkHole.setAttribute('y', String(swatch.top - stageBox.top));
-    linkHole.setAttribute('width', String(swatch.width));
-    linkHole.setAttribute('height', String(swatch.height));
-    link.setAttribute('visibility', 'visible');
-    link.setAttribute('x1', String(lastScreen.x - stageBox.left));
-    link.setAttribute('y1', String(lastScreen.y - stageBox.top));
-    link.setAttribute('x2', String(swatch.left + swatch.width / 2 - stageBox.left));
-    link.setAttribute('y2', String(swatch.top + swatch.height / 2 - stageBox.top));
-  }
-
-  function worldToClient(p: { x: number; y: number }): { x: number; y: number } {
+  function clientToWorld(clientX: number, clientY: number): { x: number; y: number } {
     const box = clip.getBoundingClientRect();
     return {
-      x: box.left + ((p.x - view.xMin) / viewSpanX(view)) * box.width,
-      y: box.top + ((p.y - view.yMin) / viewSpanY(view)) * box.height,
+      x: view.xMin + ((clientX - box.left) / box.width) * viewSpanX(view),
+      y: view.yMin + ((clientY - box.top) / box.height) * viewSpanY(view),
     };
   }
 
-  function snapProbeToMapPixel(): void {
-    const nx = (picked.x - computedView.xMin) / viewSpanX(computedView);
-    const ny = (picked.y - computedView.yMin) / viewSpanY(computedView);
+  function snapWorld(p: { x: number; y: number }): { x: number; y: number } {
+    const nx = (p.x - computedView.xMin) / viewSpanX(computedView);
+    const ny = (p.y - computedView.yMin) / viewSpanY(computedView);
     const texel = nx >= 0 && nx <= 1 && ny >= 0 && ny <= 1 ? renderer.mapTexel(nx, ny) : null;
-    if (texel) {
-      const xDen = Math.max(texel.width - 1, 1);
-      const yDen = Math.max(texel.height - 1, 1);
-      picked = {
-        x: computedView.xMin + (viewSpanX(computedView) * texel.ix) / xDen,
-        y: computedView.yMin + (viewSpanY(computedView) * texel.iy) / yDen,
-      };
+    if (!texel) return p;
+    const xDen = Math.max(texel.width - 1, 1);
+    const yDen = Math.max(texel.height - 1, 1);
+    return {
+      x: computedView.xMin + (viewSpanX(computedView) * texel.ix) / xDen,
+      y: computedView.yMin + (viewSpanY(computedView) * texel.iy) / yDen,
+    };
+  }
+
+  function probeOrigins(): [{ x: number; y: number }, { x: number; y: number }] {
+    const box = clip.getBoundingClientRect();
+    const cx = box.width / 2;
+    const cy = box.height / 2;
+    const half = PROBE_SEP_PX / 2;
+    return [
+      { x: cx - half, y: cy },
+      { x: cx + half, y: cy },
+    ];
+  }
+
+  function probeWorlds(): [{ x: number; y: number }, { x: number; y: number }] {
+    const box = clip.getBoundingClientRect();
+    const [left, right] = probeOrigins();
+    return [
+      snapWorld(clientToWorld(box.left + left.x, box.top + left.y)),
+      snapWorld(clientToWorld(box.left + right.x, box.top + right.y)),
+    ];
+  }
+
+  function inProbeHit(clientX: number, clientY: number): boolean {
+    const box = clip.getBoundingClientRect();
+    const dx = clientX - (box.left + box.width / 2);
+    const dy = clientY - (box.top + box.height / 2);
+    return Math.hypot(dx, dy) <= PROBE_HIT_PX;
+  }
+
+  function playParams(): MapParams {
+    return { ...params, MAX_ITERATIONS: PROBE_MAX_STEPS };
+  }
+
+  function probeDt(): number {
+    return params.DT;
+  }
+
+  function resetProbes(): void {
+    probes = null;
+    flies = [null, null];
+    probePlaying = false;
+    probeView = null;
+    probeSimTime = 0;
+    probePlayAcc = 0;
+    probeDivergeSec = null;
+  }
+
+  function divergeRad(): number {
+    return PROBE_DIVERGE_DEG * Math.PI / 180;
+  }
+
+  function noteDiverge(): void {
+    if (!probes || probeDivergeSec != null) return;
+    if (Math.abs(probes[0].th1 - probes[1].th1) > divergeRad()) {
+      probeDivergeSec = probeSimTime;
     }
-    lastScreen = worldToClient(picked);
   }
 
-  function setSwatch(gray: number): void {
-    const g = Math.round(Math.min(255, Math.max(0, gray)));
-    swatchEl.style.backgroundColor = `rgb(${g}, ${g}, ${g})`;
+  function estimateKey(worlds: [{ x: number; y: number }, { x: number; y: number }]): string {
+    return [
+      worlds[0].x, worlds[0].y, worlds[1].x, worlds[1].y,
+      params.L1, params.L2, params.M1, params.M2, params.G, params.F ?? 0, params.DT,
+    ].join(',');
   }
 
-  function showFinalSteps(): void {
-    previewCanvas.classList.add('is-live');
-    snapProbeToMapPixel();
-    metaEl.hidden = false;
-    const nx = (picked.x - computedView.xMin) / viewSpanX(computedView);
-    const ny = (picked.y - computedView.yMin) / viewSpanY(computedView);
-    const n = renderer.mapSteps(nx, ny);
-    if (n == null) return;
-    const steps = Math.round(n);
-    const key = `${mapEpoch}:${picked.x},${picked.y},${steps},${controls.invert}`;
-    if (key === lastProbeKey) return;
-    lastProbeKey = key;
-    stepsEl.textContent = String(steps);
-    setSwatch(renderer.grayForSteps(n, controls.invert) ?? 0);
+  function ensureEstimate(worlds: [{ x: number; y: number }, { x: number; y: number }]): void {
+    const key = estimateKey(worlds);
+    if (divergeJob?.key === key) return;
+    const a = createTrajectory(worlds[0].x, worlds[0].y);
+    const b = createTrajectory(worlds[1].x, worlds[1].y);
+    divergeJob = { key, a, b, time: 0, result: null, done: false };
+    if (Math.abs(a.th1 - b.th1) > divergeRad()) {
+      divergeJob.result = 0;
+      divergeJob.done = true;
+    }
   }
 
-  function hidePreviewSteps(): void {
-    lastProbeKey = '';
-    stepsEl.textContent = '';
-    metaEl.hidden = true;
-    previewCanvas.classList.remove('is-live');
+  function stepEstimate(): void {
+    if (!divergeJob || divergeJob.done) return;
+    const next = playParams();
+    const limit = divergeRad();
+    for (let i = 0; i < PROBE_ESTIMATE_STEPS; i++) {
+      const dt = probeDt();
+      divergeJob.a.step(next, dt);
+      divergeJob.b.step(next, dt);
+      divergeJob.time += dt;
+      if (Math.abs(divergeJob.a.th1 - divergeJob.b.th1) > limit) {
+        divergeJob.result = divergeJob.time;
+        divergeJob.done = true;
+        return;
+      }
+      if (divergeJob.a.done && divergeJob.b.done) {
+        divergeJob.result = null;
+        divergeJob.done = true;
+        return;
+      }
+    }
   }
 
-  function resetPreviewBg(): void {
-    previewCanvas.classList.remove('is-settled');
-    previewCanvas.classList.add('is-live');
+  function predictedDivergeSec(): number | null {
+    if (probeDivergeSec != null) return probeDivergeSec;
+    if (divergeJob?.done) return divergeJob.result;
+    return null;
   }
 
-  function armPreviewIdle(): void {
-    window.clearTimeout(idleTimer);
-    previewPlaying = false;
-    previewReplay = false;
-    resetPreviewBg();
+  /** Wall-clock seconds of a 24 fps play-out of this many map-DT steps. */
+  function playWallSec(simSec: number): number {
+    const dt = probeDt();
+    if (!(dt > 0)) return 0;
+    return simSec / dt / PROBE_PLAY_FPS;
+  }
+
+  function divergeReadout(): string {
+    const predicted = predictedDivergeSec();
+    if (probePlaying) {
+      if (predicted != null) {
+        return `${Math.max(0, playWallSec(predicted - probeSimTime)).toFixed(2)} seconds to diverge`;
+      }
+      return '… seconds to diverge';
+    }
+    if (predicted != null) return `${playWallSec(predicted).toFixed(2)} seconds to diverge`;
+    if (divergeJob && !divergeJob.done) return '… seconds to diverge';
+    return '— seconds to diverge';
+  }
+
+  function syncDivergeLabel(): void {
+    const el = document.querySelector('#map-scale-x .probe-diverge');
+    if (el) el.textContent = divergeReadout();
+  }
+
+  function syncProbeWorlds(): [{ x: number; y: number }, { x: number; y: number }] {
+    if (probes && probeView && !viewsEqual(view, probeView)) resetProbes();
+    return probeWorlds();
+  }
+
+  function launchProbes(): void {
+    const [left, right] = probeWorlds();
+    probes = [createTrajectory(left.x, left.y), createTrajectory(right.x, right.y)];
+    flies = [null, null];
+    probeView = copyView(view);
+    probePlaying = true;
+    probeSimTime = 0;
+    probePlayAcc = 0;
+    probePlayLast = performance.now();
+    probeDivergeSec = null;
+    noteDiverge();
+    syncDivergeLabel();
+  }
+
+  function stepProbes(now: number): void {
+    syncProbeWorlds();
+    if (!probePlaying || !probes) return;
+    const dt = probeDt();
+    if (!(dt > 0)) return;
+    const frame = 1 / PROBE_PLAY_FPS;
+    probePlayAcc += Math.min(0.1, Math.max(0, (now - probePlayLast) / 1000));
+    probePlayLast = now;
+    const next = playParams();
+    const snap = params.SNAP ?? 0;
+    while (probePlayAcc >= frame) {
+      for (let i = 0; i < 2; i++) {
+        const traj = probes[i];
+        traj.step(next, dt);
+        if (!flies[i] && snap > 0 && firstBobSpeed(traj.w1, next.L1) >= snap) {
+          flies[i] = startFly(traj.th1, traj.th2, traj.w1, traj.w2, next.L1, next.L2);
+        }
+        const fly = flies[i];
+        if (fly) stepFly(fly, next, dt);
+      }
+      probeSimTime += dt;
+      probePlayAcc -= frame;
+      noteDiverge();
+      const hanging = probes.some((traj, i) => !flies[i] && !traj.done);
+      const flying = flies.some((fly) => fly && !flyOffscreen(fly, 24));
+      if (!hanging && !flying) {
+        probePlaying = false;
+        break;
+      }
+    }
+    syncDivergeLabel();
+  }
+
+  function drawProbes(
+    origins = probeOrigins(),
+    worlds = syncProbeWorlds(),
+  ): void {
+    const w = overlay.clientWidth;
+    const h = overlay.clientHeight;
+    if (w < 8 || h < 8) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const pw = Math.round(w * dpr);
+    const ph = Math.round(h * dpr);
+    if (overlay.width !== pw || overlay.height !== ph) {
+      overlay.width = pw;
+      overlay.height = ph;
+    }
+    const ctx = overlay.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const mid = {
+      x: (origins[0].x + origins[1].x) / 2,
+      y: (origins[0].y + origins[1].y) / 2 + PROBE_PIVOT_DOWN_PX,
+    };
+    for (let i = 0; i < 2; i++) {
+      const fly = flies[i];
+      if (fly) {
+        drawOverlayFly(ctx, mid, fly, params, PROBE_PX_PER_LEN, PROBE_ALPHA);
+        continue;
+      }
+      const th1 = probes ? probes[i].th1 : worlds[i].x;
+      const th2 = probes ? probes[i].th2 : worlds[i].y;
+      drawOverlayPendulum(ctx, mid, th1, th2, params, PROBE_PX_PER_LEN, PROBE_ALPHA);
+    }
+    drawProbePivot(ctx, mid, PROBE_PIVOT_R);
+    for (let i = 0; i < 2; i++) {
+      drawProbeCross(ctx, origins[i], PROBE_CROSS_PX);
+    }
   }
 
   function cancelZoomAnim(): void {
@@ -454,16 +609,6 @@ async function boot(): Promise<void> {
 
   bindMenu(mapDef, controls, scheduleParams);
 
-  window.matchMedia('(hover: none)').addEventListener('change', () => {
-    if (!followScreenCenter()) {
-      previewPinned = false;
-      hovering = false;
-      lastScreen = null;
-      hidePreviewSteps();
-    }
-    drawChrome();
-  });
-
   stopCoast = bindMapInput(clip, {
     getView: () => view,
     getWorld: () => world,
@@ -479,36 +624,11 @@ async function boot(): Promise<void> {
       markPrefsDirty();
       scheduleView({ immediate: true });
     },
-    pickPoint(x, y, clientX, clientY) {
-      if (followScreenCenter()) {
-        drawChrome();
-        return;
-      }
-      picked = { x, y };
-      hovering = false;
-      previewPinned = true;
-      lastScreen = { x: clientX, y: clientY };
-      armPreviewIdle();
-      drawChrome();
-    },
-    hoverPoint(x, y, _clientX, _clientY) {
-      if (followScreenCenter()) return;
-      hovering = true;
-      previewPinned = false;
-      picked = { x, y };
-      armPreviewIdle();
-      drawChrome();
-    },
-    hoverEnd() {
-      if (followScreenCenter() || previewPinned) return;
-      hovering = false;
-      previewPlaying = false;
-      previewReplay = false;
-      lastScreen = null;
-      window.clearTimeout(idleTimer);
-      hidePreviewSteps();
-      previewState = mapDef.pointView?.createState?.(picked, params);
-      drawChrome();
+    pickPoint(_x, _y, clientX, clientY) {
+      if (!inProbeHit(clientX, clientY)) return false;
+      launchProbes();
+      drawProbes();
+      return true;
     },
   }).stopCoast;
 
@@ -603,7 +723,6 @@ async function boot(): Promise<void> {
       backCanvas = prevCanvas;
       computedView = renderView;
       lastRenderSize = size;
-      mapEpoch += 1;
       lastOverscanPad = pad;
       if (forced) {
         forcedView = null;
@@ -654,10 +773,18 @@ async function boot(): Promise<void> {
     }
   }
 
-  function tick(): void {
+  function tick(now: number): void {
     if ((wantRefine || wantHalo) && !rendering) {
       void renderOnce();
     }
+    const worlds = syncProbeWorlds();
+    ensureEstimate(worlds);
+    stepEstimate();
+    if (probePlaying) {
+      stepProbes(now);
+      drawProbes(probeOrigins(), worlds);
+    }
+    syncDivergeLabel();
     requestAnimationFrame(tick);
   }
 

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Fractal Explorer</title>
+    <meta name="description" content="GPU map explorer: zoom a dynamical map in the browser">
+    <link rel="canonical" href="https://nebelmesser.com/fractal/double-pendulum.html">
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-5D8EGFYM3L"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-5D8EGFYM3L');
+    </script>
+    <script type="module" src="./src/main.ts"></script>
+</head>
+<body>
+    <div id="menu-backdrop"></div>
+    <button type="button" id="menu-toggle" aria-label="Settings" aria-expanded="false">
+        <span></span><span></span><span></span>
+    </button>
+
+    <div id="gpu-missing" hidden>
+        This explorer needs WebGPU. The map is not computed on the CPU.
+    </div>
+
+    <div id="stage">
+        <aside id="sidebar">
+            <div id="overview-row">
+                <div id="minimap-wrap">
+                    <canvas id="minimap" width="160" height="160" aria-label="Overview map"></canvas>
+                    <canvas id="minimap-overlay" width="160" height="160" aria-hidden="true"></canvas>
+                </div>
+                <div id="zoom-bar">
+                    <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
+                    <button type="button" id="zoom-out" aria-label="Zoom out">−</button>
+                    <button type="button" id="zoom-reset" aria-label="Reset view">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                d="M4.6 12a7.4 7.4 0 1 0 2.1-5.2M4.6 4.8v4.2h4.2" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </aside>
+        <div id="map-clip">
+            <div id="map-shift">
+                <canvas id="map" class="map-view is-front" width="256" height="256" aria-label="Map"></canvas>
+            </div>
+            <canvas id="map-back" class="map-view map-pending" width="256" height="256" aria-hidden="true"></canvas>
+            <canvas id="map-axes" aria-hidden="true"></canvas>
+            <canvas id="probe-overlay" aria-hidden="true"></canvas>
+            <div id="map-scale-x" aria-hidden="true"></div>
+            <div id="map-scale-y" aria-hidden="true"></div>
+        </div>
+    </div>
+
+    <div id="ui-container">
+        <div id="map-params"></div>
+        <label class="slider-label">
+            <span class="row"><span>Median</span><span id="medianValue">3</span></span>
+            <input type="range" id="medianSlider" min="0" max="5" step="1" value="3">
+        </label>
+        <label class="slider-label">
+            <span class="row"><span>Frame budget</span><span id="targetValue">1000 ms</span></span>
+            <input type="range" id="targetSlider" min="200" max="4000" step="50" value="1000">
+        </label>
+        <div class="control-group">
+            <label class="checkbox-label"><input type="checkbox" id="invertCheck"> Invert</label>
+        </div>
+        <button type="button" id="resetParams" class="text-button">Reset parameters</button>
+        <div class="hint">
+            Tap the center to start the two pendulums. Click or double-tap elsewhere to zoom in.
+            Drag to pan, wheel or pinch to zoom. Right-click goes back.
+            Use + / − to zoom.
+        </div>
+        <a class="learn-more" href="/fractal/">Learn more →</a>
+    </div>
+</body>
+</html>

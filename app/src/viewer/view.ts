@@ -51,8 +51,8 @@ export function shortSpan(view: ViewRect): number {
 }
 
 /**
- * Zoom about a point. Unzoom never goes wider than `world` — the last step
- * lands on that original view instead of overshooting.
+ * Zoom about a point. Unzoom never goes wider than `world`, and at the
+ * max span it stays put — it does not snap back to the world origin.
  */
 export function zoomAbout(
   view: ViewRect,
@@ -61,15 +61,13 @@ export function zoomAbout(
   factor: number,
   world: ViewRect,
 ): ViewRect {
-  const nextX = viewSpanX(view) * factor;
-  const nextY = viewSpanY(view) * factor;
   const capX = viewSpanX(world);
   const capY = viewSpanY(world);
-  if (factor > 1 && (nextX >= capX || nextY >= capY)) {
-    return copyView(world);
+  if (factor > 1 && !canZoomOut(view, world)) {
+    return copyView(view);
   }
-  const spanX = clampSpan(nextX, capX);
-  const spanY = clampSpan(nextY, capY);
+  const spanX = clampSpan(viewSpanX(view) * factor, capX);
+  const spanY = clampSpan(viewSpanY(view) * factor, capY);
   const fx = (x - view.xMin) / viewSpanX(view);
   const fy = (y - view.yMin) / viewSpanY(view);
   return {

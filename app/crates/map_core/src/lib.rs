@@ -27,10 +27,10 @@ impl Pendulum {
     }
 
     /// Semi-implicit Euler step. Formulas match the WGSL compute kernel.
-    pub fn step(&mut self, l1: f32, l2: f32, m1: f32, m2: f32, g: f32, dt: f32) {
+    pub fn step(&mut self, l1: f32, l2: f32, m1: f32, m2: f32, g: f32, f: f32, dt: f32) {
         let (alpha1, alpha2) = accelerations(self.th1, self.th2, self.w1, self.w2, l1, l2, m1, m2, g);
-        self.w1 += alpha1 * dt;
-        self.w2 += alpha2 * dt;
+        self.w1 += (alpha1 - f * self.w1) * dt;
+        self.w2 += (alpha2 - f * self.w2) * dt;
         self.th1 += self.w1 * dt;
         self.th2 += self.w2 * dt;
     }
@@ -43,6 +43,16 @@ impl Pendulum {
     #[wasm_bindgen(getter)]
     pub fn th2(&self) -> f32 {
         self.th2
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn w1(&self) -> f32 {
+        self.w1
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn w2(&self) -> f32 {
+        self.w2
     }
 }
 

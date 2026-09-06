@@ -17,6 +17,8 @@ export type MapParam = {
   max: number;
   step: number;
   default: number;
+  /** Slider tint; pendulum L1/M1 and L2/M2 follow the rod colors. */
+  tone?: 'th1' | 'th2';
 };
 
 export type MapParams = Record<string, number>;

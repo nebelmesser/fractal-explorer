@@ -4,7 +4,7 @@
 struct Uniforms {
   view: vec4f,   // x_min, x_max, y_min, y_max
   phys: vec4f,   // L1, L2, M1, M2
-  step: vec4f,   // G, DT, unused, unused
+  step: vec4f,   // G, DT, F, unused
   size: vec4u,   // max_iter, width, height, invert
   extra: vec4u,  // median, pad, pad, pad
 }
@@ -42,6 +42,7 @@ fn integrate(start_th1: f32, start_th2: f32) -> f32 {
   let M2 = u.phys.w;
   let G = u.step.x;
   let DT = u.step.y;
+  let F = u.step.z;
   let g_m1_plus_m2 = G * (M1 + M2);
   let two_m1_plus_m2 = 2.0 * M1 + M2;
   let max_iter = u.size.x;
@@ -73,8 +74,8 @@ fn integrate(start_th1: f32, start_th2: f32) -> f32 {
       alpha2 = (2.0 * sin_th1_minus_th2 * term_sum) / den2;
     }
 
-    w1 += alpha1 * DT;
-    w2 += alpha2 * DT;
+    w1 += (alpha1 - F * w1) * DT;
+    w2 += (alpha2 - F * w2) * DT;
     th1 += w1 * DT;
     th2 += w2 * DT;
     cycles += 1u;
