@@ -11,6 +11,12 @@ app/.vite/
 app/node_modules/
 *.tsbuildinfo
 
+# Rust / wasm-pack
+app/crates/*/target/
+app/src/wasm/pkg/
+target/
+
 .env
 .env.*
 !.env.example
+dp_map/

@@ -1,0 +1,16 @@
+declare module './pkg/map_core.js' {
+  export default function init(
+    module?: RequestInfo | URL | BufferSource | WebAssembly.Module,
+  ): Promise<unknown>;
+  export class Pendulum {
+    constructor(th1: number, th2: number);
+    step(l1: number, l2: number, m1: number, m2: number, g: number, dt: number): void;
+    readonly th1: number;
+    readonly th2: number;
+  }
+}
+
+declare module './pkg/map_core_bg.wasm?url' {
+  const url: string;
+  export default url;
+}
