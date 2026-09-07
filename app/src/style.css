@@ -430,23 +430,26 @@ canvas.map-view.map-pending {
 }
 
 #map-hud {
-    position: absolute;
-    top: max(var(--ctrl-inset), env(safe-area-inset-top));
-    left: max(
+    --hud-left: max(
         calc(var(--ctrl-inset) + var(--ctrl-size) + var(--ctrl-gap)),
         calc(env(safe-area-inset-left) + var(--ctrl-size) + var(--ctrl-gap) + var(--ctrl-inset))
     );
-    right: max(
+    --hud-right: max(
         calc(var(--ctrl-inset) + var(--ctrl-size) + var(--ctrl-gap)),
         calc(env(safe-area-inset-right) + var(--ctrl-size) + var(--ctrl-gap) + var(--ctrl-inset))
     );
+    position: absolute;
+    top: max(var(--ctrl-inset), env(safe-area-inset-top));
+    left: var(--hud-left);
+    right: var(--hud-right);
     z-index: 5;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: var(--ctrl-gap);
-    width: auto;
-    margin: 0;
+    width: min(400px, calc(100% - var(--hud-left) - var(--hud-right)));
+    max-width: 400px;
+    margin: 0 auto;
     padding: 8px 10px;
     border: 1px solid var(--border);
     border-radius: var(--ctrl-radius);
