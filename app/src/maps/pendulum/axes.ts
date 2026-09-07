@@ -1,6 +1,7 @@
-import { theme } from '../theme';
-import { viewSpanX, viewSpanY, type ViewRect } from '../maps/types';
-import { wrapToTile } from './view';
+import { theme } from './theme';
+import { viewSpanX, viewSpanY, type ViewRect } from '../types';
+import { wrapViewY } from '../../viewer/view';
+import type { NavigationPolicy } from '../types';
 
 const RAD2DEG = 180 / Math.PI;
 const NICE = [1, 2, 5] as const;
@@ -17,10 +18,11 @@ function strokeTick(
   x1: number,
   y1: number,
   color: string,
+  outline: string,
   width: number,
 ): void {
   ctx.lineCap = 'butt';
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.92)';
+  ctx.strokeStyle = outline;
   ctx.lineWidth = width + 2;
   ctx.beginPath();
   ctx.moveTo(x0, y0);
@@ -50,12 +52,29 @@ export type ProbeAxisMarks = {
   probesOnly?: boolean;
 };
 
+/** Reuse label nodes while the camera moves; replacing the whole subtree on
+ * every pointer frame forces avoidable allocation, style work, and layout. */
+function syncLabels(root: HTMLElement, desired: HTMLSpanElement[]): void {
+  const current = Array.from(root.children) as HTMLSpanElement[];
+  for (let i = 0; i < desired.length; i++) {
+    const source = desired[i];
+    const target = current[i] ?? document.createElement('span');
+    if (!current[i]) root.append(target);
+    if (target.textContent !== source.textContent) target.textContent = source.textContent;
+    if (target.className !== source.className) target.className = source.className;
+    if (target.style.left !== source.style.left) target.style.left = source.style.left;
+    if (target.style.top !== source.style.top) target.style.top = source.style.top;
+  }
+  for (let i = current.length - 1; i >= desired.length; i--) current[i].remove();
+}
+
 /** θ₁ along the bottom, θ₂ along the right — values in degrees. */
 export function drawMapAxes(
   canvas: HTMLCanvasElement,
   view: ViewRect,
   xRoot: HTMLElement,
   yRoot: HTMLElement,
+  navigation: NavigationPolicy,
   probes?: ProbeAxisMarks,
 ): void {
   const w = canvas.clientWidth;
@@ -92,7 +111,7 @@ export function drawMapAxes(
     if (nearProbe) continue;
     const len = tick.major ? MAJOR_LEN : MINOR_LEN;
     ctx.globalAlpha = tick.major ? 1 : 0.6;
-    strokeTick(ctx, x, h, x, h - len, pal.th1, tick.major ? 1.25 : 1);
+    strokeTick(ctx, x, h, x, h - len, pal.th1, pal.axisOutline, tick.major ? 1.25 : 1);
     if (!tick.major || x < 40 || x > w - 36) continue;
     const label = document.createElement('span');
     label.textContent = tick.label;
@@ -101,7 +120,7 @@ export function drawMapAxes(
   }
   if (probes) xLabels.push(...probeTickLabels(ctx, w, h, view, probes));
   ctx.globalAlpha = 1;
-  xRoot.replaceChildren(...xLabels);
+  syncLabels(xRoot, xLabels);
 
   ctx.strokeStyle = pal.th2;
   const yLabels: HTMLSpanElement[] = [];
@@ -120,13 +139,13 @@ export function drawMapAxes(
     ctx.stroke();
     if (!tick.major || y < 16 || y > h - 18) continue;
     const label = document.createElement('span');
-    label.textContent = wrapYTickLabel(tick);
+    label.textContent = wrapYTickLabel(tick, navigation);
     label.style.top = `${y}px`;
     yLabels.push(label);
   }
-  if (probes) yLabels.push(...probeYTickLabels(ctx, w, h, view, probes));
+  if (probes) yLabels.push(...probeYTickLabels(ctx, w, h, view, navigation, probes));
   ctx.globalAlpha = 1;
-  yRoot.replaceChildren(...yLabels);
+  syncLabels(yRoot, yLabels);
 }
 
 type AxisMark = { px: number; rad: number };
@@ -204,6 +223,7 @@ function probeYTickLabels(
   w: number,
   h: number,
   view: ViewRect,
+  navigation: NavigationPolicy,
   probes: ProbeAxisMarks,
 ): HTMLSpanElement[] {
   const digits = angleDigits(view, w, h);
@@ -228,15 +248,15 @@ function probeYTickLabels(
     if (labeled.length === 2) {
       el.className += i === 0 ? ' probe-mark-top' : ' probe-mark-bottom';
     }
-    el.textContent = formatAngleDeg(wrapToTile(mark.rad), digits);
+    el.textContent = formatAngleDeg(wrapViewY(mark.rad, navigation), digits);
     el.style.top = `${mark.px}px`;
     return el;
   });
 }
 
-function wrapYTickLabel(tick: AxisTick): string {
+function wrapYTickLabel(tick: AxisTick, navigation: NavigationPolicy): string {
   if (!tick.major) return '';
-  const wrapped = wrapToTile(tick.deg / RAD2DEG) * RAD2DEG;
+  const wrapped = wrapViewY(tick.deg / RAD2DEG, navigation) * RAD2DEG;
   const n = Number(wrapped.toFixed(8));
   if (Object.is(n, -0) || n === 0) return '0°';
   const abs = Math.abs(n);

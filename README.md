@@ -3,8 +3,8 @@
 Interactive GPU map explorer. Published as part of
 [Nebelmesser's Playground](https://nebelmesser.com/).
 
-Open the [live page](/fractal/viewer.html)
-or the built `fractal/viewer.html`. Source lives in `app/`
+Open the [live page](/fractal/double-pendulum.html)
+or the built `fractal/double-pendulum.html`. Source lives in `app/`
 (TypeScript + Vite + WebGPU, with a small Rust/WASM crate for the point
 preview). The map itself is computed only on the GPU.
 
@@ -22,8 +22,8 @@ Refresh starts at that view.
 ```
 cd app
 npm install
-npm run dev      # http://localhost:5173/viewer.html
-npm run build    # writes ../viewer.html and ../assets/explorer.{js,css}
+npm run dev      # http://localhost:5173/double-pendulum.html
+npm run build    # writes ../double-pendulum.html and ../assets/explorer.{js,css}
 ```
 
 `npm run build` compiles the Rust crate to WASM (`wasm-pack`) and then Vite.

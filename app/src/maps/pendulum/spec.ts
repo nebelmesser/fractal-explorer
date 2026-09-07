@@ -7,8 +7,10 @@ import {
   PENDULUM_M1,
   PENDULUM_M2,
   PENDULUM_MIN_ITER,
-  VIEW_HALF,
-} from '../../constants';
+  PENDULUM_MAX_ITER,
+  PENDULUM_TILE_HALF,
+  PENDULUM_VIEW_HALF,
+} from './constants';
 import {
   normPixelRect,
   type GpuKernel,
@@ -18,7 +20,6 @@ import {
   type ViewRect,
 } from '../types';
 import computeWgsl from './pendulum.wgsl?raw';
-import { pendulumPreview } from './preview';
 
 /** Pack the 80-byte uniform block shared by the compute and postprocess shaders. */
 export function packPendulumUniforms(
@@ -67,21 +68,31 @@ const gpu: GpuKernel = {
 export const pendulumMap: MapDefinition = {
   id: 'pendulum',
   title: 'Double pendulum',
+  preferencesKey: 'fractal-explorer',
   defaultView: {
-    xMin: -VIEW_HALF,
-    xMax: VIEW_HALF,
-    yMin: -VIEW_HALF,
-    yMax: VIEW_HALF,
+    xMin: -PENDULUM_VIEW_HALF,
+    xMax: PENDULUM_VIEW_HALF,
+    yMin: -PENDULUM_VIEW_HALF,
+    yMax: PENDULUM_VIEW_HALF,
+  },
+  navigation: {
+    xCenter: { min: -PENDULUM_TILE_HALF, max: PENDULUM_TILE_HALF },
+    yPeriod: { period: PENDULUM_TILE_HALF * 2, center: 0 },
+  },
+  workBudget: {
+    param: 'MAX_ITERATIONS',
+    min: PENDULUM_MIN_ITER,
+    max: PENDULUM_MAX_ITER,
+    step: 50,
   },
   params: [
-    { key: 'L1', label: 'Length 1', kind: 'float', min: 0.2, max: 3, step: 0.01, default: PENDULUM_L1, tone: 'th1', group: 'pendulum' },
-    { key: 'M1', label: 'Mass 1', kind: 'float', min: 0.2, max: 5, step: 0.01, default: PENDULUM_M1, tone: 'th1', group: 'pendulum' },
-    { key: 'L2', label: 'Length 2', kind: 'float', min: 0.2, max: 3, step: 0.01, default: PENDULUM_L2, tone: 'th2', group: 'pendulum' },
-    { key: 'M2', label: 'Mass 2', kind: 'float', min: 0.2, max: 5, step: 0.01, default: PENDULUM_M2, tone: 'th2', group: 'pendulum' },
+    { key: 'L1', label: 'Length 1', kind: 'float', min: 0.2, max: 3, step: 0.01, default: PENDULUM_L1, tone: 'th1', section: 'primary' },
+    { key: 'M1', label: 'Mass 1', kind: 'float', min: 0.2, max: 5, step: 0.01, default: PENDULUM_M1, tone: 'th1', section: 'primary', thumbArea: true },
+    { key: 'L2', label: 'Length 2', kind: 'float', min: 0.2, max: 3, step: 0.01, default: PENDULUM_L2, tone: 'th2', section: 'primary' },
+    { key: 'M2', label: 'Mass 2', kind: 'float', min: 0.2, max: 5, step: 0.01, default: PENDULUM_M2, tone: 'th2', section: 'primary', thumbArea: true },
     { key: 'G', label: 'Gravity', kind: 'float', min: 0.5, max: 25, step: 0.01, default: PENDULUM_G },
     { key: 'F', label: 'Friction', kind: 'float', min: 0, max: 0.5, step: 0.01, default: PENDULUM_FRICTION },
     { key: 'DT', label: 'Smoothness (dt)', kind: 'float', min: 0.01, max: 0.5, step: 0.01, default: PENDULUM_DT, invert: true },
   ],
   gpu,
-  pointView: pendulumPreview,
 };

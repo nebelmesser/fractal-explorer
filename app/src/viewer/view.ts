@@ -1,4 +1,4 @@
-import { COAST_FRICTION, COAST_MIN_PX, COAST_MIN_ZOOM, MIN_VIEW_SPAN, TILE_HALF, UNZOOM_GROW, VIEW_HALF } from '../constants';
+import { COAST_FRICTION, COAST_MIN_PX, COAST_MIN_ZOOM, MIN_VIEW_SPAN, UNZOOM_GROW } from '../constants';
 import {
   copyView,
   lerpView,
@@ -7,6 +7,7 @@ import {
   viewCenter,
   viewSpanX,
   viewSpanY,
+  type NavigationPolicy,
   type ViewRect,
 } from '../maps/types';
 
@@ -23,11 +24,16 @@ export function screenToMap(
   };
 }
 
-/** Default view: 2π on the short side, extra range beyond ±π on the long side. */
-export function worldFromDisplay(widthPx: number, heightPx: number, half = VIEW_HALF): ViewRect {
-  const short = Math.max(Math.min(widthPx, heightPx), 1);
-  const span = half * 2;
-  return viewAround(0, 0, span * (widthPx / short), span * (heightPx / short));
+/** Fit the complete default domain and extend only the screen's longer axis. */
+export function worldFromDisplay(widthPx: number, heightPx: number, base: ViewRect): ViewRect {
+  const c = viewCenter(base);
+  const displayAspect = Math.max(widthPx, 1) / Math.max(heightPx, 1);
+  const baseX = viewSpanX(base);
+  const baseY = viewSpanY(base);
+  const baseAspect = baseX / Math.max(baseY, MIN_VIEW_SPAN);
+  const spanX = displayAspect > baseAspect ? baseY * displayAspect : baseX;
+  const spanY = displayAspect > baseAspect ? baseY : baseX / displayAspect;
+  return viewAround(c.x, c.y, spanX, spanY);
 }
 
 /** Keep the short-axis span and center; match the window aspect. */
@@ -36,6 +42,7 @@ export function fitViewAspect(
   widthPx: number,
   heightPx: number,
   world: ViewRect,
+  navigation: NavigationPolicy,
 ): ViewRect {
   const c = viewCenter(view);
   const short = Math.max(Math.min(widthPx, heightPx), 1);
@@ -45,7 +52,7 @@ export function fitViewAspect(
   if (spanX >= viewSpanX(world) * 0.99 && spanY >= viewSpanY(world) * 0.99) {
     return copyView(world);
   }
-  return clampViewX(viewAround(c.x, c.y, spanX, spanY));
+  return clampViewX(viewAround(c.x, c.y, spanX, spanY), navigation);
 }
 
 export function shortSpan(view: ViewRect): number {
@@ -62,6 +69,7 @@ export function zoomAbout(
   y: number,
   factor: number,
   world: ViewRect,
+  navigation: NavigationPolicy,
 ): ViewRect {
   const capX = viewSpanX(world);
   const capY = viewSpanY(world);
@@ -77,16 +85,21 @@ export function zoomAbout(
     xMax: x + (1 - fx) * spanX,
     yMin: y - fy * spanY,
     yMax: y + (1 - fy) * spanY,
-  });
+  }, navigation);
 }
 
 export function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - ((-2 * t + 2) ** 3) / 2;
 }
 
-/** Interpolate views, taking the short way around the θ₂ period. */
-export function lerpViewShortY(a: ViewRect, b: ViewRect, t: number): ViewRect {
-  const dy = wrapToTile(viewCenter(b).y - viewCenter(a).y);
+/** Interpolate views, taking the short way around an optional Y period. */
+export function lerpViewShortY(
+  a: ViewRect,
+  b: ViewRect,
+  t: number,
+  navigation: NavigationPolicy,
+): ViewRect {
+  const dy = wrapDeltaY(viewCenter(b).y - viewCenter(a).y, navigation);
   const shifted = shiftViewY(b, viewCenter(a).y + dy - viewCenter(b).y);
   return lerpView(a, shifted, t);
 }
@@ -97,6 +110,7 @@ export function panView(
   dyPx: number,
   width: number,
   height: number,
+  navigation: NavigationPolicy,
 ): ViewRect {
   const dx = (dxPx / width) * viewSpanX(view);
   const dy = (dyPx / height) * viewSpanY(view);
@@ -105,32 +119,33 @@ export function panView(
     xMax: view.xMax - dx,
     yMin: view.yMin - dy,
     yMax: view.yMax - dy,
-  });
+  }, navigation);
 }
 
 function clampSpan(span: number, cap: number): number {
   return Math.min(Math.max(span, MIN_VIEW_SPAN), cap);
 }
 
-/** θ₂ period matching the unique compute strip [−360°, 360°]. */
-export function tileSpan(): number {
-  return TILE_HALF * 2;
+function yPeriod(navigation: NavigationPolicy): number | null {
+  const period = navigation.yPeriod?.period;
+  return period && period > 0 ? period : null;
 }
 
-/** Unique computed square: θ₁ and θ₂ in [−2π, 2π]. */
-export function tileView(): ViewRect {
-  return {
-    xMin: -TILE_HALF,
-    xMax: TILE_HALF,
-    yMin: -TILE_HALF,
-    yMax: TILE_HALF,
-  };
+/** Wrap an absolute Y coordinate into the map's canonical period. */
+export function wrapViewY(y: number, navigation: NavigationPolicy): number {
+  const period = yPeriod(navigation);
+  if (!period) return y;
+  const center = navigation.yPeriod?.center ?? 0;
+  return center + wrapDelta(y - center, period);
 }
 
-/** Wrap an angle into (−half, half], here ±360°. */
-export function wrapToTile(y: number, half = TILE_HALF): number {
-  const span = half * 2;
-  return y - span * Math.round(y / span);
+function wrapDeltaY(delta: number, navigation: NavigationPolicy): number {
+  const period = yPeriod(navigation);
+  return period ? wrapDelta(delta, period) : delta;
+}
+
+function wrapDelta(value: number, period: number): number {
+  return value - period * Math.round(value / period);
 }
 
 export function shiftViewY(view: ViewRect, dy: number): ViewRect {
@@ -139,43 +154,44 @@ export function shiftViewY(view: ViewRect, dy: number): ViewRect {
 }
 
 /** Shift `cover` by k periods so its Y lines up with `target`. */
-export function alignViewY(cover: ViewRect, target: ViewRect): ViewRect {
-  const span = tileSpan();
-  const k = Math.round((viewCenter(target).y - viewCenter(cover).y) / span);
-  return shiftViewY(cover, k * span);
+export function alignViewY(
+  cover: ViewRect,
+  target: ViewRect,
+  navigation: NavigationPolicy,
+): ViewRect {
+  const period = yPeriod(navigation);
+  if (!period) return cover;
+  const k = Math.round((viewCenter(target).y - viewCenter(cover).y) / period);
+  return shiftViewY(cover, k * period);
 }
 
-/** Fold a view so its Y center sits in the unique compute strip. */
-export function foldViewY(view: ViewRect): ViewRect {
+/** Fold a view so its Y center sits in the configured canonical period. */
+export function foldViewY(view: ViewRect, navigation: NavigationPolicy): ViewRect {
+  if (!yPeriod(navigation)) return copyView(view);
   const c = viewCenter(view);
-  return shiftViewY(view, wrapToTile(c.y) - c.y);
-}
-
-/** Unique θ₂ strip: compute only [−360°, 360°]; the rest is tiled from this. */
-export function clipViewYToTile(view: ViewRect): ViewRect {
-  const yMin = Math.max(view.yMin, -TILE_HALF);
-  const yMax = Math.min(view.yMax, TILE_HALF);
-  if (yMax - yMin < MIN_VIEW_SPAN) {
-    return { xMin: view.xMin, xMax: view.xMax, yMin: -TILE_HALF, yMax: TILE_HALF };
-  }
-  return { xMin: view.xMin, xMax: view.xMax, yMin, yMax };
+  return shiftViewY(view, wrapViewY(c.y, navigation) - c.y);
 }
 
 /**
- * How far `inner` sits inside `outer`, treating `outer` as repeating every 720° in Y.
+ * How far `inner` sits inside `outer`, honoring an optional repeating Y period.
  * Negative means the inner view sticks out of every nearby copy.
  */
-export function tiledInset(inner: ViewRect, outer: ViewRect): number {
-  const aligned = alignViewY(outer, inner);
+export function tiledInset(
+  inner: ViewRect,
+  outer: ViewRect,
+  navigation: NavigationPolicy,
+): number {
+  const aligned = alignViewY(outer, inner, navigation);
   const sx = viewSpanX(inner);
   if (!(sx > 0)) return -1;
   const mx = Math.min(inner.xMin - aligned.xMin, aligned.xMax - inner.xMax) / sx;
   const sy = viewSpanY(inner);
   if (!(sy > 0)) return -1;
-  const period = tileSpan();
+  const period = yPeriod(navigation);
   const yPad = (outer: ViewRect): number => (
     Math.min(inner.yMin - outer.yMin, outer.yMax - inner.yMax) / sy
   );
+  if (!period) return Math.min(mx, yPad(aligned));
   if (viewSpanY(aligned) >= period - 1e-9) return mx;
   let my = yPad(aligned);
   for (const k of [-1, 1]) my = Math.max(my, yPad(shiftViewY(aligned, k * period)));
@@ -185,15 +201,19 @@ export function tiledInset(inner: ViewRect, outer: ViewRect): number {
 export function wrapPointToCover(
   point: { x: number; y: number },
   cover: ViewRect,
+  navigation: NavigationPolicy,
 ): { x: number; y: number } {
+  if (!yPeriod(navigation)) return point;
   const cy = viewCenter(cover).y;
-  return { x: point.x, y: cy + wrapToTile(point.y - cy) };
+  return { x: point.x, y: cy + wrapDeltaY(point.y - cy, navigation) };
 }
 
-/** Keep θ₁ so ±360° can sit at the screen center; Y is free (wrapped). */
-export function clampViewX(view: ViewRect, maxCenter = TILE_HALF): ViewRect {
+/** Apply optional horizontal camera-center limits. */
+export function clampViewX(view: ViewRect, navigation: NavigationPolicy): ViewRect {
+  const bounds = navigation.xCenter;
+  if (!bounds) return view;
   const c = viewCenter(view);
-  const x = Math.min(maxCenter, Math.max(-maxCenter, c.x));
+  const x = Math.min(bounds.max, Math.max(bounds.min, c.x));
   const dx = x - c.x;
   if (dx === 0) return view;
   return { xMin: view.xMin + dx, xMax: view.xMax + dx, yMin: view.yMin, yMax: view.yMax };
@@ -212,16 +232,17 @@ export function coastStopView(
   anchor: { x: number; y: number } | null,
   width: number,
   height: number,
+  navigation: NavigationPolicy,
 ): ViewRect {
   const k = COAST_FRICTION;
   let next = view;
   if (anchor && Math.abs(velLog) >= COAST_MIN_ZOOM) {
-    next = zoomAbout(next, anchor.x, anchor.y, Math.exp(velLog / k), world);
+    next = zoomAbout(next, anchor.x, anchor.y, Math.exp(velLog / k), world, navigation);
   }
   if (Math.hypot(velX, velY) >= COAST_MIN_PX) {
-    next = panView(next, velX / k, velY / k, width, height);
+    next = panView(next, velX / k, velY / k, width, height, navigation);
   }
-  return clampViewX(next);
+  return clampViewX(next, navigation);
 }
 
 export function canZoomIn(view: ViewRect): boolean {
@@ -241,20 +262,28 @@ export function isUnzoom(from: ViewRect, to: ViewRect): boolean {
  * Next lookahead cover on the way from `have` to `target`: about `UNZOOM_GROW` ×
  * the current cover, or the landing view when that hop would overshoot.
  */
-export function nextUnzoomCover(have: ViewRect, target: ViewRect): ViewRect {
-  const landing = foldViewY(target);
-  const aligned = alignViewY(foldViewY(have), landing);
-  if (tiledInset(landing, aligned) >= 0) return copyView(landing);
+export function nextUnzoomCover(
+  have: ViewRect,
+  target: ViewRect,
+  navigation: NavigationPolicy,
+): ViewRect {
+  const landing = foldViewY(target, navigation);
+  const aligned = alignViewY(foldViewY(have, navigation), landing, navigation);
+  if (tiledInset(landing, aligned, navigation) >= 0) return copyView(landing);
   const s0 = Math.max(viewSpanX(aligned), viewSpanY(aligned));
   const s1 = Math.max(viewSpanX(landing), viewSpanY(landing));
   if (!(s1 > s0 * UNZOOM_GROW * 1.02)) return copyView(landing);
   const u = (s0 * UNZOOM_GROW - s0) / (s1 - s0);
-  return lerpViewShortY(aligned, landing, Math.min(1, Math.max(0, u)));
+  return lerpViewShortY(aligned, landing, Math.min(1, Math.max(0, u)), navigation);
 }
 
-/** True when this camera is the default framing, ignoring θ₂ periods. */
-export function atDefaultView(view: ViewRect, world: ViewRect): boolean {
-  return viewsEqual(foldViewY(view), world);
+/** True when this camera is the default framing, ignoring equivalent Y periods. */
+export function atDefaultView(
+  view: ViewRect,
+  world: ViewRect,
+  navigation: NavigationPolicy,
+): boolean {
+  return viewsEqual(foldViewY(view, navigation), world);
 }
 
 export function viewHistoryPush(stack: ViewRect[], view: ViewRect): ViewRect[] {

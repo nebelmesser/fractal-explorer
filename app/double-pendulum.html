@@ -13,11 +13,11 @@
       gtag('js', new Date());
       gtag('config', 'G-5D8EGFYM3L');
     </script>
-    <script type="module" src="./src/main.ts"></script>
+    <script type="module" src="./src/maps/pendulum/main.ts"></script>
 </head>
 <body>
-    <div id="menu-backdrop"></div>
-    <button type="button" id="menu-toggle" aria-label="Settings" aria-expanded="false">
+    <div id="menu-backdrop" data-viewer-ui></div>
+    <button type="button" id="menu-toggle" data-viewer-ui aria-label="Settings" aria-expanded="false">
         <span></span><span></span><span></span>
     </button>
 
@@ -26,7 +26,7 @@
     </div>
 
     <div id="stage">
-        <aside id="sidebar">
+        <aside id="sidebar" data-viewer-ui>
             <div id="zoom-bar">
                 <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
                 <button type="button" id="zoom-out" aria-label="Zoom out">−</button>
@@ -50,7 +50,7 @@
         </div>
     </div>
 
-    <div id="map-hud">
+    <div id="map-hud" data-viewer-ui>
         <div id="probe-count" role="slider" aria-label="Attachment points" aria-valuemin="0" aria-valuemax="2" aria-valuenow="1" tabindex="0">
             <div class="probe-count-track" id="probe-count-track">
                 <div class="probe-count-fill" id="probe-count-fill"></div>
@@ -69,7 +69,7 @@
         </button>
     </div>
 
-    <div id="ui-container">
+    <div id="ui-container" data-viewer-ui>
         <div id="map-params"></div>
         <div id="map-extras">
             <div id="map-params-more"></div>

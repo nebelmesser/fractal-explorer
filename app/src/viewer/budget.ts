@@ -5,11 +5,10 @@ import {
   MAX_COMPUTE_PX,
   MAX_OVERSCAN_PX,
   MIN_COMPUTE_PX,
-  PENDULUM_MAX_ITER,
-  PENDULUM_MIN_ITER,
   TARGET_FRAME_MS_MAX,
   TARGET_FRAME_MS_MIN,
 } from '../constants';
+import type { WorkBudget } from '../maps/types';
 
 export type MapSize = { width: number; height: number };
 
@@ -23,18 +22,18 @@ function snapWorkgroup(side: number): number {
   return Math.round(side / 8) * 8;
 }
 
-export function snapIters(n: number): number {
-  const stepped = Math.round(n / 50) * 50;
-  return Math.min(PENDULUM_MAX_ITER, Math.max(PENDULUM_MIN_ITER, stepped));
+export function snapWork(n: number, budget: WorkBudget): number {
+  const stepped = Math.round(n / budget.step) * budget.step;
+  return Math.min(budget.max, Math.max(budget.min, stepped));
 }
 
-/** Iteration cap implied by the frame-budget slider. Measurement may only lower it. */
-export function preferredIters(targetMs: number): number {
+/** Per-pixel work cap implied by the frame-budget slider. */
+export function preferredWork(targetMs: number, budget: WorkBudget): number {
   const span = TARGET_FRAME_MS_MAX - TARGET_FRAME_MS_MIN;
   const t = span > 0
     ? Math.min(1, Math.max(0, (targetMs - TARGET_FRAME_MS_MIN) / span))
     : 0;
-  return snapIters(PENDULUM_MIN_ITER + t * (PENDULUM_MAX_ITER - PENDULUM_MIN_ITER));
+  return snapWork(budget.min + t * (budget.max - budget.min), budget);
 }
 
 /** CSS short side, snapped to the workgroup. */
@@ -55,40 +54,41 @@ export function maxBudgetPx(display: MapSize, dpr = typeof window === 'undefined
  * iterations, then physical resolution up to `maxShortPx`.
  */
 export function nextWorkBudget(
-  current: { shortPx: number; iters: number },
+  current: { shortPx: number; work: number },
   measuredMs: number,
   targetMs: number,
   display: MapSize,
+  budget: WorkBudget,
   maxShortPx = cssShortPx(display),
-): { shortPx: number; iters: number } {
+): { shortPx: number; work: number } {
   const vis = computeSize(display, current.shortPx);
   const pixels = Math.max(1, vis.width * vis.height);
-  const iters = snapIters(current.iters);
+  const work = snapWork(current.work, budget);
   const scale = targetMs / Math.max(measuredMs, 1);
   const blended = 1 - BUDGET_BLEND + scale * BUDGET_BLEND;
-  const targetWork = pixels * iters * blended;
+  const targetWork = pixels * work * blended;
 
   const cssPx = cssShortPx(display);
   const maxPx = snapComputePx(Math.max(cssPx, maxShortPx));
   const full = computeSize(display, cssPx);
   const fullPixels = Math.max(1, full.width * full.height);
-  const cap = preferredIters(targetMs);
-  const itersAtFull = targetWork / fullPixels;
-  if (itersAtFull >= PENDULUM_MIN_ITER) {
-    const nextIters = snapIters(Math.min(cap, Math.max(PENDULUM_MIN_ITER, itersAtFull)));
+  const cap = preferredWork(targetMs, budget);
+  const workAtFull = targetWork / fullPixels;
+  if (workAtFull >= budget.min) {
+    const nextWork = snapWork(Math.min(cap, Math.max(budget.min, workAtFull)), budget);
     const workAtCap = fullPixels * cap;
     if (targetWork > workAtCap * 1.08 && maxPx > cssPx) {
       const grow = Math.sqrt(targetWork / workAtCap);
-      return { shortPx: snapComputePx(Math.min(maxPx, cssPx * grow)), iters: cap };
+      return { shortPx: snapComputePx(Math.min(maxPx, cssPx * grow)), work: cap };
     }
-    return { shortPx: cssPx, iters: nextIters };
+    return { shortPx: cssPx, work: nextWork };
   }
 
-  const targetPixels = targetWork / PENDULUM_MIN_ITER;
+  const targetPixels = targetWork / budget.min;
   const area = Math.max(1, display.width * display.height);
   const short = Math.max(1, Math.min(display.width, display.height));
   const shortPx = short * Math.sqrt(targetPixels / area);
-  return { shortPx: snapComputePx(shortPx), iters: PENDULUM_MIN_ITER };
+  return { shortPx: snapComputePx(shortPx), work: budget.min };
 }
 
 /** CSS size of the fullscreen map. */
@@ -116,6 +116,14 @@ export function scaleSize(base: MapSize, ratio: number, maxPx = MAX_OVERSCAN_PX)
     width: Math.max(MIN_COMPUTE_PX, snapWorkgroup(width)),
     height: Math.max(MIN_COMPUTE_PX, snapWorkgroup(height)),
   };
+}
+
+/** Largest symmetric halo pad that keeps the visible map's current pixel density. */
+export function densityPreservingPad(base: MapSize, requested: number, maxPx: number): number {
+  const long = Math.max(base.width, base.height);
+  if (!(long > 0) || !(requested > 0)) return 0;
+  const maxRatio = Math.max(1, maxPx / long);
+  return Math.min(requested, Math.max(0, (maxRatio - 1) / 2));
 }
 
 /** Compute buffer size from the display and a short-side budget. */

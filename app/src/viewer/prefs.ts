@@ -1,4 +1,4 @@
-import { PREFS_KEY, PREFS_WRITE_MS } from '../constants';
+import { PREFS_WRITE_MS } from '../constants';
 import type { MapParams } from '../maps/types';
 
 export type StoredPrefs = {
@@ -13,11 +13,11 @@ function num(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-export function consumeResetQuery(): boolean {
+export function consumeResetQuery(key: string): boolean {
   const params = new URLSearchParams(window.location.search);
   if (params.get('reset') !== '1') return false;
   try {
-    localStorage.removeItem(PREFS_KEY);
+    localStorage.removeItem(key);
   } catch {
     /* private mode */
   }
@@ -27,9 +27,9 @@ export function consumeResetQuery(): boolean {
   return true;
 }
 
-export function loadPrefs(): Partial<StoredPrefs> | null {
+export function loadPrefs(key: string): Partial<StoredPrefs> | null {
   try {
-    const raw = localStorage.getItem(PREFS_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
     const data = JSON.parse(raw) as unknown;
     if (!data || typeof data !== 'object') return null;
@@ -61,9 +61,11 @@ function sanitize(data: Record<string, unknown>): Partial<StoredPrefs> {
 }
 
 let snapshot: (() => StoredPrefs) | null = null;
+let storageKey = '';
 let writeTimer = 0;
 
-export function bindPrefs(get: () => StoredPrefs): void {
+export function bindPrefs(key: string, get: () => StoredPrefs): void {
+  storageKey = key;
   snapshot = get;
   window.addEventListener('pagehide', flushPrefs);
   document.addEventListener('visibilitychange', () => {
@@ -82,7 +84,7 @@ export function flushPrefs(): void {
   window.clearTimeout(writeTimer);
   writeTimer = 0;
   try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify(snapshot()));
+    if (storageKey) localStorage.setItem(storageKey, JSON.stringify(snapshot()));
   } catch {
     /* ignore quota */
   }

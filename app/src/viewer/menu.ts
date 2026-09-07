@@ -6,15 +6,9 @@ import {
   TARGET_FRAME_MS_MIN,
 } from '../constants';
 import type { MapDefinition, MapParam, MapParams } from '../maps/types';
+import type { ResetTransition, ViewerControls } from './presentation';
 import { markPrefsDirty } from './prefs';
 import { easeInOutCubic } from './view';
-
-export type ExplorerControls = {
-  params: MapParams;
-  invert: boolean;
-  median: number;
-  targetFrameMs: number;
-};
 
 function formatValue(kind: 'float' | 'int', value: number): string {
   return kind === 'int' ? String(Math.round(value)) : Number(value).toFixed(2);
@@ -22,10 +16,6 @@ function formatValue(kind: 'float' | 'int', value: number): string {
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
-}
-
-function isMassKey(key: string): boolean {
-  return key === 'M1' || key === 'M2';
 }
 
 function toSlider(spec: MapParam, actual: number): number {
@@ -38,7 +28,7 @@ function fromSlider(spec: MapParam, slider: number): number {
   return spec.kind === 'int' ? Math.round(v) : v;
 }
 
-/** Fill the track and, for M1/M2, size the thumb so area ∝ mass. */
+/** Fill the track and optionally size the thumb so its area follows the value. */
 export function paintRange(input: HTMLInputElement, mass?: number): void {
   const min = Number(input.min);
   const max = Number(input.max);
@@ -65,19 +55,11 @@ export function syncBudgetReadout(ms: number, iters: number): void {
   el.textContent = `${Math.round(ms)} ms · ${n}`;
 }
 
-export type ResetHome = {
-  begin(): void;
-  tick(eased: number): void;
-  end(): void;
-  cancel(): void;
-  isAway(): boolean;
-};
-
 export function bindMenu(
   map: MapDefinition,
-  controls: ExplorerControls,
+  controls: ViewerControls,
   onParamsChange: (phase: 'live' | 'reset' | 'settle') => void,
-  onResetHome: ResetHome,
+  onResetHome: ResetTransition,
 ): void {
   const menuToggle = document.getElementById('menu-toggle') as HTMLButtonElement;
   const menuBackdrop = document.getElementById('menu-backdrop') as HTMLElement;
@@ -95,18 +77,18 @@ export function bindMenu(
     onResetHome.cancel();
   }
 
-  function paintParam(key: string, input: HTMLInputElement): void {
-    paintRange(input, isMassKey(key) ? controls.params[key] : undefined);
+  function paintParam(spec: MapParam, input: HTMLInputElement): void {
+    paintRange(input, spec.thumbArea ? controls.params[spec.key] : undefined);
   }
 
   paramRoot.replaceChildren();
   if (extraRoot !== paramRoot) extraRoot.replaceChildren();
   for (const spec of map.params) {
-    const host = spec.group === 'pendulum' ? paramRoot : extraRoot;
+    const host = spec.section === 'primary' ? paramRoot : extraRoot;
     const label = document.createElement('label');
     label.className = 'slider-label';
     if (spec.tone) label.dataset.tone = spec.tone;
-    if (isMassKey(spec.key)) label.dataset.mass = spec.key;
+    if (spec.thumbArea) label.dataset.scaledThumb = spec.key;
     const raw = controls.params[spec.key] ?? spec.default;
     const start = Math.min(spec.max, Math.max(spec.min, raw));
     controls.params[spec.key] = spec.kind === 'int' ? Math.round(start) : start;
@@ -124,13 +106,13 @@ export function bindMenu(
     input.max = String(spec.max);
     input.step = String(spec.step);
     input.value = String(toSlider(spec, controls.params[spec.key]));
-    paintParam(spec.key, input);
+    paintParam(spec, input);
     input.addEventListener('input', () => {
       cancelResetAnim();
       const next = fromSlider(spec, Number(input.value));
       controls.params[spec.key] = next;
       readout.textContent = formatValue(spec.kind, next);
-      paintParam(spec.key, input);
+      paintParam(spec, input);
       markPrefsDirty();
       onParamsChange('live');
     });
@@ -151,7 +133,7 @@ export function bindMenu(
       const value = controls.params[spec.key] ?? spec.default;
       row.input.value = String(toSlider(spec, value));
       row.readout.textContent = formatValue(spec.kind, value);
-      paintParam(spec.key, row.input);
+      paintParam(spec, row.input);
     }
   }
 
@@ -160,14 +142,14 @@ export function bindMenu(
     target.max = String(TARGET_FRAME_MS_MAX);
     target.value = String(controls.targetFrameMs);
     paintRange(target);
-    syncBudgetReadout(controls.targetFrameMs, controls.params.MAX_ITERATIONS);
+    syncBudgetReadout(controls.targetFrameMs, controls.params[map.workBudget.param]);
   }
 
   target.addEventListener('input', () => {
     cancelResetAnim();
     controls.targetFrameMs = Number(target.value);
     paintRange(target);
-    syncBudgetReadout(controls.targetFrameMs, controls.params.MAX_ITERATIONS);
+    syncBudgetReadout(controls.targetFrameMs, controls.params[map.workBudget.param]);
     markPrefsDirty();
     onParamsChange('live');
   });

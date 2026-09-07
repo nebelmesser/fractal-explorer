@@ -1,4 +1,4 @@
-/** Axis-aligned view in map coordinates (radians for the pendulum). */
+/** Axis-aligned rectangle in a map's own coordinate system. */
 export type ViewRect = {
   xMin: number;
   xMax: number;
@@ -17,33 +17,31 @@ export type MapParam = {
   max: number;
   step: number;
   default: number;
-  /** Slider tint; pendulum L1/M1 and L2/M2 follow the rod colors. */
-  tone?: 'th1' | 'th2';
-  /** Pendulum physics stay in the first menu block. */
-  group?: 'pendulum';
+  /** Optional CSS theme name supplied by the map presentation. */
+  tone?: string;
+  /** Primary parameters stay in the first menu block. */
+  section?: 'primary' | 'secondary';
+  /** Scale the slider thumb area with the parameter value. */
+  thumbArea?: boolean;
   /** Slider grows right while the stored value falls (min + max − value). */
   invert?: boolean;
 };
 
 export type MapParams = Record<string, number>;
 
-export type PointVisualizer = {
-  /** Static pose for a picked (x, y) in map space. */
-  draw(ctx: CanvasRenderingContext2D, point: { x: number; y: number }, params: MapParams, degDigits?: number): void;
-  createState?(point: { x: number; y: number }, params: MapParams): unknown;
-  /** One map-kernel integrator step (same dt the shader uses). */
-  step?(state: unknown, params: MapParams, dt: number): unknown;
-  /** Draw from an animation state (angles already integrated). */
-  drawState?(ctx: CanvasRenderingContext2D, state: unknown, params: MapParams, degDigits?: number): void;
-  /** Integrator dt the map kernel uses. */
-  replayDt?(params: MapParams): number;
-  /** True when the kernel would break (escape or iteration cap). */
-  replayDone?(state: unknown): boolean;
-  replaySteps?(state: unknown): number;
-  /** Kernel steps until this point stops (escape or cap). */
-  replayLength?(point: { x: number; y: number }, params: MapParams): number;
-  /** Preview-canvas pixel of the sketch's attachment point. */
-  anchor?(canvas: HTMLCanvasElement, params: MapParams): { x: number; y: number };
+export type NavigationPolicy = {
+  /** Optional horizontal bounds for the camera center. */
+  xCenter?: { min: number; max: number };
+  /** Optional vertical period. Repeated views are rendered from one canonical band. */
+  yPeriod?: { period: number; center: number };
+};
+
+export type WorkBudget = {
+  /** Map parameter that limits per-pixel work. */
+  param: string;
+  min: number;
+  max: number;
+  step: number;
 };
 
 export type PostUniforms = {
@@ -71,10 +69,13 @@ export type GpuKernel = {
 export type MapDefinition = {
   id: string;
   title: string;
+  /** Override only to preserve an existing storage key. */
+  preferencesKey?: string;
   defaultView: ViewRect;
+  navigation?: NavigationPolicy;
+  workBudget: WorkBudget;
   params: MapParam[];
   gpu: GpuKernel;
-  pointView?: PointVisualizer;
 };
 
 export function viewSpanX(view: ViewRect): number {

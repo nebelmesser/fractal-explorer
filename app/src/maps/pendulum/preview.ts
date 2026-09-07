@@ -4,10 +4,10 @@ import {
   PROBE_LARGE_BOB_R,
   PROBE_OUTLINE_PX,
   PROBE_PX_PER_LEN,
-} from '../../constants';
-import { theme } from '../../theme';
-import { createTrajectory, type Trajectory } from '../../wasm/core';
-import type { MapParams, PointVisualizer } from '../types';
+} from './constants';
+import { theme } from './theme';
+import { createTrajectory } from './trajectory';
+import type { MapParams } from '../types';
 
 export type OverlayStyle = {
   large: boolean;
@@ -183,6 +183,7 @@ function drawOverlayFigure(
   const destDpr = ctx.getTransform().a || 1;
   const layerDpr = destDpr;
   const layer = layerContext(bounds.w, bounds.h, layerDpr);
+  const pal = theme();
   layer.save();
   layer.translate(-bounds.x, -bounds.y);
   layer.lineCap = 'round';
@@ -190,8 +191,8 @@ function drawOverlayFigure(
 
   const ring = PROBE_OUTLINE_PX * 2;
   layer.globalAlpha = 1;
-  layer.strokeStyle = '#000';
-  layer.fillStyle = '#000';
+  layer.strokeStyle = pal.figureOutline;
+  layer.fillStyle = pal.figureOutline;
   strokeRods(layer, rods, ring);
   fillDisks(layer, bobs, PROBE_OUTLINE_PX);
   layer.globalCompositeOperation = 'destination-out';
@@ -618,8 +619,9 @@ export function drawProbeCross(
   ctx.save();
   ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
   ctx.lineCap = 'butt';
-  stroke('rgba(0, 0, 0, 0.92)', 3.4);
-  stroke('rgba(255, 255, 255, 0.96)', 1.2);
+  const pal = theme();
+  stroke(pal.reticleOutline, 3.4);
+  stroke(pal.reticleCore, 1.2);
   ctx.restore();
 }
 
@@ -632,8 +634,9 @@ export function drawProbePivot(
 ): void {
   ctx.save();
   ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-  ctx.fillStyle = theme().pivot;
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
+  const pal = theme();
+  ctx.fillStyle = pal.pivot;
+  ctx.strokeStyle = pal.pivotOutline;
   ctx.lineWidth = 1.25;
   ctx.beginPath();
   ctx.arc(origin.x, origin.y, radius, 0, Math.PI * 2);
@@ -641,34 +644,3 @@ export function drawProbePivot(
   ctx.stroke();
   ctx.restore();
 }
-
-export const pendulumPreview: PointVisualizer = {
-  draw(ctx, point, params, degDigits = 1) {
-    drawPose(ctx, point.x, point.y, params, { th1: point.x, th2: point.y }, degDigits);
-  },
-  anchor(canvas) {
-    return pendulumPivot(canvas.width, canvas.height);
-  },
-  createState(point) {
-    return createTrajectory(point.x, point.y);
-  },
-  step(state, params, dt) {
-    const traj = state as Trajectory;
-    traj.step(params, dt);
-    return traj;
-  },
-  drawState(ctx, state, params, degDigits = 1) {
-    const traj = state as Trajectory;
-    drawPose(ctx, traj.th1, traj.th2, params, { th1: traj.startTh1, th2: traj.startTh2 }, degDigits);
-  },
-  replayDt(params) {
-    return params.DT;
-  },
-  replayDone(state) {
-    return (state as Trajectory).done;
-  },
-  replaySteps(state) {
-    return (state as Trajectory).steps;
-  },
-  replayLength,
-};

@@ -21,6 +21,11 @@
     --zoom-frame: #ffe600;
     --link: #e24b4b;
     --shadow: #000;
+    --axis-outline: rgba(0, 0, 0, 0.92);
+    --figure-outline: #000;
+    --reticle-outline: rgba(0, 0, 0, 0.92);
+    --reticle-core: rgba(255, 255, 255, 0.96);
+    --pivot-outline: rgba(0, 0, 0, 0.75);
     --overlay: rgba(0, 0, 0, 0.7);
     --swatch-border: rgba(255, 255, 255, 0.45);
     --slider-track: #3a3a3a;
@@ -135,7 +140,7 @@ html, body {
     z-index: 4;
     font: 11px Rubik, sans-serif;
     font-variant-numeric: tabular-nums;
-    -webkit-text-stroke: 2px #000;
+    -webkit-text-stroke: 2px var(--shadow);
     paint-order: stroke fill;
 }
 
@@ -351,7 +356,7 @@ canvas.map-view.map-pending {
     --slider-thumb: var(--th2);
 }
 
-.slider-label[data-mass] input[type="range"] {
+.slider-label[data-scaled-thumb] input[type="range"] {
     height: max(32px, var(--thumb));
 }
 

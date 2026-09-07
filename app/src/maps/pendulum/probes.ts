@@ -9,8 +9,8 @@ import {
   PROBE_SCALE_BAND_X,
   PROBE_SCALE_BAND_Y,
   PROBE_SEP_PX,
-} from '../constants';
-import type { MapParams } from '../maps/types';
+} from './constants';
+import type { MapParams } from '../types';
 
 export type ProbeMode = 'none' | 'one' | 'two' | 'grid';
 

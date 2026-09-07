@@ -12,19 +12,11 @@ import {
   WHEEL_ZOOM,
   WHEEL_ZOOM_PINCH,
 } from '../constants';
-import type { ViewRect } from '../maps/types';
-import { closeMenu } from './menu';
+import type { NavigationPolicy, ViewRect } from '../maps/types';
 import { canZoomIn, canZoomOut, coastStopView, panView, screenToMap, zoomAbout } from './view';
 
 function isUiEvent(event: Event): boolean {
-  return event.target instanceof Element && Boolean(
-    event.target.closest('#ui-container')
-    || event.target.closest('#menu-toggle')
-    || event.target.closest('#menu-backdrop')
-    || event.target.closest('#sidebar')
-    || event.target.closest('#zoom-bar')
-    || event.target.closest('#map-hud'),
-  );
+  return event.target instanceof Element && Boolean(event.target.closest('[data-viewer-ui]'));
 }
 
 export type ViewOpts = {
@@ -39,6 +31,7 @@ export type ViewOpts = {
 export type InputHandlers = {
   getView(): ViewRect;
   getWorld(): ViewRect;
+  getNavigation(): NavigationPolicy;
   setView(view: ViewRect, opts?: ViewOpts): void;
   popHistory(): void;
   /** Return true to consume the tap (do not zoom). */
@@ -51,6 +44,7 @@ export type InputHandlers = {
   interrupt?(): void;
   /** Coast ended: allow a halo/refine pass at the rest view. */
   settleView?(): void;
+  dismissUi?(): void;
 };
 
 export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { stopCoast(): void } {
@@ -170,6 +164,7 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
       zoomAnchor,
       box.width,
       box.height,
+      handlers.getNavigation(),
     ));
     let lastT = performance.now() - 16;
     const step = (now: number): void => {
@@ -185,12 +180,12 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
         if ((velLog > 0 && !canZoomOut(next, world)) || (velLog < 0 && !canZoomIn(next))) {
           velLog = 0;
         } else {
-          next = zoomAbout(next, zoomAnchor.x, zoomAnchor.y, Math.exp(velLog * dt), world);
+          next = zoomAbout(next, zoomAnchor.x, zoomAnchor.y, Math.exp(velLog * dt), world, handlers.getNavigation());
         }
       }
       if (Math.hypot(velX, velY) >= COAST_MIN_PX) {
         const box = surface.getBoundingClientRect();
-        next = panView(next, velX * dt, velY * dt, box.width, box.height);
+        next = panView(next, velX * dt, velY * dt, box.width, box.height, handlers.getNavigation());
       }
       handlers.setView(next, { navigating: true, coasting: true, keepPrefetch: true });
       if (Math.hypot(velX, velY) < COAST_MIN_PX && Math.abs(velLog) < COAST_MIN_ZOOM) {
@@ -207,7 +202,7 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
 
   surface.addEventListener('pointerdown', (event) => {
     if (isUiEvent(event)) return;
-    closeMenu();
+    handlers.dismissUi?.();
     if (pointers.size === 0) {
       stopCoast();
       resetVel();
@@ -253,8 +248,8 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
         pinchAnchor = anchor;
         const factor = (lastPinch / dist) ** PINCH_ZOOM;
         const dLog = Math.log(factor);
-        let next = zoomAbout(handlers.getView(), anchor.x, anchor.y, factor, handlers.getWorld());
-        next = panView(next, mid.x - lastMid.x, mid.y - lastMid.y, box.width, box.height);
+        let next = zoomAbout(handlers.getView(), anchor.x, anchor.y, factor, handlers.getWorld(), handlers.getNavigation());
+        next = panView(next, mid.x - lastMid.x, mid.y - lastMid.y, box.width, box.height, handlers.getNavigation());
         const pinchDt = lastPinchT ? (now - lastPinchT) / 1000 : 0;
         if (pinchDt > 0 && pinchDt <= 0.2) {
           noteVel(mid.x - lastMid.x, mid.y - lastMid.y, dLog, now);
@@ -283,7 +278,7 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
     last = { x: event.clientX, y: event.clientY };
     noteVel(dx, dy, 0, performance.now());
     const box = surface.getBoundingClientRect();
-    handlers.setView(panView(handlers.getView(), dx, dy, box.width, box.height), {
+    handlers.setView(panView(handlers.getView(), dx, dy, box.width, box.height, handlers.getNavigation()), {
       navigating: true,
       keepPrefetch: true,
     });
@@ -329,7 +324,7 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
         // Mouse click zooms. A phone tap only poses; a second tap zooms about that point.
         if (event.pointerType !== 'touch' || doubled) {
           handlers.setView(
-            zoomAbout(handlers.getView(), point.x, point.y, CLICK_ZOOM_FACTOR, handlers.getWorld()),
+            zoomAbout(handlers.getView(), point.x, point.y, CLICK_ZOOM_FACTOR, handlers.getWorld(), handlers.getNavigation()),
             { pushHistory: true, animate: true },
           );
         }
@@ -349,13 +344,13 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
 
   surface.addEventListener('wheel', (event) => {
     event.preventDefault();
-    closeMenu();
+    handlers.dismissUi?.();
     stopCoast();
     resetVel();
     const point = at(event.clientX, event.clientY);
     const gain = event.ctrlKey ? WHEEL_ZOOM_PINCH : WHEEL_ZOOM;
     handlers.setView(
-      zoomAbout(handlers.getView(), point.x, point.y, Math.exp(event.deltaY * gain), handlers.getWorld()),
+      zoomAbout(handlers.getView(), point.x, point.y, Math.exp(event.deltaY * gain), handlers.getWorld(), handlers.getNavigation()),
       { navigating: true },
     );
     window.clearTimeout(wheelSettle);

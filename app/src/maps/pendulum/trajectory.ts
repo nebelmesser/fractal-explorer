@@ -1,5 +1,5 @@
-import { PENDULUM_MIN_ITER } from '../constants';
-import type { MapParams } from '../maps/types';
+import { PENDULUM_MIN_ITER } from './constants';
+import type { MapParams } from '../types';
 
 export type Trajectory = {
   th1: number;
@@ -37,7 +37,7 @@ export async function initMapCore(): Promise<void> {
   try {
     const mod = await import('./pkg/map_core.js');
     const wasmUrl = (await import('./pkg/map_core_bg.wasm?url')).default;
-    await mod.default(wasmUrl);
+    await mod.default({ module_or_path: wasmUrl });
     WasmCtor = mod.Pendulum as unknown as WasmPendulum;
   } catch (error) {
     console.warn('map_core WASM failed to load; preview uses the TS integrator', error);
