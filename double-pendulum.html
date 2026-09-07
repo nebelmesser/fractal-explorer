@@ -13,8 +13,8 @@
       gtag('js', new Date());
       gtag('config', 'G-5D8EGFYM3L');
     </script>
-  <script type="module" src="./assets/explorer.js?v=92"></script>
-  <link rel="stylesheet" href="./assets/explorer.css?v=92">
+  <script type="module" src="./assets/explorer.js"></script>
+  <link rel="stylesheet" href="./assets/explorer.css">
 </head>
 <body>
     <div id="menu-backdrop"></div>
@@ -28,21 +28,15 @@
 
     <div id="stage">
         <aside id="sidebar">
-            <div id="overview-row">
-                <div id="minimap-wrap">
-                    <canvas id="minimap" width="160" height="160" aria-label="Overview map"></canvas>
-                    <canvas id="minimap-overlay" width="160" height="160" aria-hidden="true"></canvas>
-                </div>
-                <div id="zoom-bar">
-                    <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
-                    <button type="button" id="zoom-out" aria-label="Zoom out">−</button>
-                    <button type="button" id="zoom-reset" aria-label="Reset view">
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                            <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                                d="M4.6 12a7.4 7.4 0 1 0 2.1-5.2M4.6 4.8v4.2h4.2" />
-                        </svg>
-                    </button>
-                </div>
+            <div id="zoom-bar">
+                <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
+                <button type="button" id="zoom-out" aria-label="Zoom out">−</button>
+                <button type="button" id="zoom-reset" aria-label="Reset view">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                            d="M9 9 4.6 4.6M9 9H5.4M9 9V5.4M15 9l4.4-4.4M15 9h3.6M15 9V5.4M9 15 4.6 19.4M9 15H5.4M9 15v3.6M15 15l4.4 4.4M15 15h3.6M15 15v3.6" />
+                    </svg>
+                </button>
             </div>
         </aside>
         <div id="map-clip">
@@ -57,22 +51,43 @@
         </div>
     </div>
 
+    <div id="map-hud">
+        <div id="probe-count" role="slider" aria-label="Attachment points" aria-valuemin="0" aria-valuemax="2" aria-valuenow="1" tabindex="0">
+            <div class="probe-count-track" id="probe-count-track">
+                <div class="probe-count-fill" id="probe-count-fill"></div>
+                <div class="probe-count-ticks" id="probe-count-ticks"></div>
+                <div class="probe-count-thumb" id="probe-count-thumb"></div>
+            </div>
+        </div>
+        <button type="button" id="probe-start" aria-label="Start simulation">
+            <svg class="icon-play" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="currentColor" d="M8 5.2v13.6L19.2 12z" />
+            </svg>
+            <svg class="icon-reset" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    d="M4.6 12a7.4 7.4 0 1 0 2.1-5.2M4.6 4.8v4.2h4.2" />
+            </svg>
+        </button>
+    </div>
+
     <div id="ui-container">
         <div id="map-params"></div>
-        <label class="slider-label">
-            <span class="row"><span>Median</span><span id="medianValue">3</span></span>
-            <input type="range" id="medianSlider" min="0" max="5" step="1" value="3">
-        </label>
-        <label class="slider-label">
-            <span class="row"><span>Frame budget</span><span id="targetValue">1000 ms</span></span>
-            <input type="range" id="targetSlider" min="200" max="4000" step="50" value="1000">
-        </label>
-        <div class="control-group">
-            <label class="checkbox-label"><input type="checkbox" id="invertCheck"> Invert</label>
+        <div id="map-extras">
+            <div id="map-params-more"></div>
+            <label class="slider-label">
+                <span class="row"><span>Frame budget</span><span id="targetValue">1000 ms</span></span>
+                <input type="range" id="targetSlider" min="200" max="4000" step="50" value="1000">
+            </label>
+            <button type="button" id="resetParams" class="text-button icon-button">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        d="M4.6 12a7.4 7.4 0 1 0 2.1-5.2M4.6 4.8v4.2h4.2" />
+                </svg>
+                Reset parameters
+            </button>
         </div>
-        <button type="button" id="resetParams" class="text-button">Reset parameters</button>
         <div class="hint">
-            Tap the center to start the two pendulums. Click or double-tap elsewhere to zoom in.
+            A simulation starts three seconds after you stop. Click or double-tap to zoom in.
             Drag to pan, wheel or pinch to zoom. Right-click goes back.
             Use + / − to zoom.
         </div>

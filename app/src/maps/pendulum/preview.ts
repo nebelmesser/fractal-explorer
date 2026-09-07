@@ -1,7 +1,273 @@
-import { PROBE_BOB_R } from '../../constants';
+import {
+  PROBE_GRID_BOB_R,
+  PROBE_GRID_ROD_PX,
+  PROBE_LARGE_BOB_R,
+  PROBE_OUTLINE_PX,
+  PROBE_PX_PER_LEN,
+} from '../../constants';
 import { theme } from '../../theme';
 import { createTrajectory, type Trajectory } from '../../wasm/core';
 import type { MapParams, PointVisualizer } from '../types';
+
+export type OverlayStyle = {
+  large: boolean;
+  pxPerLen: number;
+  alpha: number;
+};
+
+export type OverlaySight = {
+  x: number;
+  y: number;
+  alpha: number;
+  crossHalf: number;
+  pivotR: number;
+};
+
+function overlayRodWidth(style: OverlayStyle): number {
+  if (style.large) return Math.max(3.2, 2.4 * (style.pxPerLen / PROBE_PX_PER_LEN));
+  return PROBE_GRID_ROD_PX;
+}
+
+function overlayBob(mass: number, style: OverlayStyle): number {
+  const k = Math.sqrt(Math.max(mass, 0));
+  if (style.large) return Math.max(5, PROBE_LARGE_BOB_R * k);
+  return Math.max(3.2, PROBE_GRID_BOB_R * k);
+}
+
+type OverlayRod = {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  color: string;
+  width: number;
+};
+
+type OverlayBob = { x: number; y: number; r: number; color: string };
+
+function trimRod(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  trim0: number,
+  trim1: number,
+): { x0: number; y0: number; x1: number; y1: number } | null {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const len = Math.hypot(dx, dy);
+  if (!(len > 1e-6)) return null;
+  const ux = dx / len;
+  const uy = dy / len;
+  const a = Math.min(Math.max(0, trim0), len * 0.45);
+  const b = Math.min(Math.max(0, trim1), len * 0.45);
+  if (a + b >= len) return null;
+  return { x0: x0 + ux * a, y0: y0 + uy * a, x1: x1 - ux * b, y1: y1 - uy * b };
+}
+
+let figureLayer: HTMLCanvasElement | null = null;
+let figureLayerCtx: CanvasRenderingContext2D | null = null;
+
+function figureBounds(
+  rods: OverlayRod[],
+  bobs: OverlayBob[],
+  sight?: OverlaySight,
+): { x: number; y: number; w: number; h: number } {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  const include = (x: number, y: number, r: number): void => {
+    minX = Math.min(minX, x - r);
+    minY = Math.min(minY, y - r);
+    maxX = Math.max(maxX, x + r);
+    maxY = Math.max(maxY, y + r);
+  };
+  const pad = PROBE_OUTLINE_PX + 2;
+  for (const rod of rods) {
+    const r = rod.width / 2 + pad;
+    include(rod.x0, rod.y0, r);
+    include(rod.x1, rod.y1, r);
+  }
+  for (const bob of bobs) include(bob.x, bob.y, bob.r + pad);
+  if (sight) include(sight.x, sight.y, sight.crossHalf + 4);
+  if (!Number.isFinite(minX)) return { x: 0, y: 0, w: 1, h: 1 };
+  return { x: minX, y: minY, w: Math.max(1, maxX - minX), h: Math.max(1, maxY - minY) };
+}
+
+function layerContext(cssW: number, cssH: number, dpr: number): CanvasRenderingContext2D {
+  const w = Math.max(1, Math.ceil(cssW * dpr));
+  const h = Math.max(1, Math.ceil(cssH * dpr));
+  if (!figureLayer || !figureLayerCtx) {
+    figureLayer = document.createElement('canvas');
+    figureLayerCtx = figureLayer.getContext('2d');
+    if (!figureLayerCtx) throw new Error('overlay layer');
+  }
+  if (figureLayer.width < w || figureLayer.height < h) {
+    figureLayer.width = w;
+    figureLayer.height = h;
+  } else {
+    figureLayerCtx.setTransform(1, 0, 0, 1, 0, 0);
+    figureLayerCtx.clearRect(0, 0, w, h);
+  }
+  figureLayerCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return figureLayerCtx;
+}
+
+function strokeRods(ctx: CanvasRenderingContext2D, rods: OverlayRod[], extra: number): void {
+  for (const rod of rods) {
+    ctx.lineWidth = rod.width + extra;
+    ctx.beginPath();
+    ctx.moveTo(rod.x0, rod.y0);
+    ctx.lineTo(rod.x1, rod.y1);
+    ctx.stroke();
+  }
+}
+
+function fillDisks(ctx: CanvasRenderingContext2D, bobs: OverlayBob[], extra: number): void {
+  for (const bob of bobs) {
+    ctx.beginPath();
+    ctx.arc(bob.x, bob.y, bob.r + extra, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/** Grid: draw on the overlay. Rods stay trimmed; bobs paint over joints. No offscreen. */
+function drawOverlayFigureFast(
+  ctx: CanvasRenderingContext2D,
+  rods: OverlayRod[],
+  bobs: OverlayBob[],
+  alpha: number,
+  sight?: OverlaySight,
+): void {
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+  for (const rod of rods) {
+    ctx.strokeStyle = rod.color;
+    ctx.lineWidth = rod.width;
+    ctx.beginPath();
+    ctx.moveTo(rod.x0, rod.y0);
+    ctx.lineTo(rod.x1, rod.y1);
+    ctx.stroke();
+  }
+  if (sight) {
+    ctx.globalAlpha = 1;
+    drawProbePivot(ctx, { x: sight.x, y: sight.y }, sight.pivotR, sight.alpha);
+    drawProbeCross(ctx, { x: sight.x, y: sight.y }, sight.crossHalf, sight.alpha);
+  }
+  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+  for (const bob of bobs) {
+    ctx.fillStyle = bob.color;
+    ctx.beginPath();
+    ctx.arc(bob.x, bob.y, bob.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawOverlayFigure(
+  ctx: CanvasRenderingContext2D,
+  rods: OverlayRod[],
+  bobs: OverlayBob[],
+  alpha: number,
+  large: boolean,
+  sight?: OverlaySight,
+): void {
+  if (!large) {
+    drawOverlayFigureFast(ctx, rods, bobs, alpha, sight);
+    return;
+  }
+  const bounds = figureBounds(rods, bobs, sight);
+  const destDpr = ctx.getTransform().a || 1;
+  const layerDpr = destDpr;
+  const layer = layerContext(bounds.w, bounds.h, layerDpr);
+  layer.save();
+  layer.translate(-bounds.x, -bounds.y);
+  layer.lineCap = 'round';
+  layer.lineJoin = 'round';
+
+  const ring = PROBE_OUTLINE_PX * 2;
+  layer.globalAlpha = 1;
+  layer.strokeStyle = '#000';
+  layer.fillStyle = '#000';
+  strokeRods(layer, rods, ring);
+  fillDisks(layer, bobs, PROBE_OUTLINE_PX);
+  layer.globalCompositeOperation = 'destination-out';
+  strokeRods(layer, rods, 0);
+  fillDisks(layer, bobs, 0);
+
+  layer.globalCompositeOperation = 'source-over';
+  layer.globalAlpha = Math.max(0, Math.min(1, alpha));
+  for (const rod of rods) {
+    layer.strokeStyle = rod.color;
+    layer.lineWidth = rod.width;
+    layer.beginPath();
+    layer.moveTo(rod.x0, rod.y0);
+    layer.lineTo(rod.x1, rod.y1);
+    layer.stroke();
+  }
+  if (sight) {
+    layer.globalAlpha = 1;
+    drawProbePivot(layer, { x: sight.x, y: sight.y }, sight.pivotR, sight.alpha);
+    drawProbeCross(layer, { x: sight.x, y: sight.y }, sight.crossHalf, sight.alpha);
+  }
+
+  layer.globalCompositeOperation = 'destination-out';
+  layer.globalAlpha = 1;
+  fillDisks(layer, bobs, 0);
+  layer.globalCompositeOperation = 'source-over';
+  layer.globalAlpha = Math.max(0, Math.min(1, alpha));
+  for (const bob of bobs) {
+    layer.fillStyle = bob.color;
+    layer.beginPath();
+    layer.arc(bob.x, bob.y, bob.r, 0, Math.PI * 2);
+    layer.fill();
+  }
+  layer.restore();
+
+  ctx.drawImage(
+    figureLayer!,
+    0,
+    0,
+    bounds.w * layerDpr,
+    bounds.h * layerDpr,
+    bounds.x,
+    bounds.y,
+    bounds.w,
+    bounds.h,
+  );
+}
+
+function overlayParts(
+  params: MapParams,
+  style: OverlayStyle,
+  rodsIn: { x0: number; y0: number; x1: number; y1: number }[],
+  bobPts: { x: number; y: number }[],
+): { rods: OverlayRod[]; bobs: OverlayBob[] } {
+  const pal = theme();
+  const width = overlayRodWidth(style);
+  const r1 = overlayBob(params.M1, style);
+  const r2 = overlayBob(params.M2, style);
+  const radii = [r1, r2];
+  const rods: OverlayRod[] = [];
+  const colors = [pal.th1, pal.th2];
+  for (let i = 0; i < rodsIn.length; i++) {
+    const rod = rodsIn[i];
+    const trim0 = i === 0 ? 0 : radii[i - 1];
+    const trim1 = radii[Math.min(i, radii.length - 1)];
+    const cut = trimRod(rod.x0, rod.y0, rod.x1, rod.y1, trim0, trim1);
+    if (cut) rods.push({ ...cut, color: colors[i], width });
+  }
+  return {
+    rods,
+    bobs: [
+      { x: bobPts[0].x, y: bobPts[0].y, r: r1, color: pal.th1 },
+      { x: bobPts[1].x, y: bobPts[1].y, r: r2, color: pal.th2 },
+    ],
+  };
+}
 
 function replayLength(point: { x: number; y: number }, params: MapParams): number {
   const traj = createTrajectory(point.x, point.y);
@@ -179,40 +445,26 @@ export function drawOverlayPendulum(
   th1: number,
   th2: number,
   params: MapParams,
-  pxPerLen: number,
-  alpha: number,
+  style: OverlayStyle,
+  sight?: OverlaySight,
 ): void {
-  const pal = theme();
-  const L1 = params.L1;
-  const L2 = params.L2;
-  const scale = pxPerLen;
+  const scale = style.pxPerLen;
   const x0 = origin.x;
   const y0 = origin.y;
-  const x1 = x0 + Math.sin(th1) * L1 * scale;
-  const y1 = y0 + Math.cos(th1) * L1 * scale;
-  const x2 = x1 + Math.sin(th2) * L2 * scale;
-  const y2 = y1 + Math.cos(th2) * L2 * scale;
-
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.lineWidth = 2.5;
-  ctx.strokeStyle = pal.th1;
-  ctx.beginPath();
-  ctx.moveTo(x0, y0);
-  ctx.lineTo(x1, y1);
-  ctx.stroke();
-  ctx.strokeStyle = pal.th2;
-  ctx.beginPath();
-  ctx.moveTo(x1, y1);
-  ctx.lineTo(x2, y2);
-  ctx.stroke();
-  ctx.fillStyle = pal.th1;
-  dot(ctx, x1, y1, PROBE_BOB_R * Math.sqrt(Math.max(params.M1, 0)));
-  ctx.fillStyle = pal.th2;
-  dot(ctx, x2, y2, PROBE_BOB_R * Math.sqrt(Math.max(params.M2, 0)));
-  ctx.restore();
+  const x1 = x0 + Math.sin(th1) * params.L1 * scale;
+  const y1 = y0 + Math.cos(th1) * params.L1 * scale;
+  const x2 = x1 + Math.sin(th2) * params.L2 * scale;
+  const y2 = y1 + Math.cos(th2) * params.L2 * scale;
+  const { rods, bobs } = overlayParts(
+    params,
+    style,
+    [
+      { x0, y0, x1, y1 },
+      { x0: x1, y0: y1, x1: x2, y1: y2 },
+    ],
+    [{ x: x1, y: y1 }, { x: x2, y: y2 }],
+  );
+  drawOverlayFigure(ctx, rods, bobs, style.alpha, style.large, sight);
 }
 
 /** Overlay-only flight after the pin releases. Map kernel stays constrained. */
@@ -299,8 +551,19 @@ export function stepFly(fly: FlyState, params: MapParams, dt: number): void {
   fly.th1 += fly.w1 * dt;
 }
 
-export function flyOffscreen(fly: FlyState, limit: number): boolean {
-  return Math.max(Math.hypot(fly.x1, fly.y1), Math.hypot(fly.x2, fly.y2)) > limit;
+export function flyOnOverlay(
+  fly: FlyState,
+  origin: { x: number; y: number },
+  scale: number,
+  width: number,
+  height: number,
+): boolean {
+  const pad = 64;
+  const vis = (x: number, y: number): boolean => (
+    x >= -pad && x <= width + pad && y >= -pad && y <= height + pad
+  );
+  return vis(origin.x + fly.x1 * scale, origin.y + fly.y1 * scale)
+    || vis(origin.x + fly.x2 * scale, origin.y + fly.y2 * scale);
 }
 
 export function drawOverlayFly(
@@ -308,38 +571,26 @@ export function drawOverlayFly(
   origin: { x: number; y: number },
   fly: FlyState,
   params: MapParams,
-  pxPerLen: number,
-  alpha: number,
+  style: OverlayStyle,
+  sight?: OverlaySight,
 ): void {
-  const pal = theme();
-  const scale = pxPerLen;
-  const L1 = params.L1;
-  const tipX = origin.x + (fly.x1 - Math.sin(fly.th1) * L1) * scale;
-  const tipY = origin.y + (fly.y1 - Math.cos(fly.th1) * L1) * scale;
+  const scale = style.pxPerLen;
+  const tipX = origin.x + (fly.x1 - Math.sin(fly.th1) * params.L1) * scale;
+  const tipY = origin.y + (fly.y1 - Math.cos(fly.th1) * params.L1) * scale;
   const x1 = origin.x + fly.x1 * scale;
   const y1 = origin.y + fly.y1 * scale;
   const x2 = origin.x + fly.x2 * scale;
   const y2 = origin.y + fly.y2 * scale;
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.lineWidth = 2.5;
-  ctx.strokeStyle = pal.th1;
-  ctx.beginPath();
-  ctx.moveTo(tipX, tipY);
-  ctx.lineTo(x1, y1);
-  ctx.stroke();
-  ctx.strokeStyle = pal.th2;
-  ctx.beginPath();
-  ctx.moveTo(x1, y1);
-  ctx.lineTo(x2, y2);
-  ctx.stroke();
-  ctx.fillStyle = pal.th1;
-  dot(ctx, x1, y1, PROBE_BOB_R * Math.sqrt(Math.max(params.M1, 0)));
-  ctx.fillStyle = pal.th2;
-  dot(ctx, x2, y2, PROBE_BOB_R * Math.sqrt(Math.max(params.M2, 0)));
-  ctx.restore();
+  const { rods, bobs } = overlayParts(
+    params,
+    style,
+    [
+      { x0: tipX, y0: tipY, x1, y1 },
+      { x0: x1, y0: y1, x1: x2, y1: y2 },
+    ],
+    [{ x: x1, y: y1 }, { x: x2, y: y2 }],
+  );
+  drawOverlayFigure(ctx, rods, bobs, style.alpha, false, sight);
 }
 
 /** Targeting crosshair: dark halo + light core so it reads on any map gray. */
@@ -347,6 +598,7 @@ export function drawProbeCross(
   ctx: CanvasRenderingContext2D,
   origin: { x: number; y: number },
   half: number,
+  alpha = 1,
 ): void {
   const gap = Math.min(2, half * 0.28);
   const stroke = (color: string, width: number): void => {
@@ -364,19 +616,22 @@ export function drawProbeCross(
     ctx.stroke();
   };
   ctx.save();
+  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
   ctx.lineCap = 'butt';
   stroke('rgba(0, 0, 0, 0.92)', 3.4);
   stroke('rgba(255, 255, 255, 0.96)', 1.2);
   ctx.restore();
 }
 
-/** Shared hang point, drawn below the two sights. */
+/** Hang point at the reticle. */
 export function drawProbePivot(
   ctx: CanvasRenderingContext2D,
   origin: { x: number; y: number },
   radius: number,
+  alpha = 1,
 ): void {
   ctx.save();
+  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
   ctx.fillStyle = theme().pivot;
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
   ctx.lineWidth = 1.25;

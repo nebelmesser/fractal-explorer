@@ -1,12 +1,13 @@
 import {
   INVERT_DEFAULT,
-  MEDIAN_DEFAULT,
-  MEDIAN_MAX,
+  PARAM_RESET_MS,
+  SLIDER_THUMB_PX,
   TARGET_FRAME_MS_MAX,
   TARGET_FRAME_MS_MIN,
 } from '../constants';
-import type { MapDefinition, MapParams } from '../maps/types';
+import type { MapDefinition, MapParam, MapParams } from '../maps/types';
 import { markPrefsDirty } from './prefs';
+import { easeInOutCubic } from './view';
 
 export type ExplorerControls = {
   params: MapParams;
@@ -17,6 +18,38 @@ export type ExplorerControls = {
 
 function formatValue(kind: 'float' | 'int', value: number): string {
   return kind === 'int' ? String(Math.round(value)) : Number(value).toFixed(2);
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+function isMassKey(key: string): boolean {
+  return key === 'M1' || key === 'M2';
+}
+
+function toSlider(spec: MapParam, actual: number): number {
+  const v = spec.invert ? spec.min + spec.max - actual : actual;
+  return spec.kind === 'int' ? Math.round(v) : v;
+}
+
+function fromSlider(spec: MapParam, slider: number): number {
+  const v = spec.invert ? spec.min + spec.max - slider : slider;
+  return spec.kind === 'int' ? Math.round(v) : v;
+}
+
+/** Fill the track and, for M1/M2, size the thumb so area ∝ mass. */
+export function paintRange(input: HTMLInputElement, mass?: number): void {
+  const min = Number(input.min);
+  const max = Number(input.max);
+  const value = Number(input.value);
+  const span = max - min;
+  const t = span > 0 ? (value - min) / span : 0;
+  input.style.setProperty('--fill', `${(Math.min(1, Math.max(0, t)) * 100).toFixed(3)}%`);
+  if (mass != null && Number.isFinite(mass)) {
+    const d = SLIDER_THUMB_PX * Math.sqrt(Math.max(mass, 1e-6));
+    input.style.setProperty('--thumb', `${d.toFixed(2)}px`);
+  }
 }
 
 let hideMenu: (() => void) | null = null;
@@ -32,10 +65,19 @@ export function syncBudgetReadout(ms: number, iters: number): void {
   el.textContent = `${Math.round(ms)} ms · ${n}`;
 }
 
+export type ResetHome = {
+  begin(): void;
+  tick(eased: number): void;
+  end(): void;
+  cancel(): void;
+  isAway(): boolean;
+};
+
 export function bindMenu(
   map: MapDefinition,
   controls: ExplorerControls,
-  onParamsChange: (phase: 'live' | 'settle') => void,
+  onParamsChange: (phase: 'live' | 'reset' | 'settle') => void,
+  onResetHome: ResetHome,
 ): void {
   const menuToggle = document.getElementById('menu-toggle') as HTMLButtonElement;
   const menuBackdrop = document.getElementById('menu-backdrop') as HTMLElement;
@@ -44,14 +86,27 @@ export function bindMenu(
   if (!menuToggle || !menuBackdrop || !uiContainer || !paramRoot) {
     throw new Error('Menu DOM is incomplete');
   }
+  const extraRoot = document.getElementById('map-params-more') ?? paramRoot;
 
   const sliders: { key: string; input: HTMLInputElement; readout: HTMLElement }[] = [];
+  let resetAnim = 0;
+  function cancelResetAnim(): void {
+    resetAnim += 1;
+    onResetHome.cancel();
+  }
+
+  function paintParam(key: string, input: HTMLInputElement): void {
+    paintRange(input, isMassKey(key) ? controls.params[key] : undefined);
+  }
 
   paramRoot.replaceChildren();
+  if (extraRoot !== paramRoot) extraRoot.replaceChildren();
   for (const spec of map.params) {
+    const host = spec.group === 'pendulum' ? paramRoot : extraRoot;
     const label = document.createElement('label');
     label.className = 'slider-label';
     if (spec.tone) label.dataset.tone = spec.tone;
+    if (isMassKey(spec.key)) label.dataset.mass = spec.key;
     const raw = controls.params[spec.key] ?? spec.default;
     const start = Math.min(spec.max, Math.max(spec.min, raw));
     controls.params[spec.key] = spec.kind === 'int' ? Math.round(start) : start;
@@ -68,79 +123,96 @@ export function bindMenu(
     input.min = String(spec.min);
     input.max = String(spec.max);
     input.step = String(spec.step);
-    input.value = String(controls.params[spec.key]);
+    input.value = String(toSlider(spec, controls.params[spec.key]));
+    paintParam(spec.key, input);
     input.addEventListener('input', () => {
-      const raw = Number(input.value);
-      controls.params[spec.key] = spec.kind === 'int' ? Math.round(raw) : raw;
-      readout.textContent = formatValue(spec.kind, controls.params[spec.key]);
+      cancelResetAnim();
+      const next = fromSlider(spec, Number(input.value));
+      controls.params[spec.key] = next;
+      readout.textContent = formatValue(spec.kind, next);
+      paintParam(spec.key, input);
       markPrefsDirty();
       onParamsChange('live');
     });
     input.addEventListener('change', () => onParamsChange('settle'));
     label.append(row, input);
-    paramRoot.append(label);
+    host.append(label);
     sliders.push({ key: spec.key, input, readout });
   }
 
-  const invert = document.getElementById('invertCheck') as HTMLInputElement;
-  const median = document.getElementById('medianSlider') as HTMLInputElement;
-  const medianValue = document.getElementById('medianValue');
   const target = document.getElementById('targetSlider') as HTMLInputElement;
   const reset = document.getElementById('resetParams');
+  controls.invert = INVERT_DEFAULT;
 
   function syncParams(): void {
     for (const spec of map.params) {
       const row = sliders.find((s) => s.key === spec.key);
       if (!row) continue;
       const value = controls.params[spec.key] ?? spec.default;
-      row.input.value = String(value);
+      row.input.value = String(toSlider(spec, value));
       row.readout.textContent = formatValue(spec.kind, value);
+      paintParam(spec.key, row.input);
     }
   }
 
   function syncExtras(): void {
-    invert.checked = controls.invert;
-    median.max = String(MEDIAN_MAX);
-    median.value = String(controls.median);
-    if (medianValue) medianValue.textContent = String(controls.median);
     target.min = String(TARGET_FRAME_MS_MIN);
     target.max = String(TARGET_FRAME_MS_MAX);
     target.value = String(controls.targetFrameMs);
+    paintRange(target);
     syncBudgetReadout(controls.targetFrameMs, controls.params.MAX_ITERATIONS);
   }
 
-  invert.addEventListener('change', () => {
-    controls.invert = invert.checked;
-    markPrefsDirty();
-    onParamsChange('settle');
-  });
-  median.addEventListener('input', () => {
-    // Only 0 (off) or odd windows; the shader sorts n² samples.
-    const n = Math.round(Number(median.value));
-    controls.median = n <= 0 ? 0 : n <= 3 ? 3 : 5;
-    median.value = String(controls.median);
-    if (medianValue) medianValue.textContent = String(controls.median);
-    markPrefsDirty();
-    onParamsChange('live');
-  });
-  median.addEventListener('change', () => onParamsChange('settle'));
   target.addEventListener('input', () => {
+    cancelResetAnim();
     controls.targetFrameMs = Number(target.value);
+    paintRange(target);
     syncBudgetReadout(controls.targetFrameMs, controls.params.MAX_ITERATIONS);
     markPrefsDirty();
     onParamsChange('live');
   });
   target.addEventListener('change', () => onParamsChange('settle'));
   reset?.addEventListener('click', () => {
+    const from: Record<string, number> = {};
+    let paramsDirty = false;
     for (const spec of map.params) {
-      controls.params[spec.key] = spec.default;
+      const value = controls.params[spec.key] ?? spec.default;
+      from[spec.key] = value;
+      if (Math.abs(value - spec.default) > spec.step * 0.25) paramsDirty = true;
     }
-    controls.invert = INVERT_DEFAULT;
-    controls.median = MEDIAN_DEFAULT;
-    syncParams();
-    syncExtras();
-    markPrefsDirty();
-    onParamsChange('settle');
+    const viewAway = onResetHome.isAway();
+    if (!paramsDirty && !viewAway) return;
+
+    cancelResetAnim();
+    onResetHome.begin();
+    const token = ++resetAnim;
+    const t0 = performance.now();
+    const tick = (now: number): void => {
+      if (token !== resetAnim) return;
+      const u = Math.min(1, (now - t0) / PARAM_RESET_MS);
+      const e = easeInOutCubic(u);
+      if (paramsDirty) {
+        for (const spec of map.params) {
+          const value = lerp(from[spec.key], spec.default, e);
+          controls.params[spec.key] = spec.kind === 'int' ? Math.round(value) : value;
+        }
+        syncParams();
+      }
+      onResetHome.tick(e);
+      markPrefsDirty();
+      if (u < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        if (paramsDirty) {
+          for (const spec of map.params) controls.params[spec.key] = spec.default;
+          syncParams();
+          syncExtras();
+        }
+        onResetHome.end();
+        onParamsChange('settle');
+      }
+    };
+    requestAnimationFrame(tick);
   });
 
   function setMenuOpen(open: boolean): void {

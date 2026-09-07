@@ -25,6 +25,8 @@ export const COAST_MIN_PX = 48; // stop when |pan| falls below this (px/s)
 export const COAST_MIN_ZOOM = 0.06; // stop when |d ln span / s| falls below this
 export const VIEW_DEBOUNCE_MS = 40; // batch wheel ticks before a new compute
 export const PARAM_LIVE_MS = 100; // if a param pass is slower, drop resolution while the slider moves
+export const PARAM_RESET_MS = 5000; // Reset parameters; sliders and home unzoom share this ease
+export const UNZOOM_GROW = 2; // each lookahead cover doubles span toward the landing view
 export const MIN_VIEW_SPAN = 1e-5; // radians; stop zooming before float32 collapses
 export const OVERSCAN_PAD = 1.05; // extra screens on each side for the halo pass
 export const OVERSCAN_RELOAD = 0.6; // prefetch a new halo while this much pad remains
@@ -52,19 +54,28 @@ export const PENDULUM_SINGULAR = 1e-9; // treat a vanishing denominator as α = 
 
 // Overview + on-map probes.
 export const OVERVIEW_PX = 160; // CSS and GPU side of the overview map
-export const PROBE_SEP_PX = 48; // horizontal gap between the two screen-center samples
-export const PROBE_HIT_PX = 88; // click/tap half-size of the center launch zone
-export const PROBE_PX_PER_LEN = 38; // CSS px for L=1; L1/L2 draw absolutely, not normalized
+export const PROBE_SEP_PX = 168; // gap between the two screen-center sights
+export const PROBE_CELL_PX = 96; // first grid step; fits L1+L2 at PROBE_PX_PER_LEN
+export const PROBE_CELL_MIN_PX = 44; // densest grid; more pendulums, same proportions
+export const PROBE_GRID_MAX = 720; // cap overlay trajectories on a large screen
+export const PROBE_LEVEL_DEFAULT = 1; // slider default: one pendulum
+export const PROBE_AUTOSTART_MS = 2000; // start after the last probe / view action
+export const PROBE_SCALE_BAND_X = 52; // keep pins off the bottom θ₁ labels
+export const PROBE_SCALE_BAND_Y = 48; // keep pins off the right θ₂ labels
+export const PROBE_PX_PER_LEN = 38; // CSS px for L=1 on the grid; one/two scale up from this
 export const PROBE_CROSS_PX = 7; // half-length of the reticle
-export const PROBE_PIVOT_DOWN_PX = 18; // hang the rods this far below the sights
 export const PROBE_PIVOT_R = 2; // CSS px; keep smaller than the sights
-export const PROBE_BOB_R = 4; // CSS px radius at mass = 1; area scales with M
-export const PROBE_DIVERGE_DEG = 10; // |Δθ₁| that counts as diverged
+export const PROBE_BOB_R = 4; // legacy alias; grid overlay uses PROBE_GRID_BOB_R
+export const PROBE_LARGE_BOB_R = 8; // CSS px radius at mass = 1 for the 1/2-pendulum mode
+export const PROBE_GRID_BOB_R = 4; // CSS px radius at mass = 1 on the grid; does not shrink with cell
+export const PROBE_GRID_ROD_PX = 2; // CSS px rod width on the grid
+export const PROBE_OUTLINE_PX = 1; // union halo around the whole figure; same CSS px at any L/M
+export const PROBE_SIGHT_ALPHA = 0.42; // pin + crosshair while the rod is still hung
+export const PROBE_SIGHT_FLY_ALPHA = 0.14; // pin fades further after the rod tears off
 export const PROBE_SNAP_DEG = 720; // |Δθ₁| in one overlay frame that tears the first rod off the pin
 export const PROBE_FLY_TIME = 0.55; // fly integrates this fraction of map DT per frame
 export const PROBE_ALPHA = 0.5; // overlay pendulums stay see-through
 export const PROBE_PLAY_FPS = 24; // overlay steps once per frame at this rate
-export const PROBE_ESTIMATE_STEPS = 600; // lookahead steps per frame for the countdown
 export const PROBE_MAX_STEPS = 40000; // fine dt would hit the map cap too soon
 export const DOUBLE_TAP_MS = 320;
 export const DOUBLE_TAP_PX = 36;
@@ -73,6 +84,8 @@ export const SCALE_BAR_MIN_PX = 48;
 export const SCALE_BAR_MAX_PX = 120;
 
 // Menu / prefs.
+export const SLIDER_THUMB_PX = 14; // diameter at mass = 1; area scales with M1/M2
+
 export const PREFS_KEY = 'fractal-explorer';
 export const PREFS_WRITE_MS = 250;
 export const COMPACT_QUERY = '(max-width: 900px), (max-height: 520px)';

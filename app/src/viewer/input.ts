@@ -8,6 +8,7 @@ import {
   DOUBLE_TAP_MS,
   DOUBLE_TAP_PX,
   PINCH_ZOOM,
+  VIEW_DEBOUNCE_MS,
   WHEEL_ZOOM,
   WHEEL_ZOOM_PINCH,
 } from '../constants';
@@ -40,7 +41,7 @@ export type InputHandlers = {
   getWorld(): ViewRect;
   setView(view: ViewRect, opts?: ViewOpts): void;
   popHistory(): void;
-  /** Return true when the tap launched the center probes (do not zoom). */
+  /** Return true to consume the tap (do not zoom). */
   pickPoint(x: number, y: number, clientX: number, clientY: number): boolean;
   hoverPoint?(x: number, y: number, clientX: number, clientY: number): void;
   hoverEnd?(): void;
@@ -74,6 +75,7 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
   let pinchLogs: number[] = [];
   let pinchTimes: number[] = [];
   let coastRaf = 0;
+  let wheelSettle = 0;
 
   function at(clientX: number, clientY: number): { x: number; y: number } {
     const rect = surface.getBoundingClientRect();
@@ -145,7 +147,7 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
     return sum / dt;
   }
 
-  function startCoast(anchor: { x: number; y: number } | null): void {
+  function startCoast(anchor: { x: number; y: number } | null, settleIfStill = true): void {
     stopCoast();
     if (performance.now() - lastMoveT > COAST_STALE_MS) {
       velX = 0;
@@ -154,7 +156,10 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
     }
     const zoomAnchor = anchor ?? pinchAnchor;
     if (zoomAnchor) velLog = releaseZoomVel(performance.now());
-    if (Math.hypot(velX, velY) < COAST_MIN_PX && Math.abs(velLog) < COAST_MIN_ZOOM) return;
+    if (Math.hypot(velX, velY) < COAST_MIN_PX && Math.abs(velLog) < COAST_MIN_ZOOM) {
+      if (settleIfStill) handlers.settleView?.();
+      return;
+    }
     const box = surface.getBoundingClientRect();
     handlers.prefetchView?.(coastStopView(
       handlers.getView(),
@@ -282,18 +287,6 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
       navigating: true,
       keepPrefetch: true,
     });
-    if (Math.hypot(velX, velY) >= COAST_MIN_PX) {
-      handlers.prefetchView?.(coastStopView(
-        handlers.getView(),
-        handlers.getWorld(),
-        velX,
-        velY,
-        0,
-        null,
-        box.width,
-        box.height,
-      ));
-    }
     surface.classList.add('is-dragging');
     emitHover(event.clientX, event.clientY);
   });
@@ -313,7 +306,7 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
       moved = true;
       lastMoveT = performance.now();
       coastAfterPinch = true;
-      startCoast(pinchAnchor);
+      startCoast(pinchAnchor, false);
       return;
     }
     if (moved) startCoast(pinchAnchor);
@@ -365,6 +358,8 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
       zoomAbout(handlers.getView(), point.x, point.y, Math.exp(event.deltaY * gain), handlers.getWorld()),
       { navigating: true },
     );
+    window.clearTimeout(wheelSettle);
+    wheelSettle = window.setTimeout(() => handlers.settleView?.(), VIEW_DEBOUNCE_MS);
     emitHover(event.clientX, event.clientY);
   }, { passive: false });
 

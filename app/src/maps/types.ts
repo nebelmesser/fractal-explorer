@@ -19,6 +19,10 @@ export type MapParam = {
   default: number;
   /** Slider tint; pendulum L1/M1 and L2/M2 follow the rod colors. */
   tone?: 'th1' | 'th2';
+  /** Pendulum physics stay in the first menu block. */
+  group?: 'pendulum';
+  /** Slider grows right while the stored value falls (min + max − value). */
+  invert?: boolean;
 };
 
 export type MapParams = Record<string, number>;
@@ -206,5 +210,17 @@ export function viewAround(
 export function defaultParams(def: MapDefinition): MapParams {
   const out: MapParams = {};
   for (const param of def.params) out[param.key] = param.default;
+  return out;
+}
+
+/** Interpolate every declared slider; other keys (iteration cap) stay on `a`. */
+export function lerpParams(spec: MapParam[], a: MapParams, b: MapParams, t: number): MapParams {
+  const out: MapParams = { ...a };
+  for (const param of spec) {
+    const av = a[param.key] ?? param.default;
+    const bv = b[param.key] ?? param.default;
+    const value = av + (bv - av) * t;
+    out[param.key] = param.kind === 'int' ? Math.round(value) : value;
+  }
   return out;
 }

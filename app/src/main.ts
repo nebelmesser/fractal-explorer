@@ -5,19 +5,15 @@ import {
   MIN_COMPUTE_PX,
   OVERSCAN_PAD,
   OVERSCAN_RELOAD,
-  OVERVIEW_PX,
   PARAM_LIVE_MS,
+  PROBE_AUTOSTART_MS,
   PROBE_ALPHA,
   PROBE_CROSS_PX,
-  PROBE_DIVERGE_DEG,
-  PROBE_ESTIMATE_STEPS,
-  PROBE_HIT_PX,
+  PROBE_SIGHT_ALPHA,
+  PROBE_SIGHT_FLY_ALPHA,
   PROBE_MAX_STEPS,
   PROBE_PLAY_FPS,
-  PROBE_PIVOT_DOWN_PX,
   PROBE_PIVOT_R,
-  PROBE_PX_PER_LEN,
-  PROBE_SEP_PX,
   PROBE_SNAP_DEG,
   PROBE_FLY_TIME,
   SMOOTH_ZOOM_MS,
@@ -30,6 +26,7 @@ import { defaultMap } from './maps/catalog';
 import {
   copyView,
   defaultParams,
+  lerpParams,
   padViewWith,
   unionView,
   viewsEqual,
@@ -42,15 +39,26 @@ import { createTrajectory, initMapCore, type Trajectory } from './wasm/core';
 import { computeSize, cssShortPx, fitMapDisplay, maxBudgetPx, nextWorkBudget, preferredIters, scaleSize, snapComputePx } from './viewer/budget';
 import { bindMapInput } from './viewer/input';
 import { bindMenu, syncBudgetReadout, type ExplorerControls } from './viewer/menu';
+import {
+  bindProbeHud,
+  buildProbeSteps,
+  chromeRects,
+  currentProbeStep,
+  defaultProbeHud,
+  originHitsChrome,
+  overlayPxPerLen,
+  overlaySightScale,
+  probeOrigins as layoutOrigins,
+  probeSpacing,
+} from './viewer/probes';
 import { drawMapAxes } from './viewer/axes';
-import { drawOverviewFrame } from './viewer/minimap';
 import { bindPrefs, consumeResetQuery, loadPrefs, markPrefsDirty } from './viewer/prefs';
 import {
   drawOverlayFly,
   drawOverlayPendulum,
   drawProbeCross,
   drawProbePivot,
-  flyOffscreen,
+  flyOnOverlay,
   startFly,
   stepFly,
   type FlyState,
@@ -63,9 +71,10 @@ import {
   easeInOutCubic,
   fitViewAspect,
   foldViewY,
+  isUnzoom,
   lerpViewShortY,
+  nextUnzoomCover,
   tiledInset,
-  tileView,
   viewCenter,
   worldFromDisplay,
   wrapPointToCover,
@@ -90,8 +99,6 @@ async function boot(): Promise<void> {
   const mapClip = document.getElementById('map-clip');
   const stage = document.getElementById('stage');
   const sidebar = document.getElementById('sidebar');
-  const miniCanvas = document.getElementById('minimap') as HTMLCanvasElement;
-  const miniOverlay = document.getElementById('minimap-overlay') as HTMLCanvasElement;
   const axesCanvas = document.getElementById('map-axes') as HTMLCanvasElement | null;
   const overlayCanvas = document.getElementById('probe-overlay') as HTMLCanvasElement | null;
   const scaleX = document.getElementById('map-scale-x');
@@ -100,7 +107,7 @@ async function boot(): Promise<void> {
   const zoomOutEl = document.getElementById('zoom-out') as HTMLButtonElement | null;
   const zoomInEl = document.getElementById('zoom-in') as HTMLButtonElement | null;
   const zoomResetEl = document.getElementById('zoom-reset') as HTMLButtonElement | null;
-  if (!mapCanvas || !mapBack || !mapClip || !stage || !sidebar || !miniCanvas || !miniOverlay || !axesCanvas || !overlayCanvas || !scaleX || !scaleY || !shiftEl || !zoomInEl || !zoomOutEl || !zoomResetEl) {
+  if (!mapCanvas || !mapBack || !mapClip || !stage || !sidebar || !axesCanvas || !overlayCanvas || !scaleX || !scaleY || !shiftEl || !zoomInEl || !zoomOutEl || !zoomResetEl) {
     throw new Error('Explorer DOM is incomplete');
   }
   const zoomIn = zoomInEl;
@@ -133,22 +140,14 @@ async function boot(): Promise<void> {
   const history: ViewRect[] = [copyView(view)];
   let settledPx = snapComputePx(Math.min(display.width, display.height));
   let animating = false;
-  let probes: [Trajectory, Trajectory] | null = null;
-  let flies: [FlyState | null, FlyState | null] = [null, null];
+  const probeHud = defaultProbeHud();
+  let probes: Trajectory[] | null = null;
+  let flies: (FlyState | 'gone' | null)[] = [];
   let probePlaying = false;
+  let probeHudUi: { syncPlay(playing: boolean): void; setSteps(steps: ReturnType<typeof buildProbeSteps>): void } | null = null;
   let probeView: ViewRect | null = null;
-  let probeSimTime = 0;
   let probePlayAcc = 0;
   let probePlayLast = 0;
-  let probeDivergeSec: number | null = null;
-  let divergeJob: {
-    key: string;
-    a: Trajectory;
-    b: Trajectory;
-    time: number;
-    result: number | null;
-    done: boolean;
-  } | null = null;
   let stopCoast = (): void => {};
   let rendering = false;
   let wantRefine = true;
@@ -158,20 +157,28 @@ async function boot(): Promise<void> {
   let lastParamMapMs = Infinity;
   let paramDragging = false;
   let renderingLive = false;
-  let overviewKey = '';
   let zoomToken = 0;
+  let autoStartTimer = 0;
   let lastRenderSize = { width: 0, height: 0 };
   let lastOverscanPad = 0;
   let lastUnitSpan = { x: 0, y: 0 };
   let parkedCover: ViewRect | null = null;
+  let gestureActive = false;
+  let resetFromView: ViewRect | null = null;
+  let resetParamFrom: MapParams | null = null;
+  let resetParamTo: MapParams | null = null;
+  let resetEase = 0;
+  let unzoomTarget: ViewRect | null = null;
+  let lastCoverParams: MapParams | null = null;
   let forcedView: ViewRect | null = null;
   let forcedUnit: ViewRect | null = null;
-  let forcedDone: (() => void) | null = null;
+  let forcedParams: MapParams | null = null;
+  let forcedWaiters: Array<() => void> = [];
 
   const controls: ExplorerControls = {
     params,
     invert: saved?.invert ?? false,
-    median: saved?.median ?? MEDIAN_DEFAULT,
+    median: MEDIAN_DEFAULT,
     targetFrameMs: saved?.targetFrameMs ?? TARGET_FRAME_MS,
   };
 
@@ -188,8 +195,6 @@ async function boot(): Promise<void> {
     console.error(error);
     return;
   }
-  let overview: GpuMapRenderer | null = null;
-
   bindPrefs(() => {
     const stored = { ...params };
     delete stored.MAX_ITERATIONS;
@@ -252,7 +257,16 @@ async function boot(): Promise<void> {
     applyShift();
     drawChrome();
     syncZoomBar();
-    if (opts.coasting) return;
+    if (opts.coasting || opts.navigating) {
+      // Gesture is still moving: only CSS-shift (and a parked halo). Never start a
+      // budgeted pass here — that is what made desktop pan hitch.
+      if (coverageInset() < 0) promoteParked();
+      if (isUnzoom(computedView, view)) {
+        unzoomTarget = copyView(world);
+        void prefetchUnzoom(world);
+      }
+      return;
+    }
     if (opts.immediate) {
       requestVisible();
       return;
@@ -281,15 +295,14 @@ async function boot(): Promise<void> {
     return snapComputePx(Math.max(MIN_COMPUTE_PX, cap * scale));
   }
 
-  function scheduleParams(phase: 'live' | 'settle' = 'settle'): void {
-    overviewKey = '';
+  function scheduleParams(phase: 'live' | 'reset' | 'settle' = 'settle'): void {
     resetProbes();
     drawChrome();
-    if (phase === 'live') {
+    bumpAutoStart();
+    if (phase === 'live' || phase === 'reset') {
       paramDragging = true;
       wantHalo = false;
       wantRefine = true;
-      // Let a fast live preview finish; abort a slow full pass so the slider can keep up.
       if (rendering && !renderingLive) renderGen += 1;
       return;
     }
@@ -343,17 +356,14 @@ async function boot(): Promise<void> {
     const origins = probeOrigins();
     const worlds = syncProbeWorlds();
     drawMapAxes(axes, view, xScale, yScale, {
-      leftX: origins[0].x,
-      rightX: origins[1].x,
-      leftRad: worlds[0].x,
-      rightRad: worlds[1].x,
-      leftY: origins[0].y,
-      rightY: origins[1].y,
-      leftYRad: worlds[0].y,
-      rightYRad: worlds[1].y,
-      divergeText: divergeReadout(),
+      points: origins.map((origin, i) => ({
+        x: origin.x,
+        y: origin.y,
+        xRad: worlds[i].x,
+        yRad: worlds[i].y,
+      })),
+      probesOnly: currentProbeStep(probeHud).mode === 'grid',
     });
-    drawOverviewFrame(miniOverlay, tileView(), view);
     drawProbes(origins, worlds);
   }
 
@@ -378,31 +388,20 @@ async function boot(): Promise<void> {
     return { x: sx, y: p.y + (sy - q.y) };
   }
 
-  function probeOrigins(): [{ x: number; y: number }, { x: number; y: number }] {
+  function probeOrigins(): { x: number; y: number }[] {
     const box = clip.getBoundingClientRect();
-    const cx = box.width / 2;
-    const cy = box.height / 2;
-    const half = PROBE_SEP_PX / 2;
-    return [
-      { x: cx - half, y: cy },
-      { x: cx + half, y: cy },
-    ];
+    const blocked = chromeRects(clip);
+    const mode = currentProbeStep(probeHud).mode;
+    const hitR = PROBE_CROSS_PX * overlaySightScale(mode) + 6;
+    return layoutOrigins(box.width, box.height, mode, probeSpacing(probeHud))
+      .filter((origin) => !originHitsChrome(origin, blocked, hitR));
   }
 
-  function probeWorlds(): [{ x: number; y: number }, { x: number; y: number }] {
+  function probeWorlds(): { x: number; y: number }[] {
     const box = clip.getBoundingClientRect();
-    const [left, right] = probeOrigins();
-    return [
-      snapWorld(clientToWorld(box.left + left.x, box.top + left.y)),
-      snapWorld(clientToWorld(box.left + right.x, box.top + right.y)),
-    ];
-  }
-
-  function inProbeHit(clientX: number, clientY: number): boolean {
-    const box = clip.getBoundingClientRect();
-    const dx = clientX - (box.left + box.width / 2);
-    const dy = clientY - (box.top + box.height / 2);
-    return Math.hypot(dx, dy) <= PROBE_HIT_PX;
+    return probeOrigins().map((origin) => (
+      snapWorld(clientToWorld(box.left + origin.x, box.top + origin.y))
+    ));
   }
 
   function playParams(): MapParams {
@@ -413,116 +412,52 @@ async function boot(): Promise<void> {
     return params.DT;
   }
 
+  function cancelAutoStart(): void {
+    window.clearTimeout(autoStartTimer);
+    autoStartTimer = 0;
+  }
+
+  function bumpAutoStart(): void {
+    cancelAutoStart();
+    if (currentProbeStep(probeHud).count <= 0) return;
+    autoStartTimer = window.setTimeout(() => {
+      autoStartTimer = 0;
+      launchProbes();
+      drawProbes();
+    }, PROBE_AUTOSTART_MS);
+  }
+
   function resetProbes(): void {
     probes = null;
-    flies = [null, null];
+    flies = [];
     probePlaying = false;
+    probeHudUi?.syncPlay(false);
     probeView = null;
-    probeSimTime = 0;
     probePlayAcc = 0;
-    probeDivergeSec = null;
   }
 
-  function divergeRad(): number {
-    return PROBE_DIVERGE_DEG * Math.PI / 180;
-  }
-
-  function noteDiverge(): void {
-    if (!probes || probeDivergeSec != null) return;
-    if (Math.abs(probes[0].th1 - probes[1].th1) > divergeRad()) {
-      probeDivergeSec = probeSimTime;
+  function syncProbeWorlds(): { x: number; y: number }[] {
+    const worlds = probeWorlds();
+    if (probes && (
+      (probeView && !viewsEqual(view, probeView))
+      || probes.length !== worlds.length
+    )) {
+      resetProbes();
     }
-  }
-
-  function estimateKey(worlds: [{ x: number; y: number }, { x: number; y: number }]): string {
-    return [
-      worlds[0].x, worlds[0].y, worlds[1].x, worlds[1].y,
-      params.L1, params.L2, params.M1, params.M2, params.G, params.F ?? 0, params.DT,
-    ].join(',');
-  }
-
-  function ensureEstimate(worlds: [{ x: number; y: number }, { x: number; y: number }]): void {
-    const key = estimateKey(worlds);
-    if (divergeJob?.key === key) return;
-    const a = createTrajectory(worlds[0].x, worlds[0].y);
-    const b = createTrajectory(worlds[1].x, worlds[1].y);
-    divergeJob = { key, a, b, time: 0, result: null, done: false };
-    if (Math.abs(a.th1 - b.th1) > divergeRad()) {
-      divergeJob.result = 0;
-      divergeJob.done = true;
-    }
-  }
-
-  function stepEstimate(): void {
-    if (!divergeJob || divergeJob.done) return;
-    const next = playParams();
-    const limit = divergeRad();
-    for (let i = 0; i < PROBE_ESTIMATE_STEPS; i++) {
-      const dt = probeDt();
-      divergeJob.a.step(next, dt);
-      divergeJob.b.step(next, dt);
-      divergeJob.time += dt;
-      if (Math.abs(divergeJob.a.th1 - divergeJob.b.th1) > limit) {
-        divergeJob.result = divergeJob.time;
-        divergeJob.done = true;
-        return;
-      }
-      if (divergeJob.a.done && divergeJob.b.done) {
-        divergeJob.result = null;
-        divergeJob.done = true;
-        return;
-      }
-    }
-  }
-
-  function predictedDivergeSec(): number | null {
-    if (probeDivergeSec != null) return probeDivergeSec;
-    if (divergeJob?.done) return divergeJob.result;
-    return null;
-  }
-
-  /** Wall-clock seconds of a 24 fps play-out of this many map-DT steps. */
-  function playWallSec(simSec: number): number {
-    const dt = probeDt();
-    if (!(dt > 0)) return 0;
-    return simSec / dt / PROBE_PLAY_FPS;
-  }
-
-  function divergeReadout(): string {
-    const predicted = predictedDivergeSec();
-    if (probePlaying) {
-      if (predicted != null) {
-        return `${Math.max(0, playWallSec(predicted - probeSimTime)).toFixed(2)} seconds to diverge`;
-      }
-      return '… seconds to diverge';
-    }
-    if (predicted != null) return `${playWallSec(predicted).toFixed(2)} seconds to diverge`;
-    if (divergeJob && !divergeJob.done) return '… seconds to diverge';
-    return '— seconds to diverge';
-  }
-
-  function syncDivergeLabel(): void {
-    const el = document.querySelector('#map-scale-x .probe-diverge');
-    if (el) el.textContent = divergeReadout();
-  }
-
-  function syncProbeWorlds(): [{ x: number; y: number }, { x: number; y: number }] {
-    if (probes && probeView && !viewsEqual(view, probeView)) resetProbes();
-    return probeWorlds();
+    return worlds;
   }
 
   function launchProbes(): void {
-    const [left, right] = probeWorlds();
-    probes = [createTrajectory(left.x, left.y), createTrajectory(right.x, right.y)];
-    flies = [null, null];
+    cancelAutoStart();
+    const worlds = probeWorlds();
+    if (!worlds.length) return;
+    probes = worlds.map((point) => createTrajectory(point.x, point.y));
+    flies = worlds.map(() => null);
     probeView = copyView(view);
     probePlaying = true;
-    probeSimTime = 0;
     probePlayAcc = 0;
     probePlayLast = performance.now();
-    probeDivergeSec = null;
-    noteDiverge();
-    syncDivergeLabel();
+    probeHudUi?.syncPlay(true);
   }
 
   function stepProbes(now: number): void {
@@ -536,32 +471,45 @@ async function boot(): Promise<void> {
     const next = playParams();
     const snapRad = PROBE_SNAP_DEG * Math.PI / 180;
     const flyDt = dt * PROBE_FLY_TIME;
+    const origins = probeOrigins();
+    const ow = overlay.clientWidth;
+    const oh = overlay.clientHeight;
+    const scale = overlayPxPerLen(
+      currentProbeStep(probeHud).mode,
+      ow,
+      oh,
+      probeSpacing(probeHud),
+      params,
+    );
     while (probePlayAcc >= frame) {
-      for (let i = 0; i < 2; i++) {
+      for (let i = 0; i < probes.length; i++) {
+        const live = flies[i];
+        if (live === 'gone') continue;
+        if (live) {
+          stepFly(live, next, flyDt);
+          const origin = origins[i];
+          if (!origin || !flyOnOverlay(live, origin, scale, ow, oh)) flies[i] = 'gone';
+          continue;
+        }
         const traj = probes[i];
         const prevTh1 = traj.th1;
         const prevTh2 = traj.th2;
         const prevW1 = traj.w1;
         const prevW2 = traj.w2;
         traj.step(next, dt);
-        if (!flies[i] && Math.abs(traj.th1 - prevTh1) >= snapRad) {
-          // Launch from the last coherent pose, not the exploded step.
+        if (Math.abs(traj.th1 - prevTh1) >= snapRad) {
           flies[i] = startFly(prevTh1, prevTh2, prevW1, prevW2, next.L1, next.L2);
         }
-        const fly = flies[i];
-        if (fly) stepFly(fly, next, flyDt);
       }
-      probeSimTime += dt;
       probePlayAcc -= frame;
-      noteDiverge();
       const hanging = probes.some((traj, i) => !flies[i] && !traj.done);
-      const flying = flies.some((fly) => fly && !flyOffscreen(fly, 24));
+      const flying = flies.some((fly) => fly && fly !== 'gone');
       if (!hanging && !flying) {
         probePlaying = false;
+        probeHudUi?.syncPlay(false);
         break;
       }
     }
-    syncDivergeLabel();
   }
 
   function drawProbes(
@@ -571,6 +519,8 @@ async function boot(): Promise<void> {
     const w = overlay.clientWidth;
     const h = overlay.clientHeight;
     if (w < 8 || h < 8) return;
+    const mode = currentProbeStep(probeHud).mode;
+    const large = mode === 'one' || mode === 'two';
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const pw = Math.round(w * dpr);
     const ph = Math.round(h * dpr);
@@ -582,23 +532,32 @@ async function boot(): Promise<void> {
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
-    const mid = {
-      x: (origins[0].x + origins[1].x) / 2,
-      y: (origins[0].y + origins[1].y) / 2 + PROBE_PIVOT_DOWN_PX,
+    const style = {
+      large,
+      pxPerLen: overlayPxPerLen(mode, w, h, probeSpacing(probeHud), params),
+      alpha: large ? PROBE_ALPHA : 1,
     };
-    for (let i = 0; i < 2; i++) {
+    const crossHalf = PROBE_CROSS_PX * overlaySightScale(mode);
+    for (let i = 0; i < origins.length; i++) {
+      const origin = origins[i];
       const fly = flies[i];
-      if (fly) {
-        drawOverlayFly(ctx, mid, fly, params, PROBE_PX_PER_LEN, PROBE_ALPHA);
-        continue;
+      const sight = {
+        x: origin.x,
+        y: origin.y,
+        alpha: fly ? PROBE_SIGHT_FLY_ALPHA : PROBE_SIGHT_ALPHA,
+        crossHalf,
+        pivotR: PROBE_PIVOT_R,
+      };
+      if (fly === 'gone') {
+        drawProbePivot(ctx, origin, PROBE_PIVOT_R, sight.alpha);
+        drawProbeCross(ctx, origin, crossHalf, sight.alpha);
+      } else if (fly) {
+        drawOverlayFly(ctx, origin, fly, params, style, sight);
+      } else {
+        const th1 = probes ? probes[i].th1 : worlds[i].x;
+        const th2 = probes ? probes[i].th2 : worlds[i].y;
+        drawOverlayPendulum(ctx, origin, th1, th2, params, style, sight);
       }
-      const th1 = probes ? probes[i].th1 : worlds[i].x;
-      const th2 = probes ? probes[i].th2 : worlds[i].y;
-      drawOverlayPendulum(ctx, mid, th1, th2, params, PROBE_PX_PER_LEN, PROBE_ALPHA);
-    }
-    drawProbePivot(ctx, mid, PROBE_PIVOT_R);
-    for (let i = 0; i < 2; i++) {
-      drawProbeCross(ctx, origins[i], PROBE_CROSS_PX);
     }
   }
 
@@ -607,37 +566,96 @@ async function boot(): Promise<void> {
     animating = false;
   }
 
-  function cancelPrefetch(): void {
-    if (forcedView || forcedDone) renderGen += 1;
+  function notifyForcedDone(): void {
+    const waiters = forcedWaiters;
+    forcedWaiters = [];
     forcedView = null;
     forcedUnit = null;
-    if (forcedDone) {
-      forcedDone();
-      forcedDone = null;
-    }
+    forcedParams = null;
+    for (const wait of waiters) wait();
+  }
+
+  function cancelPrefetch(): void {
+    if (forcedView || forcedWaiters.length) renderGen += 1;
+    notifyForcedDone();
   }
 
   function cancelZoomAnim(): void {
     cancelAnim();
     cancelPrefetch();
+    unzoomTarget = null;
   }
 
-  function computeForced(target: ViewRect, from?: ViewRect): Promise<void> {
+  function computeForced(target: ViewRect, from?: ViewRect, lookParams?: MapParams): Promise<void> {
     return new Promise((resolve) => {
-      forcedDone?.();
+      forcedWaiters.push(resolve);
       const landing = foldViewY(target);
       forcedView = from
         ? unionView(alignViewY(foldViewY(from), landing), landing)
         : landing;
-      forcedUnit = landing;
-      forcedDone = resolve;
+      forcedUnit = unzoomTarget ? foldViewY(view) : landing;
+      forcedParams = lookParams ?? null;
       wantRefine = false;
       wantHalo = true;
       renderGen += 1;
     });
   }
 
-  async function resetToWorld(): Promise<void> {
+  function waitForced(): Promise<void> {
+    if (!forcedView) return Promise.resolve();
+    return new Promise((resolve) => {
+      forcedWaiters.push(resolve);
+    });
+  }
+
+  function paramsClose(a: MapParams, b: MapParams): boolean {
+    for (const spec of mapDef.params) {
+      const da = Math.abs((a[spec.key] ?? 0) - (b[spec.key] ?? 0));
+      const scale = Math.max(Math.abs(spec.default), spec.step, 1e-6);
+      if (da > Math.max(spec.step * 2, scale * 0.08)) return false;
+    }
+    return true;
+  }
+
+  function lookaheadParams(cover: ViewRect): MapParams | undefined {
+    if (!resetParamFrom || !resetParamTo) return undefined;
+    if (!resetFromView || !isUnzoom(resetFromView, world)) {
+      return lerpParams(mapDef.params, resetParamFrom, resetParamTo, Math.min(1, resetEase + 0.35));
+    }
+    const s0 = Math.max(viewSpanX(resetFromView), viewSpanY(resetFromView));
+    const s1 = Math.max(viewSpanX(world), viewSpanY(world));
+    const sc = Math.max(viewSpanX(cover), viewSpanY(cover));
+    const e = s1 > s0 * 1.001 ? Math.min(1, Math.max(0, (sc - s0) / (s1 - s0))) : 1;
+    return lerpParams(mapDef.params, resetParamFrom, resetParamTo, e);
+  }
+
+  function widestCover(): ViewRect {
+    if (!parkedCover) return computedView;
+    const a = viewSpanX(computedView) * viewSpanY(computedView);
+    const b = viewSpanX(parkedCover) * viewSpanY(parkedCover);
+    return b > a ? parkedCover : computedView;
+  }
+
+  function prefetchUnzoom(target: ViewRect): Promise<void> {
+    const landing = foldViewY(target);
+    const have = widestCover();
+    const next = nextUnzoomCover(have, landing);
+    const look = lookaheadParams(next);
+    const haveAligned = alignViewY(foldViewY(have), landing);
+    const spatialDone = tiledInset(landing, haveAligned) >= 0;
+    const need = spatialDone ? landing : next;
+    if (forcedView && tiledInset(need, forcedView) >= -0.02) return waitForced();
+    if (spatialDone) {
+      if (!look || (lastCoverParams && paramsClose(look, lastCoverParams))) {
+        return Promise.resolve();
+      }
+      if (rendering && !forcedView) return Promise.resolve();
+      return computeForced(landing, undefined, look);
+    }
+    return computeForced(next, undefined, look);
+  }
+
+  function resetToWorld(): void {
     if (atDefaultView(view, world)) {
       if (!viewsEqual(view, world)) {
         view = copyView(world);
@@ -647,35 +665,109 @@ async function boot(): Promise<void> {
       }
       return;
     }
-    stopCoast();
-    cancelZoomAnim();
     const folded = foldViewY(view);
-    if (!viewsEqual(folded, world)) history.push(copyView(view));
+    if (!viewsEqual(folded, view)) {
+      view = folded;
+      applyShift();
+    }
+    applyView(copyView(world), { pushHistory: true, animate: true });
+  }
+
+  function resetHomeBegin(): void {
+    stopCoast();
+    cancelAnim();
+    cancelPrefetch();
+    gestureActive = false;
+    const folded = foldViewY(view);
+    if (!viewsEqual(folded, view)) {
+      view = folded;
+      applyShift();
+    }
+    if (!atDefaultView(view, world)) history.push(copyView(view));
+    resetFromView = copyView(view);
+    resetParamFrom = { ...params };
+    resetParamTo = { ...defaultParams(mapDef), MAX_ITERATIONS: params.MAX_ITERATIONS };
+    resetEase = 0;
+    lastCoverParams = null;
+    unzoomTarget = copyView(world);
+    resetProbes();
     markPrefsDirty();
-    view = folded;
+    void prefetchUnzoom(unzoomTarget);
+  }
+
+  function resetHomeTick(eased: number): void {
+    resetEase = eased;
+    if (resetFromView) {
+      const desired = eased >= 1
+        ? copyView(world)
+        : lerpViewShortY(resetFromView, world, eased);
+      const cover = widestCover();
+      if (tiledInset(desired, cover) >= 0) view = desired;
+      if (coverageInset() < 0) promoteParked();
+    }
     applyShift();
     drawChrome();
     syncZoomBar();
-    await computeForced(copyView(world), folded);
+    if (unzoomTarget) void prefetchUnzoom(unzoomTarget);
+  }
+
+  function resetHomeEnd(): void {
     view = copyView(world);
-    if (!promoteParked(true)) scheduleView({ immediate: true });
+    resetFromView = null;
+    resetParamFrom = null;
+    resetParamTo = null;
+    resetEase = 1;
+    unzoomTarget = null;
+    applyShift();
     drawChrome();
     syncZoomBar();
+  }
+
+  function resetHomeCancel(): void {
+    if (!resetFromView && !resetParamFrom) return;
+    resetFromView = null;
+    resetParamFrom = null;
+    resetParamTo = null;
+    unzoomTarget = null;
+    cancelPrefetch();
   }
 
   function animateViewTo(target: ViewRect, then: () => void): void {
     const from = copyView(view);
     const token = zoomToken;
-    const t0 = performance.now();
+    let origin = performance.now();
+    let last = origin;
+    let held = 0;
     animating = true;
     const step = (now: number): void => {
       if (token !== zoomToken) return;
-      const u = Math.min(1, (now - t0) / SMOOTH_ZOOM_MS);
-      view = lerpViewShortY(from, target, easeInOutCubic(u));
-      if (coverageInset() < 0) promoteParked();
+      const dt = Math.max(0, now - last);
+      last = now;
+      const u = Math.min(1, (now - origin) / SMOOTH_ZOOM_MS);
+      const desired = lerpViewShortY(from, target, easeInOutCubic(u));
+      if (unzoomTarget) {
+        if (coverageInset() < 0) promoteParked();
+        const cover = widestCover();
+        if (tiledInset(desired, cover) < 0 && held < SMOOTH_ZOOM_MS) {
+          origin += dt;
+          held += dt;
+          void prefetchUnzoom(unzoomTarget);
+          applyShift();
+          drawChrome();
+          syncZoomBar();
+          requestAnimationFrame(step);
+          return;
+        }
+        held = 0;
+        void prefetchUnzoom(unzoomTarget);
+      } else if (coverageInset() < 0) {
+        promoteParked();
+      }
+      view = desired;
       applyShift();
       drawChrome();
       syncZoomBar();
+      bumpAutoStart();
       if (u < 1) {
         requestAnimationFrame(step);
         return;
@@ -687,7 +779,28 @@ async function boot(): Promise<void> {
     requestAnimationFrame(step);
   }
 
+  function startUnzoom(next: ViewRect, then: () => void): void {
+    const landing = foldViewY(next);
+    const token = zoomToken;
+    unzoomTarget = landing;
+    const grown = lerpViewShortY(view, landing, 0.05);
+    const have = widestCover();
+    const begin = (): void => {
+      if (token !== zoomToken) return;
+      promoteParked();
+      animateViewTo(next, then);
+    };
+    if (tiledInset(grown, have) >= 0) {
+      void prefetchUnzoom(landing);
+      begin();
+      return;
+    }
+    void prefetchUnzoom(landing).then(begin);
+  }
+
   function applyView(next: ViewRect, opts?: { pushHistory?: boolean; animate?: boolean; immediate?: boolean; navigating?: boolean; coasting?: boolean; keepPrefetch?: boolean }): void {
+    bumpAutoStart();
+    if (opts?.navigating || opts?.coasting) gestureActive = true;
     if (!opts?.coasting) stopCoast();
     if (opts?.animate) cancelAnim();
     if (!opts?.coasting && !opts?.keepPrefetch) cancelPrefetch();
@@ -695,9 +808,19 @@ async function boot(): Promise<void> {
     markPrefsDirty();
     if (opts?.animate) {
       const landing = foldViewY(next);
+      if (isUnzoom(view, landing)) {
+        startUnzoom(next, () => {
+          unzoomTarget = null;
+          promoteParked(true);
+          scheduleView({ immediate: true });
+        });
+        return;
+      }
+      unzoomTarget = null;
       void computeForced(landing, view);
       animateViewTo(next, () => {
-        if (!promoteParked(true)) scheduleView({});
+        promoteParked(true);
+        scheduleView({ immediate: true });
       });
       return;
     }
@@ -709,7 +832,21 @@ async function boot(): Promise<void> {
     });
   }
 
-  bindMenu(mapDef, controls, scheduleParams);
+  bindMenu(mapDef, controls, scheduleParams, {
+    begin: resetHomeBegin,
+    tick: resetHomeTick,
+    end: resetHomeEnd,
+    cancel: resetHomeCancel,
+    isAway: () => !atDefaultView(view, world),
+  });
+  probeHudUi = bindProbeHud(probeHud, () => {
+    resetProbes();
+    drawChrome();
+    bumpAutoStart();
+  }, () => {
+    launchProbes();
+    drawProbes();
+  });
 
   stopCoast = bindMapInput(clip, {
     getView: () => view,
@@ -725,15 +862,18 @@ async function boot(): Promise<void> {
       view = copyView(history[history.length - 1]);
       markPrefsDirty();
       scheduleView({ immediate: true });
+      bumpAutoStart();
     },
-    pickPoint(_x, _y, clientX, clientY) {
-      if (!inProbeHit(clientX, clientY)) return false;
-      launchProbes();
-      drawProbes();
-      return true;
+    pickPoint() {
+      return false;
     },
     prefetchView(target) {
       if (animating) return;
+      if (isUnzoom(view, target)) {
+        unzoomTarget = foldViewY(target);
+        void prefetchUnzoom(unzoomTarget);
+        return;
+      }
       const landing = foldViewY(target);
       if (forcedView && tiledInset(landing, forcedView) > 0.05) return;
       if (parkedCover && tiledInset(landing, parkedCover) > 0.05) return;
@@ -744,13 +884,10 @@ async function boot(): Promise<void> {
       cancelZoomAnim();
     },
     settleView() {
-      if (forcedView) {
-        applyShift();
-        drawChrome();
-        syncZoomBar();
-        return;
-      }
-      scheduleView({});
+      gestureActive = false;
+      unzoomTarget = null;
+      promoteParked(true);
+      scheduleView({ immediate: true });
     },
   }).stopCoast;
 
@@ -762,7 +899,7 @@ async function boot(): Promise<void> {
   zoomOut.addEventListener('click', () => buttonZoom(1 / BUTTON_ZOOM_FACTOR));
   zoomIn.addEventListener('click', () => buttonZoom(BUTTON_ZOOM_FACTOR));
   zoomReset.addEventListener('click', () => {
-    void resetToWorld();
+    resetToWorld();
   });
   syncZoomBar();
 
@@ -780,13 +917,12 @@ async function boot(): Promise<void> {
       history[i] = fitViewAspect(history[i], display.width, display.height, world);
     }
     if (atWorld) history[0] = copyView(world);
-    if (resized) {
-      requestVisible();
-      overviewKey = '';
-    }
+    if (resized) requestVisible();
     applyShift();
+    probeHudUi?.setSteps(buildProbeSteps(clip));
     drawChrome();
     syncZoomBar();
+    if (resized) bumpAutoStart();
   };
   layout();
   const ro = new ResizeObserver(layout);
@@ -797,15 +933,16 @@ async function boot(): Promise<void> {
     if (animating && !forcedView) return;
     if (!wantRefine && !wantHalo) return;
     const forced = forcedView ? copyView(forcedView) : null;
-    const done = forcedDone;
+    const passParams = forcedParams ?? params;
     const live = paramDragging && !forced;
-    const padded = !live && (wantHalo || Boolean(forced));
+    const unzoomPass = Boolean(forced && unzoomTarget);
+    const padded = !live && !unzoomPass && (wantHalo || Boolean(forced));
     const gen = renderGen;
     rendering = true;
     renderingLive = live;
     wantRefine = false;
     wantHalo = false;
-    if (!live) parkedCover = null;
+    if (!live && !unzoomPass) parkedCover = null;
     try {
       const vis = computeSize(display, live ? paramPreviewPx() : settledPx);
       const haloBase = computeSize(display, cssShortPx(display));
@@ -823,52 +960,43 @@ async function boot(): Promise<void> {
       const normOk = normView.xMax > normView.xMin && normView.yMax > normView.yMin;
       const rx = viewSpanX(renderView) / Math.max(viewSpanX(unit), 1e-12);
       const ry = viewSpanY(renderView) / Math.max(viewSpanY(unit), 1e-12);
-      const size = scaleSize(padded ? haloBase : vis, Math.max(1, rx, ry));
+      const size = scaleSize(padded || unzoomPass ? haloBase : vis, Math.max(1, rx, ry));
       renderer.setCanvas(backCanvas);
       const ms = await renderer.render(
         renderView,
-        params,
+        passParams,
         size.width,
         size.height,
         controls.invert,
         controls.median,
-        normOk ? normView : renderView,
+        unzoomPass || !normOk ? renderView : normView,
       );
-      if (gen !== renderGen) {
-        if (forced) done?.();
-        return;
-      }
+      if (gen !== renderGen) return;
       if (live) lastParamMapMs = ms;
       else lastRefineMs = ms;
       await waitForPresent();
-      if (gen !== renderGen) {
-        if (forced) done?.();
-        return;
-      }
+      if (gen !== renderGen) return;
       const visCovers = lastOverscanPad === 0
         && frontCanvas.dataset.ready === '1'
         && tiledInset(view, computedView) >= 0;
       const newCovers = tiledInset(view, renderView) >= 0;
-      if (padded && visCovers && newCovers) {
+      if (padded && newCovers && (visCovers || gestureActive) && !unzoomTarget) {
         parkedCover = renderView;
         lastRenderSize = size;
         if (forced) {
-          forcedView = null;
-          forcedUnit = null;
-          forcedDone = null;
-          done?.();
+          lastCoverParams = passParams;
+          notifyForcedDone();
         }
       } else {
         swapMapCanvases();
         computedView = renderView;
+        if (unzoomPass) parkedCover = null;
         lastRenderSize = size;
         lastOverscanPad = pad;
         lastUnitSpan = { x: viewSpanX(unit), y: viewSpanY(unit) };
         if (forced) {
-          forcedView = null;
-          forcedUnit = null;
-          forcedDone = null;
-          done?.();
+          lastCoverParams = passParams;
+          notifyForcedDone();
         } else if (!padded && !live) {
           const prevPx = settledPx;
           const prevIters = params.MAX_ITERATIONS;
@@ -885,22 +1013,11 @@ async function boot(): Promise<void> {
         }
       }
       applyShift();
-      const key = JSON.stringify(params);
-      if (!animating && !paramDragging && key !== overviewKey) {
-        overview ??= await GpuMapRenderer.create(gpuOk, miniCanvas, mapDef);
-        await overview.render(tileView(), params, OVERVIEW_PX, OVERVIEW_PX, controls.invert, controls.median);
-        overviewKey = key;
-      }
       syncZoomBar();
       drawChrome();
+      if (forced && unzoomTarget) void prefetchUnzoom(unzoomTarget);
     } catch (error) {
-      if (forced) {
-        forcedView = null;
-        forcedUnit = null;
-        const done = forcedDone;
-        forcedDone = null;
-        done?.();
-      }
+      if (forced) notifyForcedDone();
       console.error(error);
       const hint = document.getElementById('gpu-missing');
       if (hint && frontCanvas.dataset.ready !== '1') {
@@ -917,18 +1034,16 @@ async function boot(): Promise<void> {
     if ((wantRefine || wantHalo) && !rendering) {
       void renderOnce();
     }
-    const worlds = syncProbeWorlds();
-    ensureEstimate(worlds);
-    stepEstimate();
     if (probePlaying) {
+      const worlds = syncProbeWorlds();
       stepProbes(now);
       drawProbes(probeOrigins(), worlds);
     }
-    syncDivergeLabel();
     requestAnimationFrame(tick);
   }
 
   drawChrome();
+  bumpAutoStart();
   requestAnimationFrame(tick);
 }
 

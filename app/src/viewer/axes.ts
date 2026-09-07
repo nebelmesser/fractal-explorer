@@ -6,22 +6,48 @@ const RAD2DEG = 180 / Math.PI;
 const NICE = [1, 2, 5] as const;
 /** Five unlabeled ticks between each pair of labeled majors. */
 const MINOR_DIVS = 6;
-const MAJOR_LEN = 18;
-const MINOR_LEN = 4;
+const MAJOR_LEN = 6;
+const MINOR_LEN = 4 / 3;
+const PROBE_LEN = 12;
+
+function strokeTick(
+  ctx: CanvasRenderingContext2D,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  color: string,
+  width: number,
+): void {
+  ctx.lineCap = 'butt';
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.92)';
+  ctx.lineWidth = width + 2;
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(x1, y1);
+  ctx.stroke();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(x1, y1);
+  ctx.stroke();
+}
 
 type NiceStep = { coeff: number; exp: number; step: number };
 type AxisTick = { deg: number; major: boolean; label: string };
 
+export type ProbePointMark = {
+  x: number;
+  y: number;
+  xRad: number;
+  yRad: number;
+};
+
 export type ProbeAxisMarks = {
-  leftX: number;
-  rightX: number;
-  leftRad: number;
-  rightRad: number;
-  leftY: number;
-  rightY: number;
-  leftYRad: number;
-  rightYRad: number;
-  divergeText: string;
+  points: ProbePointMark[];
+  /** Grid: only attachment-point ticks, no other numbered axis marks. */
+  probesOnly?: boolean;
 };
 
 /** θ₁ along the bottom, θ₂ along the right — values in degrees. */
@@ -50,28 +76,23 @@ export function drawMapAxes(
   const pal = theme();
   ctx.lineWidth = 1;
   ctx.shadowColor = pal.axisShadow;
-  ctx.shadowBlur = 2;
+  ctx.shadowBlur = 4;
 
-  const xTicks = axisTicks(view.xMin, view.xMax, w, 88);
-  const yTicks = axisTicks(view.yMin, view.yMax, h, 88);
+  const probesOnly = Boolean(probes?.probesOnly);
+  const xTicks = probesOnly ? [] : axisTicks(view.xMin, view.xMax, w, 88);
+  const yTicks = probesOnly ? [] : axisTicks(view.yMin, view.yMax, h, 88);
 
   ctx.strokeStyle = pal.th1;
   const xLabels: HTMLSpanElement[] = [];
-  const probeBand = probes
-    ? { lo: Math.min(probes.leftX, probes.rightX) - 28, hi: Math.max(probes.leftX, probes.rightX) + 28 }
-    : null;
+  const probeXs = probes?.points.map((p) => p.x) ?? [];
   for (const tick of xTicks) {
     const x = ((tick.deg / RAD2DEG - view.xMin) / (view.xMax - view.xMin)) * w;
     if (x < 2 || x > w - 2) continue;
-    const nearProbe = probeBand != null && x >= probeBand.lo && x <= probeBand.hi;
+    const nearProbe = probeXs.some((px) => Math.abs(x - px) < 28);
     if (nearProbe) continue;
     const len = tick.major ? MAJOR_LEN : MINOR_LEN;
     ctx.globalAlpha = tick.major ? 1 : 0.6;
-    ctx.lineWidth = tick.major ? 1.25 : 1;
-    ctx.beginPath();
-    ctx.moveTo(x, h);
-    ctx.lineTo(x, h - len);
-    ctx.stroke();
+    strokeTick(ctx, x, h, x, h - len, pal.th1, tick.major ? 1.25 : 1);
     if (!tick.major || x < 40 || x > w - 36) continue;
     const label = document.createElement('span');
     label.textContent = tick.label;
@@ -84,13 +105,11 @@ export function drawMapAxes(
 
   ctx.strokeStyle = pal.th2;
   const yLabels: HTMLSpanElement[] = [];
-  const probeYBand = probes
-    ? { lo: Math.min(probes.leftY, probes.rightY) - 22, hi: Math.max(probes.leftY, probes.rightY) + 22 }
-    : null;
+  const probeYs = probes?.points.map((p) => p.y) ?? [];
   for (const tick of yTicks) {
     const y = ((tick.deg / RAD2DEG - view.yMin) / (view.yMax - view.yMin)) * h;
     if (y < 2 || y > h - 2) continue;
-    const nearProbe = probeYBand != null && y >= probeYBand.lo && y <= probeYBand.hi;
+    const nearProbe = probeYs.some((py) => Math.abs(y - py) < 22);
     if (nearProbe) continue;
     const len = tick.major ? MAJOR_LEN : MINOR_LEN;
     ctx.globalAlpha = tick.major ? 1 : 0.6;
@@ -110,6 +129,32 @@ export function drawMapAxes(
   yRoot.replaceChildren(...yLabels);
 }
 
+type AxisMark = { px: number; rad: number };
+
+function uniqueMarks(marks: AxisMark[], eps = 0.5): AxisMark[] {
+  const sorted = [...marks].sort((a, b) => a.px - b.px);
+  const out: AxisMark[] = [];
+  for (const mark of sorted) {
+    const last = out[out.length - 1];
+    if (last && Math.abs(mark.px - last.px) < eps) continue;
+    out.push(mark);
+  }
+  return out;
+}
+
+/** Keep first/last and drop intermediates that would sit on top of a neighbor. */
+function thinMarks(marks: AxisMark[], minGap: number): AxisMark[] {
+  if (marks.length <= 2) return marks;
+  const out = [marks[0]];
+  for (let i = 1; i < marks.length - 1; i++) {
+    if (marks[i].px - out[out.length - 1].px >= minGap) out.push(marks[i]);
+  }
+  const last = marks[marks.length - 1];
+  if (last.px - out[out.length - 1].px < minGap && out.length > 1) out.pop();
+  out.push(last);
+  return out;
+}
+
 function probeTickLabels(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -118,44 +163,40 @@ function probeTickLabels(
   probes: ProbeAxisMarks,
 ): HTMLSpanElement[] {
   const digits = angleDigits(view, w, h);
-  const left = Math.min(probes.leftX, probes.rightX);
-  const right = Math.max(probes.leftX, probes.rightX);
-  const leftRad = probes.leftX <= probes.rightX ? probes.leftRad : probes.rightRad;
-  const rightRad = probes.leftX <= probes.rightX ? probes.rightRad : probes.leftRad;
+  const marks = uniqueMarks(probes.points.map((p) => ({ px: p.x, rad: p.xRad })));
   ctx.save();
   ctx.globalAlpha = 1;
   ctx.lineWidth = 1.5;
   ctx.strokeStyle = theme().th1;
-  for (const x of [left, right]) {
-    if (x < 2 || x > w - 2) continue;
+  for (const mark of marks) {
+    if (mark.px < 2 || mark.px > w - 2) continue;
     ctx.beginPath();
-    ctx.moveTo(x, h);
-    ctx.lineTo(x, h - (MAJOR_LEN + 6));
+    ctx.moveTo(mark.px, h);
+    ctx.lineTo(mark.px, h - PROBE_LEN);
     ctx.stroke();
   }
   ctx.restore();
 
-  const leftLabel = document.createElement('span');
-  leftLabel.className = 'probe-mark probe-mark-left';
-  leftLabel.textContent = formatAngleDeg(leftRad, digits);
-  leftLabel.style.left = `${left}px`;
-
-  const rightLabel = document.createElement('span');
-  rightLabel.className = 'probe-mark probe-mark-right';
-  rightLabel.textContent = formatAngleDeg(rightRad, digits);
-  rightLabel.style.left = `${right}px`;
-
-  const mid = (left + right) / 2;
-  const delta = document.createElement('span');
-  delta.className = 'probe-delta';
-  delta.textContent = formatDeltaDeg(rightRad - leftRad, digits);
-  delta.style.left = `${mid}px`;
-
-  const diverge = document.createElement('span');
-  diverge.className = 'probe-diverge';
-  diverge.textContent = probes.divergeText;
-  diverge.style.left = `${mid}px`;
-  return [leftLabel, rightLabel, delta, diverge];
+  const labeled = thinMarks(marks, 52);
+  const labels: HTMLSpanElement[] = labeled.map((mark, i) => {
+    const el = document.createElement('span');
+    el.className = 'probe-mark';
+    if (labeled.length === 2) {
+      el.className += i === 0 ? ' probe-mark-left' : ' probe-mark-right';
+    }
+    el.textContent = formatAngleDeg(mark.rad, digits);
+    el.style.left = `${mark.px}px`;
+    return el;
+  });
+  if (marks.length === 2) {
+    const mid = (marks[0].px + marks[1].px) / 2;
+    const delta = document.createElement('span');
+    delta.className = 'probe-delta';
+    delta.textContent = formatDeltaDeg(marks[1].rad - marks[0].rad, digits);
+    delta.style.left = `${mid}px`;
+    labels.push(delta);
+  }
+  return labels;
 }
 
 function probeYTickLabels(
@@ -166,35 +207,31 @@ function probeYTickLabels(
   probes: ProbeAxisMarks,
 ): HTMLSpanElement[] {
   const digits = angleDigits(view, w, h);
-  const top = Math.min(probes.leftY, probes.rightY);
-  const bottom = Math.max(probes.leftY, probes.rightY);
-  const topRad = probes.leftY <= probes.rightY ? probes.leftYRad : probes.rightYRad;
-  const bottomRad = probes.leftY <= probes.rightY ? probes.rightYRad : probes.leftYRad;
+  const marks = uniqueMarks(probes.points.map((p) => ({ px: p.y, rad: p.yRad })));
   ctx.save();
   ctx.globalAlpha = 1;
   ctx.lineWidth = 1.5;
   ctx.strokeStyle = theme().th2;
-  for (const y of [top, bottom]) {
-    if (y < 2 || y > h - 2) continue;
+  for (const mark of marks) {
+    if (mark.px < 2 || mark.px > h - 2) continue;
     ctx.beginPath();
-    ctx.moveTo(w, y);
-    ctx.lineTo(w - (MAJOR_LEN + 6), y);
+    ctx.moveTo(w, mark.px);
+    ctx.lineTo(w - PROBE_LEN, mark.px);
     ctx.stroke();
   }
   ctx.restore();
 
-  const same = Math.abs(top - bottom) < 0.5;
-  const topLabel = document.createElement('span');
-  topLabel.className = same ? 'probe-mark' : 'probe-mark probe-mark-top';
-  topLabel.textContent = formatAngleDeg(wrapToTile(topRad), digits);
-  topLabel.style.top = `${top}px`;
-  if (same) return [topLabel];
-
-  const bottomLabel = document.createElement('span');
-  bottomLabel.className = 'probe-mark probe-mark-bottom';
-  bottomLabel.textContent = formatAngleDeg(wrapToTile(bottomRad), digits);
-  bottomLabel.style.top = `${bottom}px`;
-  return [topLabel, bottomLabel];
+  const labeled = thinMarks(marks, 22);
+  return labeled.map((mark, i) => {
+    const el = document.createElement('span');
+    el.className = 'probe-mark';
+    if (labeled.length === 2) {
+      el.className += i === 0 ? ' probe-mark-top' : ' probe-mark-bottom';
+    }
+    el.textContent = formatAngleDeg(wrapToTile(mark.rad), digits);
+    el.style.top = `${mark.px}px`;
+    return el;
+  });
 }
 
 function wrapYTickLabel(tick: AxisTick): string {

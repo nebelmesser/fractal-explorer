@@ -1,4 +1,4 @@
-import { COAST_FRICTION, COAST_MIN_PX, COAST_MIN_ZOOM, MIN_VIEW_SPAN, TILE_HALF, VIEW_HALF } from '../constants';
+import { COAST_FRICTION, COAST_MIN_PX, COAST_MIN_ZOOM, MIN_VIEW_SPAN, TILE_HALF, UNZOOM_GROW, VIEW_HALF } from '../constants';
 import {
   copyView,
   lerpView,
@@ -230,6 +230,26 @@ export function canZoomIn(view: ViewRect): boolean {
 
 export function canZoomOut(view: ViewRect, world: ViewRect): boolean {
   return shortSpan(view) < shortSpan(world) * 0.99;
+}
+
+/** True when the camera is growing — the next cover must be wider, not denser. */
+export function isUnzoom(from: ViewRect, to: ViewRect): boolean {
+  return viewSpanX(to) > viewSpanX(from) * 1.04 || viewSpanY(to) > viewSpanY(from) * 1.04;
+}
+
+/**
+ * Next lookahead cover on the way from `have` to `target`: about `UNZOOM_GROW` ×
+ * the current cover, or the landing view when that hop would overshoot.
+ */
+export function nextUnzoomCover(have: ViewRect, target: ViewRect): ViewRect {
+  const landing = foldViewY(target);
+  const aligned = alignViewY(foldViewY(have), landing);
+  if (tiledInset(landing, aligned) >= 0) return copyView(landing);
+  const s0 = Math.max(viewSpanX(aligned), viewSpanY(aligned));
+  const s1 = Math.max(viewSpanX(landing), viewSpanY(landing));
+  if (!(s1 > s0 * UNZOOM_GROW * 1.02)) return copyView(landing);
+  const u = (s0 * UNZOOM_GROW - s0) / (s1 - s0);
+  return lerpViewShortY(aligned, landing, Math.min(1, Math.max(0, u)));
 }
 
 /** True when this camera is the default framing, ignoring θ₂ periods. */
