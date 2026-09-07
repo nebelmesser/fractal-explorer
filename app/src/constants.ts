@@ -2,12 +2,13 @@
 export const MAP_FLOAT_BITS = 32; // map + postprocess stay f32 on the GPU
 export const MAP_DISPLAY_MIN_PX = 160; // floor so a tiny window still has a panel
 export const MIN_COMPUTE_PX = 64; // refuse a grainier map than this
-export const MAX_COMPUTE_PX = 2048; // longest visible compute side
-export const MAX_OVERSCAN_PX = 4096; // halo pass; half a screen on every side at the same density
+export const MAX_COMPUTE_PX = 4096; // longest visible compute side when the budget allows
+export const MAX_OVERSCAN_PX = 4096; // halo long side; keep storage textures within common GPU limits
 export const TARGET_FRAME_MS = 1000; // budget for one settled map pass; user can change
 export const TARGET_FRAME_MS_MIN = 200;
 export const TARGET_FRAME_MS_MAX = 4000;
 export const BUDGET_BLEND = 0.7; // first frames jump harder toward the time budget
+export const DISPLAY_DPR_CAP = 2; // compute denser than CSS up to this device-pixel ratio
 export const LIVE_ZOOM_MS = 90; // live-recompute while zooming if the last pass was faster
 export const SMOOTH_ZOOM_MS = 840; // click / +/− zoom; 3× the original 280 ms, ease-in-out
 
@@ -22,18 +23,20 @@ export const COAST_VEL_TAU = 0.05; // seconds; smooth the release velocity
 export const COAST_STALE_MS = 64; // ignore a flick if the finger already stopped
 export const COAST_MIN_PX = 48; // stop when |pan| falls below this (px/s)
 export const COAST_MIN_ZOOM = 0.06; // stop when |d ln span / s| falls below this
-export const VIEW_DEBOUNCE_MS = 140; // after a zoom gesture, recompute at the budgeted size
+export const VIEW_DEBOUNCE_MS = 40; // batch wheel ticks before a new compute
+export const PARAM_LIVE_MS = 100; // if a param pass is slower, drop resolution while the slider moves
 export const MIN_VIEW_SPAN = 1e-5; // radians; stop zooming before float32 collapses
-export const OVERSCAN_PAD = 0.5; // half a screen on each side (N,S,E,W and the four corners)
-export const OVERSCAN_RELOAD = 0.2; // prefetch a new halo when remaining pad falls below this
+export const OVERSCAN_PAD = 1.05; // extra screens on each side for the halo pass
+export const OVERSCAN_RELOAD = 0.6; // prefetch a new halo while this much pad remains
 
 // Post-process. Median kills single-pixel fireflies after log-normalization.
 export const MEDIAN_DEFAULT = 3; // scipy-style window (3 → 3×3)
 export const MEDIAN_MAX = 5; // shader sorts n² samples; keep n small
 export const INVERT_DEFAULT = false;
 
-// Default map view: full angle square, same as the pendulum kernel.
-export const VIEW_HALF = Math.PI; // ±π radians on both axes
+// Default map view: 2π on the short side. Unique compute strip on θ₂ is ±2π.
+export const VIEW_HALF = Math.PI; // ±180° default framing on the short side
+export const TILE_HALF = Math.PI * 2; // ±360°: Y wraps; X can be centered here
 
 // Pendulum physics defaults. Must stay in sync with crates/map_core/src/constants.rs.
 export const PENDULUM_L1 = 1;
@@ -43,7 +46,6 @@ export const PENDULUM_M2 = 1;
 export const PENDULUM_G = 9.81;
 export const PENDULUM_DT = 0.2; // coarse step used by the escape-time map
 export const PENDULUM_FRICTION = 0; // linear drag on ω; 0 = conservative
-export const PENDULUM_SNAP = 8; // |ω₁| L1 that tears the first rod off the pin; 0 = never
 export const PENDULUM_MIN_ITER = 1000; // floor the budget will not go below
 export const PENDULUM_MAX_ITER = 8000; // cap when the frame budget has room
 export const PENDULUM_SINGULAR = 1e-9; // treat a vanishing denominator as α = 0
@@ -58,6 +60,8 @@ export const PROBE_PIVOT_DOWN_PX = 18; // hang the rods this far below the sight
 export const PROBE_PIVOT_R = 2; // CSS px; keep smaller than the sights
 export const PROBE_BOB_R = 4; // CSS px radius at mass = 1; area scales with M
 export const PROBE_DIVERGE_DEG = 10; // |Δθ₁| that counts as diverged
+export const PROBE_SNAP_DEG = 720; // |Δθ₁| in one overlay frame that tears the first rod off the pin
+export const PROBE_FLY_TIME = 0.55; // fly integrates this fraction of map DT per frame
 export const PROBE_ALPHA = 0.5; // overlay pendulums stay see-through
 export const PROBE_PLAY_FPS = 24; // overlay steps once per frame at this rate
 export const PROBE_ESTIMATE_STEPS = 600; // lookahead steps per frame for the countdown

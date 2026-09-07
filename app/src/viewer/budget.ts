@@ -1,6 +1,7 @@
 import {
   BUDGET_BLEND,
   MAP_DISPLAY_MIN_PX,
+  DISPLAY_DPR_CAP,
   MAX_COMPUTE_PX,
   MAX_OVERSCAN_PX,
   MIN_COMPUTE_PX,
@@ -36,15 +37,29 @@ export function preferredIters(targetMs: number): number {
   return snapIters(PENDULUM_MIN_ITER + t * (PENDULUM_MAX_ITER - PENDULUM_MIN_ITER));
 }
 
+/** CSS short side, snapped to the workgroup. */
+export function cssShortPx(display: MapSize): number {
+  return snapComputePx(Math.min(display.width, display.height));
+}
+
+/** Highest short-side compute size the budget may grow into (CSS × DPR, capped). */
+export function maxBudgetPx(display: MapSize, dpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio): number {
+  const css = Math.min(display.width, display.height);
+  const scaled = css * Math.min(DISPLAY_DPR_CAP, Math.max(1, dpr || 1));
+  return snapComputePx(Math.min(MAX_COMPUTE_PX, scaled));
+}
+
 /**
  * Split the frame-time budget between pixels and iteration cap.
- * Fill the screen at the minimum 1000 steps first; leftover time raises iterations.
+ * Fill the CSS screen at the minimum 1000 steps first; leftover time raises
+ * iterations, then physical resolution up to `maxShortPx`.
  */
 export function nextWorkBudget(
   current: { shortPx: number; iters: number },
   measuredMs: number,
   targetMs: number,
   display: MapSize,
+  maxShortPx = cssShortPx(display),
 ): { shortPx: number; iters: number } {
   const vis = computeSize(display, current.shortPx);
   const pixels = Math.max(1, vis.width * vis.height);
@@ -53,15 +68,20 @@ export function nextWorkBudget(
   const blended = 1 - BUDGET_BLEND + scale * BUDGET_BLEND;
   const targetWork = pixels * iters * blended;
 
-  const full = computeSize(display, snapComputePx(Math.min(display.width, display.height)));
+  const cssPx = cssShortPx(display);
+  const maxPx = snapComputePx(Math.max(cssPx, maxShortPx));
+  const full = computeSize(display, cssPx);
   const fullPixels = Math.max(1, full.width * full.height);
   const cap = preferredIters(targetMs);
   const itersAtFull = targetWork / fullPixels;
   if (itersAtFull >= PENDULUM_MIN_ITER) {
-    return {
-      shortPx: snapComputePx(Math.min(display.width, display.height)),
-      iters: snapIters(Math.min(cap, Math.max(PENDULUM_MIN_ITER, itersAtFull))),
-    };
+    const nextIters = snapIters(Math.min(cap, Math.max(PENDULUM_MIN_ITER, itersAtFull)));
+    const workAtCap = fullPixels * cap;
+    if (targetWork > workAtCap * 1.08 && maxPx > cssPx) {
+      const grow = Math.sqrt(targetWork / workAtCap);
+      return { shortPx: snapComputePx(Math.min(maxPx, cssPx * grow)), iters: cap };
+    }
+    return { shortPx: cssPx, iters: nextIters };
   }
 
   const targetPixels = targetWork / PENDULUM_MIN_ITER;

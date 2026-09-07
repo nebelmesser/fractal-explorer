@@ -229,11 +229,6 @@ export type FlyState = {
   w1: number;
 };
 
-/** Linear speed of the first bob: |ω₁| L1. */
-export function firstBobSpeed(w1: number, L1: number): number {
-  return Math.abs(w1) * L1;
-}
-
 export function startFly(
   th1: number,
   th2: number,

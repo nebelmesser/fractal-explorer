@@ -2,7 +2,6 @@ import {
   PENDULUM_DT,
   PENDULUM_FRICTION,
   PENDULUM_G,
-  PENDULUM_SNAP,
   PENDULUM_L1,
   PENDULUM_L2,
   PENDULUM_M1,
@@ -51,7 +50,7 @@ export function packPendulumUniforms(
   u32[15] = post.invert ? 1 : 0;
   u32[16] = Math.max(0, Math.round(post.median));
   const norm = normPixelRect(view, post.normView ?? view, width, height);
-  // extra.yz: 16-bit pairs (x0,y0) and (x1,y1). Sizes stay ≤ 4096.
+  // extra.yz: 16-bit pairs (x0,y0) and (x1,y1). Sides stay well below 65535.
   u32[17] = (norm.y0 << 16) | norm.x0;
   u32[18] = (norm.y1 << 16) | norm.x1;
   u32[19] = 0;
@@ -81,7 +80,6 @@ export const pendulumMap: MapDefinition = {
     { key: 'M2', label: 'M2', kind: 'float', min: 0.2, max: 5, step: 0.01, default: PENDULUM_M2, tone: 'th2' },
     { key: 'G', label: 'G', kind: 'float', min: 0.5, max: 25, step: 0.01, default: PENDULUM_G },
     { key: 'F', label: 'Friction', kind: 'float', min: 0, max: 0.5, step: 0.01, default: PENDULUM_FRICTION },
-    { key: 'SNAP', label: 'Snap speed', kind: 'float', min: 0, max: 20, step: 0.1, default: PENDULUM_SNAP },
     { key: 'DT', label: 'DT', kind: 'float', min: 0.01, max: 0.5, step: 0.01, default: PENDULUM_DT },
   ],
   gpu,

@@ -35,7 +35,7 @@ export function syncBudgetReadout(ms: number, iters: number): void {
 export function bindMenu(
   map: MapDefinition,
   controls: ExplorerControls,
-  onParamsChange: () => void,
+  onParamsChange: (phase: 'live' | 'settle') => void,
 ): void {
   const menuToggle = document.getElementById('menu-toggle') as HTMLButtonElement;
   const menuBackdrop = document.getElementById('menu-backdrop') as HTMLElement;
@@ -74,8 +74,9 @@ export function bindMenu(
       controls.params[spec.key] = spec.kind === 'int' ? Math.round(raw) : raw;
       readout.textContent = formatValue(spec.kind, controls.params[spec.key]);
       markPrefsDirty();
-      onParamsChange();
+      onParamsChange('live');
     });
+    input.addEventListener('change', () => onParamsChange('settle'));
     label.append(row, input);
     paramRoot.append(label);
     sliders.push({ key: spec.key, input, readout });
@@ -111,7 +112,7 @@ export function bindMenu(
   invert.addEventListener('change', () => {
     controls.invert = invert.checked;
     markPrefsDirty();
-    onParamsChange();
+    onParamsChange('settle');
   });
   median.addEventListener('input', () => {
     // Only 0 (off) or odd windows; the shader sorts n² samples.
@@ -120,14 +121,16 @@ export function bindMenu(
     median.value = String(controls.median);
     if (medianValue) medianValue.textContent = String(controls.median);
     markPrefsDirty();
-    onParamsChange();
+    onParamsChange('live');
   });
+  median.addEventListener('change', () => onParamsChange('settle'));
   target.addEventListener('input', () => {
     controls.targetFrameMs = Number(target.value);
     syncBudgetReadout(controls.targetFrameMs, controls.params.MAX_ITERATIONS);
     markPrefsDirty();
-    onParamsChange();
+    onParamsChange('live');
   });
+  target.addEventListener('change', () => onParamsChange('settle'));
   reset?.addEventListener('click', () => {
     for (const spec of map.params) {
       controls.params[spec.key] = spec.default;
@@ -137,7 +140,7 @@ export function bindMenu(
     syncParams();
     syncExtras();
     markPrefsDirty();
-    onParamsChange();
+    onParamsChange('settle');
   });
 
   function setMenuOpen(open: boolean): void {

@@ -13,7 +13,12 @@ struct Uniforms {
 @group(0) @binding(1) var<storage, read_write> raw: array<f32>;
 
 const TWO_PI: f32 = 6.283185307179586;
+const FOUR_PI: f32 = 12.566370614359172;
 const SINGULAR: f32 = 1e-9;
+
+fn wrap_th2(th: f32) -> f32 {
+  return th - FOUR_PI * round(th / FOUR_PI);
+}
 
 @compute @workgroup_size(8, 8)
 fn simulate(@builtin(global_invocation_id) gid: vec3u) {
@@ -26,7 +31,7 @@ fn simulate(@builtin(global_invocation_id) gid: vec3u) {
   let x_den = max(width, 2u) - 1u;
   let y_den = max(height, 2u) - 1u;
   let th1 = u.view.x + (u.view.y - u.view.x) * f32(gid.x) / f32(x_den);
-  let th2 = u.view.z + (u.view.w - u.view.z) * f32(gid.y) / f32(y_den);
+  let th2 = wrap_th2(u.view.z + (u.view.w - u.view.z) * f32(gid.y) / f32(y_den));
   raw[id] = integrate(th1, th2);
 }
 

@@ -13,7 +13,7 @@ import {
 } from '../constants';
 import type { ViewRect } from '../maps/types';
 import { closeMenu } from './menu';
-import { canZoomIn, canZoomOut, panView, screenToMap, zoomAbout } from './view';
+import { canZoomIn, canZoomOut, coastStopView, panView, screenToMap, zoomAbout } from './view';
 
 function isUiEvent(event: Event): boolean {
   return event.target instanceof Element && Boolean(
@@ -32,6 +32,7 @@ export type ViewOpts = {
   navigating?: boolean;
   animate?: boolean;
   coasting?: boolean;
+  keepPrefetch?: boolean;
 };
 
 export type InputHandlers = {
@@ -43,6 +44,12 @@ export type InputHandlers = {
   pickPoint(x: number, y: number, clientX: number, clientY: number): boolean;
   hoverPoint?(x: number, y: number, clientX: number, clientY: number): void;
   hoverEnd?(): void;
+  /** Compute the view inertia will rest at, before the coast finishes. */
+  prefetchView?(view: ViewRect): void;
+  /** Pointer down: drop click-zoom waits and leftover prefetch. */
+  interrupt?(): void;
+  /** Coast ended: allow a halo/refine pass at the rest view. */
+  settleView?(): void;
 };
 
 export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { stopCoast(): void } {
@@ -148,6 +155,17 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
     const zoomAnchor = anchor ?? pinchAnchor;
     if (zoomAnchor) velLog = releaseZoomVel(performance.now());
     if (Math.hypot(velX, velY) < COAST_MIN_PX && Math.abs(velLog) < COAST_MIN_ZOOM) return;
+    const box = surface.getBoundingClientRect();
+    handlers.prefetchView?.(coastStopView(
+      handlers.getView(),
+      handlers.getWorld(),
+      velX,
+      velY,
+      velLog,
+      zoomAnchor,
+      box.width,
+      box.height,
+    ));
     let lastT = performance.now() - 16;
     const step = (now: number): void => {
       const dt = Math.min(0.05, (now - lastT) / 1000);
@@ -169,9 +187,10 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
         const box = surface.getBoundingClientRect();
         next = panView(next, velX * dt, velY * dt, box.width, box.height);
       }
-      handlers.setView(next, { navigating: true, coasting: true });
+      handlers.setView(next, { navigating: true, coasting: true, keepPrefetch: true });
       if (Math.hypot(velX, velY) < COAST_MIN_PX && Math.abs(velLog) < COAST_MIN_ZOOM) {
         coastRaf = 0;
+        handlers.settleView?.();
         return;
       }
       coastRaf = requestAnimationFrame(step);
@@ -188,6 +207,7 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
       stopCoast();
       resetVel();
       moved = false;
+      handlers.interrupt?.();
     } else {
       stopCoast();
       velX = 0;
@@ -258,7 +278,22 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
     last = { x: event.clientX, y: event.clientY };
     noteVel(dx, dy, 0, performance.now());
     const box = surface.getBoundingClientRect();
-    handlers.setView(panView(handlers.getView(), dx, dy, box.width, box.height), { navigating: true });
+    handlers.setView(panView(handlers.getView(), dx, dy, box.width, box.height), {
+      navigating: true,
+      keepPrefetch: true,
+    });
+    if (Math.hypot(velX, velY) >= COAST_MIN_PX) {
+      handlers.prefetchView?.(coastStopView(
+        handlers.getView(),
+        handlers.getWorld(),
+        velX,
+        velY,
+        0,
+        null,
+        box.width,
+        box.height,
+      ));
+    }
     surface.classList.add('is-dragging');
     emitHover(event.clientX, event.clientY);
   });

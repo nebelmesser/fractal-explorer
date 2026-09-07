@@ -1,11 +1,12 @@
 import './style.css';
 import {
   BUTTON_ZOOM_FACTOR,
-  LIVE_ZOOM_MS,
   MEDIAN_DEFAULT,
+  MIN_COMPUTE_PX,
   OVERSCAN_PAD,
   OVERSCAN_RELOAD,
   OVERVIEW_PX,
+  PARAM_LIVE_MS,
   PROBE_ALPHA,
   PROBE_CROSS_PX,
   PROBE_DIVERGE_DEG,
@@ -17,6 +18,8 @@ import {
   PROBE_PIVOT_R,
   PROBE_PX_PER_LEN,
   PROBE_SEP_PX,
+  PROBE_SNAP_DEG,
+  PROBE_FLY_TIME,
   SMOOTH_ZOOM_MS,
   TARGET_FRAME_MS,
   VIEW_DEBOUNCE_MS,
@@ -27,16 +30,16 @@ import { defaultMap } from './maps/catalog';
 import {
   copyView,
   defaultParams,
-  lerpView,
-  padView,
-  unpadView,
-  viewInset,
+  padViewWith,
+  unionView,
   viewsEqual,
+  viewSpanX,
+  viewSpanY,
   type MapParams,
   type ViewRect,
 } from './maps/types';
 import { createTrajectory, initMapCore, type Trajectory } from './wasm/core';
-import { computeSize, fitMapDisplay, nextWorkBudget, preferredIters, scaleSize, snapComputePx } from './viewer/budget';
+import { computeSize, cssShortPx, fitMapDisplay, maxBudgetPx, nextWorkBudget, preferredIters, scaleSize, snapComputePx } from './viewer/budget';
 import { bindMapInput } from './viewer/input';
 import { bindMenu, syncBudgetReadout, type ExplorerControls } from './viewer/menu';
 import { drawMapAxes } from './viewer/axes';
@@ -47,21 +50,25 @@ import {
   drawOverlayPendulum,
   drawProbeCross,
   drawProbePivot,
-  firstBobSpeed,
   flyOffscreen,
   startFly,
   stepFly,
   type FlyState,
 } from './maps/pendulum/preview';
 import {
+  alignViewY,
+  atDefaultView,
   canZoomIn,
   canZoomOut,
   easeInOutCubic,
   fitViewAspect,
+  foldViewY,
+  lerpViewShortY,
+  tiledInset,
+  tileView,
   viewCenter,
-  viewSpanX,
-  viewSpanY,
   worldFromDisplay,
+  wrapPointToCover,
   zoomAbout,
 } from './viewer/view';
 
@@ -148,11 +155,17 @@ async function boot(): Promise<void> {
   let wantHalo = false;
   let renderGen = 0;
   let lastRefineMs = Infinity;
+  let lastParamMapMs = Infinity;
+  let paramDragging = false;
+  let renderingLive = false;
   let overviewKey = '';
   let zoomToken = 0;
   let lastRenderSize = { width: 0, height: 0 };
   let lastOverscanPad = 0;
+  let lastUnitSpan = { x: 0, y: 0 };
+  let parkedCover: ViewRect | null = null;
   let forcedView: ViewRect | null = null;
+  let forcedUnit: ViewRect | null = null;
   let forcedDone: (() => void) | null = null;
 
   const controls: ExplorerControls = {
@@ -194,18 +207,19 @@ async function boot(): Promise<void> {
   function syncZoomBar(): void {
     zoomIn.disabled = !canZoomIn(view);
     zoomOut.disabled = !canZoomOut(view, world);
-    zoomReset.disabled = !canZoomOut(view, world) && viewsEqual(view, world);
+    zoomReset.disabled = !canZoomOut(view, world) && atDefaultView(view, world);
   }
 
   function scaleDrift(): number {
-    const expected = Math.max(1e-6, 1 + 2 * lastOverscanPad);
-    const rx = viewSpanX(computedView) / viewSpanX(view);
-    const ry = viewSpanY(computedView) / viewSpanY(view);
-    return Math.max(Math.abs(rx / expected - 1), Math.abs(ry / expected - 1));
+    if (!(lastUnitSpan.x > 0 && lastUnitSpan.y > 0)) return 0;
+    return Math.max(
+      Math.abs(viewSpanX(view) / lastUnitSpan.x - 1),
+      Math.abs(viewSpanY(view) / lastUnitSpan.y - 1),
+    );
   }
 
-  function screenPx(): number {
-    return snapComputePx(Math.min(display.width, display.height));
+  function coverageInset(): number {
+    return tiledInset(view, computedView);
   }
 
   function applyBudget(): void {
@@ -214,13 +228,15 @@ async function boot(): Promise<void> {
       syncBudgetReadout(controls.targetFrameMs, params.MAX_ITERATIONS);
       return;
     }
+    const capPx = maxBudgetPx(display);
     const next = nextWorkBudget(
       { shortPx: settledPx, iters: params.MAX_ITERATIONS },
       lastRefineMs,
       controls.targetFrameMs,
       display,
+      capPx,
     );
-    settledPx = Math.min(screenPx(), next.shortPx);
+    settledPx = Math.min(capPx, next.shortPx);
     params.MAX_ITERATIONS = next.iters;
     syncBudgetReadout(controls.targetFrameMs, params.MAX_ITERATIONS);
   }
@@ -231,42 +247,91 @@ async function boot(): Promise<void> {
     renderGen += 1;
   }
 
-  function scheduleView(opts: { immediate?: boolean; navigating?: boolean }): void {
+  function scheduleView(opts: { immediate?: boolean; navigating?: boolean; coasting?: boolean }): void {
     window.clearTimeout(viewTimer);
     applyShift();
     drawChrome();
     syncZoomBar();
+    if (opts.coasting) return;
     if (opts.immediate) {
       requestVisible();
       return;
     }
     const zoomed = scaleDrift() > 0.04;
-    const inset = viewInset(view, computedView);
+    const inset = coverageInset();
     if (zoomed) {
       viewTimer = window.setTimeout(() => requestVisible(), VIEW_DEBOUNCE_MS);
       return;
     }
-    // Still on the last halo: CSS only, until the remaining pad is thin.
     if (inset < 0) {
+      if (promoteParked()) return;
       requestVisible();
       return;
     }
-    if (inset < OVERSCAN_RELOAD && lastOverscanPad > 0) {
+    if (inset < OVERSCAN_RELOAD && !parkedCover && !forcedView) {
       wantHalo = true;
     }
   }
 
-  function scheduleParams(): void {
+  function paramPreviewPx(): number {
+    const cap = Math.min(settledPx, cssShortPx(display));
+    const ms = Number.isFinite(lastParamMapMs) ? lastParamMapMs : lastRefineMs;
+    if (!(ms > PARAM_LIVE_MS)) return cap;
+    const scale = Math.sqrt(PARAM_LIVE_MS / ms);
+    return snapComputePx(Math.max(MIN_COMPUTE_PX, cap * scale));
+  }
+
+  function scheduleParams(phase: 'live' | 'settle' = 'settle'): void {
     overviewKey = '';
     resetProbes();
+    drawChrome();
+    if (phase === 'live') {
+      paramDragging = true;
+      wantHalo = false;
+      wantRefine = true;
+      // Let a fast live preview finish; abort a slow full pass so the slider can keep up.
+      if (rendering && !renderingLive) renderGen += 1;
+      return;
+    }
+    paramDragging = false;
     applyBudget();
     requestVisible();
   }
 
+  function swapMapCanvases(): void {
+    mapShift.appendChild(backCanvas);
+    backCanvas.classList.remove('map-pending');
+    backCanvas.classList.add('is-front');
+    backCanvas.setAttribute('aria-label', 'Map');
+    backCanvas.removeAttribute('aria-hidden');
+    frontCanvas.classList.remove('is-front');
+    frontCanvas.classList.add('map-pending');
+    frontCanvas.removeAttribute('aria-label');
+    frontCanvas.setAttribute('aria-hidden', 'true');
+    clip.appendChild(frontCanvas);
+    const prevCanvas = frontCanvas;
+    frontCanvas = backCanvas;
+    backCanvas = prevCanvas;
+  }
+
+  function promoteParked(force = false): boolean {
+    if (!parkedCover) return false;
+    if (tiledInset(view, parkedCover) < 0) return false;
+    if (!force && coverageInset() >= 0) return false;
+    computedView = parkedCover;
+    lastOverscanPad = OVERSCAN_PAD;
+    parkedCover = null;
+    swapMapCanvases();
+    applyShift();
+    drawChrome();
+    return true;
+  }
+
   function applyShift(): void {
-    const sx = viewSpanX(computedView) / viewSpanX(view);
-    const sy = viewSpanY(computedView) / viewSpanY(view);
-    const cc = viewCenter(computedView);
+    const cover = alignViewY(computedView, view);
+    const sx = viewSpanX(cover) / viewSpanX(view);
+    const sy = viewSpanY(cover) / viewSpanY(view);
+    const cc = viewCenter(cover);
     const nc = viewCenter(view);
     const box = clip.getBoundingClientRect();
     const dx = ((cc.x - nc.x) / viewSpanX(view)) * box.width;
@@ -288,7 +353,7 @@ async function boot(): Promise<void> {
       rightYRad: worlds[1].y,
       divergeText: divergeReadout(),
     });
-    drawOverviewFrame(miniOverlay, mapDef.defaultView, view);
+    drawOverviewFrame(miniOverlay, tileView(), view);
     drawProbes(origins, worlds);
   }
 
@@ -301,16 +366,16 @@ async function boot(): Promise<void> {
   }
 
   function snapWorld(p: { x: number; y: number }): { x: number; y: number } {
-    const nx = (p.x - computedView.xMin) / viewSpanX(computedView);
-    const ny = (p.y - computedView.yMin) / viewSpanY(computedView);
+    const q = wrapPointToCover(p, computedView);
+    const nx = (q.x - computedView.xMin) / viewSpanX(computedView);
+    const ny = (q.y - computedView.yMin) / viewSpanY(computedView);
     const texel = nx >= 0 && nx <= 1 && ny >= 0 && ny <= 1 ? renderer.mapTexel(nx, ny) : null;
     if (!texel) return p;
     const xDen = Math.max(texel.width - 1, 1);
     const yDen = Math.max(texel.height - 1, 1);
-    return {
-      x: computedView.xMin + (viewSpanX(computedView) * texel.ix) / xDen,
-      y: computedView.yMin + (viewSpanY(computedView) * texel.iy) / yDen,
-    };
+    const sx = computedView.xMin + (viewSpanX(computedView) * texel.ix) / xDen;
+    const sy = computedView.yMin + (viewSpanY(computedView) * texel.iy) / yDen;
+    return { x: sx, y: p.y + (sy - q.y) };
   }
 
   function probeOrigins(): [{ x: number; y: number }, { x: number; y: number }] {
@@ -469,16 +534,22 @@ async function boot(): Promise<void> {
     probePlayAcc += Math.min(0.1, Math.max(0, (now - probePlayLast) / 1000));
     probePlayLast = now;
     const next = playParams();
-    const snap = params.SNAP ?? 0;
+    const snapRad = PROBE_SNAP_DEG * Math.PI / 180;
+    const flyDt = dt * PROBE_FLY_TIME;
     while (probePlayAcc >= frame) {
       for (let i = 0; i < 2; i++) {
         const traj = probes[i];
+        const prevTh1 = traj.th1;
+        const prevTh2 = traj.th2;
+        const prevW1 = traj.w1;
+        const prevW2 = traj.w2;
         traj.step(next, dt);
-        if (!flies[i] && snap > 0 && firstBobSpeed(traj.w1, next.L1) >= snap) {
-          flies[i] = startFly(traj.th1, traj.th2, traj.w1, traj.w2, next.L1, next.L2);
+        if (!flies[i] && Math.abs(traj.th1 - prevTh1) >= snapRad) {
+          // Launch from the last coherent pose, not the exploded step.
+          flies[i] = startFly(prevTh1, prevTh2, prevW1, prevW2, next.L1, next.L2);
         }
         const fly = flies[i];
-        if (fly) stepFly(fly, next, dt);
+        if (fly) stepFly(fly, next, flyDt);
       }
       probeSimTime += dt;
       probePlayAcc -= frame;
@@ -531,42 +602,65 @@ async function boot(): Promise<void> {
     }
   }
 
-  function cancelZoomAnim(): void {
+  function cancelAnim(): void {
     zoomToken += 1;
     animating = false;
+  }
+
+  function cancelPrefetch(): void {
+    if (forcedView || forcedDone) renderGen += 1;
     forcedView = null;
+    forcedUnit = null;
     if (forcedDone) {
       forcedDone();
       forcedDone = null;
     }
   }
 
-  function computeForced(target: ViewRect): Promise<void> {
+  function cancelZoomAnim(): void {
+    cancelAnim();
+    cancelPrefetch();
+  }
+
+  function computeForced(target: ViewRect, from?: ViewRect): Promise<void> {
     return new Promise((resolve) => {
-      forcedView = copyView(target);
+      forcedDone?.();
+      const landing = foldViewY(target);
+      forcedView = from
+        ? unionView(alignViewY(foldViewY(from), landing), landing)
+        : landing;
+      forcedUnit = landing;
       forcedDone = resolve;
-      requestVisible();
+      wantRefine = false;
+      wantHalo = true;
+      renderGen += 1;
     });
   }
 
   async function resetToWorld(): Promise<void> {
-    if (viewsEqual(view, world) && viewsEqual(computedView, world)) return;
+    if (atDefaultView(view, world)) {
+      if (!viewsEqual(view, world)) {
+        view = copyView(world);
+        applyShift();
+        drawChrome();
+        syncZoomBar();
+      }
+      return;
+    }
     stopCoast();
     cancelZoomAnim();
-    const token = zoomToken;
-    if (!viewsEqual(view, world)) history.push(copyView(view));
+    const folded = foldViewY(view);
+    if (!viewsEqual(folded, world)) history.push(copyView(view));
     markPrefsDirty();
-    const from = copyView(view);
-    await computeForced(copyView(world));
-    if (token !== zoomToken) return;
-    view = from;
+    view = folded;
     applyShift();
     drawChrome();
     syncZoomBar();
-    animateViewTo(copyView(world), () => {
-      wantHalo = true;
-      scheduleView({});
-    });
+    await computeForced(copyView(world), folded);
+    view = copyView(world);
+    if (!promoteParked(true)) scheduleView({ immediate: true });
+    drawChrome();
+    syncZoomBar();
   }
 
   function animateViewTo(target: ViewRect, then: () => void): void {
@@ -574,12 +668,11 @@ async function boot(): Promise<void> {
     const token = zoomToken;
     const t0 = performance.now();
     animating = true;
-    // Sharpen the *frozen* start texture if the GPU is idle — never the moving view.
-    if (lastRefineMs < LIVE_ZOOM_MS * 2) requestVisible();
     const step = (now: number): void => {
       if (token !== zoomToken) return;
       const u = Math.min(1, (now - t0) / SMOOTH_ZOOM_MS);
-      view = lerpView(from, target, easeInOutCubic(u));
+      view = lerpViewShortY(from, target, easeInOutCubic(u));
+      if (coverageInset() < 0) promoteParked();
       applyShift();
       drawChrome();
       syncZoomBar();
@@ -594,17 +687,26 @@ async function boot(): Promise<void> {
     requestAnimationFrame(step);
   }
 
-  function applyView(next: ViewRect, opts?: { pushHistory?: boolean; animate?: boolean; immediate?: boolean; navigating?: boolean; coasting?: boolean }): void {
+  function applyView(next: ViewRect, opts?: { pushHistory?: boolean; animate?: boolean; immediate?: boolean; navigating?: boolean; coasting?: boolean; keepPrefetch?: boolean }): void {
     if (!opts?.coasting) stopCoast();
-    cancelZoomAnim();
+    if (opts?.animate) cancelAnim();
+    if (!opts?.coasting && !opts?.keepPrefetch) cancelPrefetch();
     if (opts?.pushHistory && !viewsEqual(next, view)) history.push(copyView(view));
     markPrefsDirty();
     if (opts?.animate) {
-      animateViewTo(next, () => scheduleView({ immediate: true }));
+      const landing = foldViewY(next);
+      void computeForced(landing, view);
+      animateViewTo(next, () => {
+        if (!promoteParked(true)) scheduleView({});
+      });
       return;
     }
     view = next;
-    scheduleView({ immediate: opts?.immediate, navigating: opts?.navigating });
+    scheduleView({
+      immediate: opts?.immediate,
+      navigating: opts?.navigating,
+      coasting: opts?.coasting,
+    });
   }
 
   bindMenu(mapDef, controls, scheduleParams);
@@ -629,6 +731,26 @@ async function boot(): Promise<void> {
       launchProbes();
       drawProbes();
       return true;
+    },
+    prefetchView(target) {
+      if (animating) return;
+      const landing = foldViewY(target);
+      if (forcedView && tiledInset(landing, forcedView) > 0.05) return;
+      if (parkedCover && tiledInset(landing, parkedCover) > 0.05) return;
+      if (!forcedView && !parkedCover && tiledInset(landing, computedView) > OVERSCAN_RELOAD * 0.5) return;
+      void computeForced(target, view);
+    },
+    interrupt() {
+      cancelZoomAnim();
+    },
+    settleView() {
+      if (forcedView) {
+        applyShift();
+        drawChrome();
+        syncZoomBar();
+        return;
+      }
+      scheduleView({});
     },
   }).stopCoast;
 
@@ -672,28 +794,36 @@ async function boot(): Promise<void> {
 
   async function renderOnce(): Promise<void> {
     if (rendering) return;
+    if (animating && !forcedView) return;
     if (!wantRefine && !wantHalo) return;
-    const zooming = animating;
-    const forced = !zooming && forcedView ? copyView(forcedView) : null;
-    const halo = !wantRefine && wantHalo && !zooming && !forced;
+    const forced = forcedView ? copyView(forcedView) : null;
+    const done = forcedDone;
+    const live = paramDragging && !forced;
+    const padded = !live && (wantHalo || Boolean(forced));
     const gen = renderGen;
     rendering = true;
+    renderingLive = live;
     wantRefine = false;
     wantHalo = false;
+    if (!live) parkedCover = null;
     try {
-      const vis = computeSize(display, settledPx);
-      const pad = zooming ? lastOverscanPad : halo ? OVERSCAN_PAD : 0;
-      const size = zooming && lastRenderSize.width
-        ? lastRenderSize
-        : halo
-          ? scaleSize(vis, 1 + 2 * OVERSCAN_PAD)
-          : vis;
-      // Visible first; the half-screen halo waits until that texture is up.
-      // Zoom keeps a frozen start texture so scale does not jump then ease back.
-      // Reset computes the world map first, then the zoom-out eases that texture.
-      const renderView = copyView(zooming ? computedView : padView(forced ?? view, pad));
-      // Halo pixels must not move the stretch — only the current screen does.
-      const normView = unpadView(renderView, pad);
+      const vis = computeSize(display, live ? paramPreviewPx() : settledPx);
+      const haloBase = computeSize(display, cssShortPx(display));
+      const pad = padded ? OVERSCAN_PAD : 0;
+      const unit = foldViewY(forcedUnit ?? view);
+      const source = foldViewY(forced ?? view);
+      const renderView = pad > 0 ? padViewWith(source, pad, unit) : copyView(source);
+      const foldedVis = foldViewY(view);
+      const normView = {
+        xMin: Math.max(renderView.xMin, foldedVis.xMin),
+        xMax: Math.min(renderView.xMax, foldedVis.xMax),
+        yMin: Math.max(renderView.yMin, foldedVis.yMin),
+        yMax: Math.min(renderView.yMax, foldedVis.yMax),
+      };
+      const normOk = normView.xMax > normView.xMin && normView.yMax > normView.yMin;
+      const rx = viewSpanX(renderView) / Math.max(viewSpanX(unit), 1e-12);
+      const ry = viewSpanY(renderView) / Math.max(viewSpanY(unit), 1e-12);
+      const size = scaleSize(padded ? haloBase : vis, Math.max(1, rx, ry));
       renderer.setCanvas(backCanvas);
       const ms = await renderer.render(
         renderView,
@@ -702,55 +832,63 @@ async function boot(): Promise<void> {
         size.height,
         controls.invert,
         controls.median,
-        normView,
+        normOk ? normView : renderView,
       );
-      if (halo && gen !== renderGen) return;
-      if (!halo) lastRefineMs = ms;
-      await waitForPresent();
-      if (halo && gen !== renderGen) return;
-      mapShift.appendChild(backCanvas);
-      backCanvas.classList.remove('map-pending');
-      backCanvas.classList.add('is-front');
-      backCanvas.setAttribute('aria-label', 'Map');
-      backCanvas.removeAttribute('aria-hidden');
-      frontCanvas.classList.remove('is-front');
-      frontCanvas.classList.add('map-pending');
-      frontCanvas.removeAttribute('aria-label');
-      frontCanvas.setAttribute('aria-hidden', 'true');
-      clip.appendChild(frontCanvas);
-      const prevCanvas = frontCanvas;
-      frontCanvas = backCanvas;
-      backCanvas = prevCanvas;
-      computedView = renderView;
-      lastRenderSize = size;
-      lastOverscanPad = pad;
-      if (forced) {
-        forcedView = null;
-        const done = forcedDone;
-        forcedDone = null;
-        done?.();
-      } else if (!zooming && !halo) {
-        const prevPx = settledPx;
-        const prevIters = params.MAX_ITERATIONS;
-        applyBudget();
-        markPrefsDirty();
-        if (
-          (settledPx > prevPx || params.MAX_ITERATIONS > prevIters)
-          && lastRefineMs < controls.targetFrameMs * 0.85
-        ) {
-          wantRefine = true;
-        } else {
-          wantHalo = true;
-        }
+      if (gen !== renderGen) {
+        if (forced) done?.();
+        return;
       }
-      if (!zooming && halo && viewInset(view, computedView) < OVERSCAN_RELOAD) {
-        wantHalo = true;
+      if (live) lastParamMapMs = ms;
+      else lastRefineMs = ms;
+      await waitForPresent();
+      if (gen !== renderGen) {
+        if (forced) done?.();
+        return;
+      }
+      const visCovers = lastOverscanPad === 0
+        && frontCanvas.dataset.ready === '1'
+        && tiledInset(view, computedView) >= 0;
+      const newCovers = tiledInset(view, renderView) >= 0;
+      if (padded && visCovers && newCovers) {
+        parkedCover = renderView;
+        lastRenderSize = size;
+        if (forced) {
+          forcedView = null;
+          forcedUnit = null;
+          forcedDone = null;
+          done?.();
+        }
+      } else {
+        swapMapCanvases();
+        computedView = renderView;
+        lastRenderSize = size;
+        lastOverscanPad = pad;
+        lastUnitSpan = { x: viewSpanX(unit), y: viewSpanY(unit) };
+        if (forced) {
+          forcedView = null;
+          forcedUnit = null;
+          forcedDone = null;
+          done?.();
+        } else if (!padded && !live) {
+          const prevPx = settledPx;
+          const prevIters = params.MAX_ITERATIONS;
+          applyBudget();
+          markPrefsDirty();
+          if (
+            (settledPx > prevPx || params.MAX_ITERATIONS > prevIters)
+            && lastRefineMs < controls.targetFrameMs * 0.85
+          ) {
+            wantRefine = true;
+          } else {
+            wantHalo = true;
+          }
+        }
       }
       applyShift();
       const key = JSON.stringify(params);
-      if (!animating && key !== overviewKey) {
+      if (!animating && !paramDragging && key !== overviewKey) {
         overview ??= await GpuMapRenderer.create(gpuOk, miniCanvas, mapDef);
-        await overview.render(mapDef.defaultView, params, OVERVIEW_PX, OVERVIEW_PX, controls.invert, controls.median);
+        await overview.render(tileView(), params, OVERVIEW_PX, OVERVIEW_PX, controls.invert, controls.median);
         overviewKey = key;
       }
       syncZoomBar();
@@ -758,18 +896,20 @@ async function boot(): Promise<void> {
     } catch (error) {
       if (forced) {
         forcedView = null;
+        forcedUnit = null;
         const done = forcedDone;
         forcedDone = null;
         done?.();
       }
       console.error(error);
       const hint = document.getElementById('gpu-missing');
-      if (hint) {
+      if (hint && frontCanvas.dataset.ready !== '1') {
         hint.hidden = false;
         hint.textContent = error instanceof Error ? error.message : String(error);
       }
     } finally {
       rendering = false;
+      renderingLive = false;
     }
   }
 

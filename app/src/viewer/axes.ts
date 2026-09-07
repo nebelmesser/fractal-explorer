@@ -1,5 +1,6 @@
 import { theme } from '../theme';
 import { viewSpanX, viewSpanY, type ViewRect } from '../maps/types';
+import { wrapToTile } from './view';
 
 const RAD2DEG = 180 / Math.PI;
 const NICE = [1, 2, 5] as const;
@@ -100,7 +101,7 @@ export function drawMapAxes(
     ctx.stroke();
     if (!tick.major || y < 16 || y > h - 18) continue;
     const label = document.createElement('span');
-    label.textContent = tick.label;
+    label.textContent = wrapYTickLabel(tick);
     label.style.top = `${y}px`;
     yLabels.push(label);
   }
@@ -185,15 +186,25 @@ function probeYTickLabels(
   const same = Math.abs(top - bottom) < 0.5;
   const topLabel = document.createElement('span');
   topLabel.className = same ? 'probe-mark' : 'probe-mark probe-mark-top';
-  topLabel.textContent = formatAngleDeg(topRad, digits);
+  topLabel.textContent = formatAngleDeg(wrapToTile(topRad), digits);
   topLabel.style.top = `${top}px`;
   if (same) return [topLabel];
 
   const bottomLabel = document.createElement('span');
   bottomLabel.className = 'probe-mark probe-mark-bottom';
-  bottomLabel.textContent = formatAngleDeg(bottomRad, digits);
+  bottomLabel.textContent = formatAngleDeg(wrapToTile(bottomRad), digits);
   bottomLabel.style.top = `${bottom}px`;
   return [topLabel, bottomLabel];
+}
+
+function wrapYTickLabel(tick: AxisTick): string {
+  if (!tick.major) return '';
+  const wrapped = wrapToTile(tick.deg / RAD2DEG) * RAD2DEG;
+  const n = Number(wrapped.toFixed(8));
+  if (Object.is(n, -0) || n === 0) return '0°';
+  const abs = Math.abs(n);
+  const text = Number.isInteger(abs) ? String(abs) : String(Number(abs.toFixed(6)));
+  return `${n < 0 ? '−' : ''}${text}°`;
 }
 
 function formatDeltaDeg(rad: number, digits: number): string {

@@ -110,15 +110,31 @@ export function viewsEqual(a: ViewRect, b: ViewRect, eps = 1e-12): boolean {
   );
 }
 
+/** Axis-aligned union of two views. */
+export function unionView(a: ViewRect, b: ViewRect): ViewRect {
+  return {
+    xMin: Math.min(a.xMin, b.xMin),
+    xMax: Math.max(a.xMax, b.xMax),
+    yMin: Math.min(a.yMin, b.yMin),
+    yMax: Math.max(a.yMax, b.yMax),
+  };
+}
+
 /** Grow `view` by `pad` view-spans on each side. */
 export function padView(view: ViewRect, pad: number): ViewRect {
-  const sx = viewSpanX(view);
-  const sy = viewSpanY(view);
+  return padViewWith(view, pad, view);
+}
+
+/** Grow `core` by `pad` times the span of `unit` on each side. */
+export function padViewWith(core: ViewRect, pad: number, unit: ViewRect): ViewRect {
+  if (!(pad > 0)) return copyView(core);
+  const sx = viewSpanX(unit);
+  const sy = viewSpanY(unit);
   return {
-    xMin: view.xMin - sx * pad,
-    xMax: view.xMax + sx * pad,
-    yMin: view.yMin - sy * pad,
-    yMax: view.yMax + sy * pad,
+    xMin: core.xMin - sx * pad,
+    xMax: core.xMax + sx * pad,
+    yMin: core.yMin - sy * pad,
+    yMax: core.yMax + sy * pad,
   };
 }
 
