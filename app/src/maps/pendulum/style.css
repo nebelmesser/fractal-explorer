@@ -397,6 +397,19 @@ canvas.map-view.map-pending {
     background: var(--slider-track);
 }
 
+/* Length thumbs: a vertical bar as tall as the default circular thumb. */
+#map-params .slider-label:not([data-scaled-thumb]) input[type="range"]::-webkit-slider-thumb {
+    width: 5px;
+    height: var(--thumb);
+    border-radius: 1px;
+}
+
+#map-params .slider-label:not([data-scaled-thumb]) input[type="range"]::-moz-range-thumb {
+    width: 5px;
+    height: var(--thumb);
+    border-radius: 1px;
+}
+
 #map-params {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -679,16 +692,6 @@ canvas.map-view.map-pending {
 #menu-toggle.is-open span:nth-child(2) { opacity: 0; }
 #menu-toggle.is-open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
 #menu-toggle.is-open span::after { opacity: 0; }
-
-#menu-backdrop {
-    display: none;
-    position: absolute;
-    inset: 0;
-    z-index: 2;
-    background: transparent;
-}
-
-#menu-backdrop.is-on { display: block; }
 
 @media (max-width: 900px), (max-height: 520px) {
     :root { --ctrl-size: 32px; }

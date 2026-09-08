@@ -39,16 +39,13 @@ export function worldFromDisplay(widthPx: number, heightPx: number, base: ViewRe
 /** Keep the short-axis span and center; match the window aspect. */
 export function fitViewAspect(
   view: ViewRect,
-  widthPx: number,
-  heightPx: number,
+  _widthPx: number,
+  _heightPx: number,
   world: ViewRect,
   navigation: NavigationPolicy,
 ): ViewRect {
   const c = viewCenter(view);
-  const short = Math.max(Math.min(widthPx, heightPx), 1);
-  const spanShort = Math.min(viewSpanX(view), viewSpanY(view));
-  const spanX = spanShort * (widthPx / short);
-  const spanY = spanShort * (heightPx / short);
+  const { spanX, spanY } = spansForShort(shortSpan(view), world);
   if (spanX >= viewSpanX(world) * 0.99 && spanY >= viewSpanY(world) * 0.99) {
     return copyView(world);
   }
@@ -57,6 +54,15 @@ export function fitViewAspect(
 
 export function shortSpan(view: ViewRect): number {
   return Math.min(viewSpanX(view), viewSpanY(view));
+}
+
+/** Axis spans that keep `world`'s aspect for a given short-axis length. */
+function spansForShort(short: number, world: ViewRect): { spanX: number; spanY: number } {
+  const worldShort = Math.max(shortSpan(world), MIN_VIEW_SPAN);
+  return {
+    spanX: short * (viewSpanX(world) / worldShort),
+    spanY: short * (viewSpanY(world) / worldShort),
+  };
 }
 
 /**
@@ -71,13 +77,8 @@ export function zoomAbout(
   world: ViewRect,
   navigation: NavigationPolicy,
 ): ViewRect {
-  const capX = viewSpanX(world);
-  const capY = viewSpanY(world);
-  if (factor > 1 && !canZoomOut(view, world)) {
-    return copyView(view);
-  }
-  const spanX = clampSpan(viewSpanX(view) * factor, capX);
-  const spanY = clampSpan(viewSpanY(view) * factor, capY);
+  const nextShort = clampSpan(shortSpan(view) * factor, shortSpan(world));
+  const { spanX, spanY } = spansForShort(nextShort, world);
   const fx = (x - view.xMin) / viewSpanX(view);
   const fy = (y - view.yMin) / viewSpanY(view);
   return clampViewX({

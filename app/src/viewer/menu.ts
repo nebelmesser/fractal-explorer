@@ -56,10 +56,9 @@ export function bindMenu(
   onResetHome: ResetTransition,
 ): void {
   const menuToggle = document.getElementById('menu-toggle') as HTMLButtonElement;
-  const menuBackdrop = document.getElementById('menu-backdrop') as HTMLElement;
   const uiContainer = document.getElementById('ui-container') as HTMLElement;
   const paramRoot = document.getElementById('map-params');
-  if (!menuToggle || !menuBackdrop || !uiContainer || !paramRoot) {
+  if (!menuToggle || !uiContainer || !paramRoot) {
     throw new Error('Menu DOM is incomplete');
   }
   const extraRoot = document.getElementById('map-params-more') ?? paramRoot;
@@ -67,6 +66,13 @@ export function bindMenu(
   const sliders: { key: string; input: HTMLInputElement; readout: HTMLElement }[] = [];
   function cancelResetAnim(): void {
     onResetHome.cancel();
+  }
+
+  /** Sharp unzoom so a parameter edit always starts from the full map. */
+  function snapHomeForParams(): boolean {
+    if (!onResetHome.isAway()) return false;
+    onResetHome.instant();
+    return true;
   }
 
   function paintParam(spec: MapParam, input: HTMLInputElement): void {
@@ -99,8 +105,13 @@ export function bindMenu(
     input.step = String(spec.step);
     input.value = String(toSlider(spec, controls.params[spec.key]));
     paintParam(spec, input);
+    input.addEventListener('pointerdown', () => {
+      cancelResetAnim();
+      if (snapHomeForParams()) onParamsChange('live');
+    });
     input.addEventListener('input', () => {
       cancelResetAnim();
+      snapHomeForParams();
       const next = fromSlider(spec, Number(input.value));
       controls.params[spec.key] = next;
       readout.textContent = formatValue(spec.kind, next);
@@ -167,8 +178,11 @@ export function bindMenu(
   function setMenuOpen(open: boolean): void {
     uiContainer.classList.toggle('is-open', open);
     menuToggle.classList.toggle('is-open', open);
-    menuBackdrop.classList.toggle('is-on', open);
     menuToggle.setAttribute('aria-expanded', String(open));
+  }
+
+  function isMenuChrome(target: EventTarget | null): boolean {
+    return target instanceof Node && (uiContainer.contains(target) || menuToggle.contains(target));
   }
 
   hideMenu = () => setMenuOpen(false);
@@ -176,7 +190,17 @@ export function bindMenu(
     event.stopPropagation();
     setMenuOpen(!uiContainer.classList.contains('is-open'));
   });
-  menuBackdrop.addEventListener('click', () => setMenuOpen(false));
+  // No overlay: map gestures must reach the clip. Close on any outside gesture.
+  document.addEventListener('pointerdown', (event) => {
+    if (!uiContainer.classList.contains('is-open')) return;
+    if (isMenuChrome(event.target)) return;
+    setMenuOpen(false);
+  }, true);
+  document.addEventListener('wheel', (event) => {
+    if (!uiContainer.classList.contains('is-open')) return;
+    if (isMenuChrome(event.target)) return;
+    setMenuOpen(false);
+  }, { capture: true, passive: true });
 
   syncExtras();
   // Stay closed so the map can be hovered; the toggle is always visible.
