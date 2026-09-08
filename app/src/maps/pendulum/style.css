@@ -389,6 +389,14 @@ canvas.map-view.map-pending {
     height: max(32px, var(--thumb));
 }
 
+.slider-label[data-scaled-thumb] input[type="range"]::-webkit-slider-runnable-track {
+    background: var(--slider-track);
+}
+
+.slider-label[data-scaled-thumb] input[type="range"]::-moz-range-progress {
+    background: var(--slider-track);
+}
+
 #map-params {
     display: grid;
     grid-template-columns: 1fr 1fr;

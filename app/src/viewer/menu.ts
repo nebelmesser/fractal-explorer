@@ -1,6 +1,5 @@
 import {
   INVERT_DEFAULT,
-  PARAM_RESET_MS,
   SLIDER_THUMB_PX,
   TARGET_FRAME_MS_MAX,
   TARGET_FRAME_MS_MIN,
@@ -8,14 +7,9 @@ import {
 import type { MapDefinition, MapParam, MapParams } from '../maps/types';
 import type { ResetTransition, ViewerControls } from './presentation';
 import { markPrefsDirty } from './prefs';
-import { easeInOutCubic } from './view';
 
 function formatValue(kind: 'float' | 'int', value: number): string {
   return kind === 'int' ? String(Math.round(value)) : Number(value).toFixed(2);
-}
-
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
 }
 
 function toSlider(spec: MapParam, actual: number): number {
@@ -71,9 +65,7 @@ export function bindMenu(
   const extraRoot = document.getElementById('map-params-more') ?? paramRoot;
 
   const sliders: { key: string; input: HTMLInputElement; readout: HTMLElement }[] = [];
-  let resetAnim = 0;
   function cancelResetAnim(): void {
-    resetAnim += 1;
     onResetHome.cancel();
   }
 
@@ -155,46 +147,21 @@ export function bindMenu(
   });
   target.addEventListener('change', () => onParamsChange('settle'));
   reset?.addEventListener('click', () => {
-    const from: Record<string, number> = {};
     let paramsDirty = false;
     for (const spec of map.params) {
       const value = controls.params[spec.key] ?? spec.default;
-      from[spec.key] = value;
       if (Math.abs(value - spec.default) > spec.step * 0.25) paramsDirty = true;
     }
     const viewAway = onResetHome.isAway();
     if (!paramsDirty && !viewAway) return;
 
     cancelResetAnim();
-    onResetHome.begin();
-    const token = ++resetAnim;
-    const t0 = performance.now();
-    const tick = (now: number): void => {
-      if (token !== resetAnim) return;
-      const u = Math.min(1, (now - t0) / PARAM_RESET_MS);
-      const e = easeInOutCubic(u);
-      if (paramsDirty) {
-        for (const spec of map.params) {
-          const value = lerp(from[spec.key], spec.default, e);
-          controls.params[spec.key] = spec.kind === 'int' ? Math.round(value) : value;
-        }
-        syncParams();
-      }
-      onResetHome.tick(e);
-      markPrefsDirty();
-      if (u < 1) {
-        requestAnimationFrame(tick);
-      } else {
-        if (paramsDirty) {
-          for (const spec of map.params) controls.params[spec.key] = spec.default;
-          syncParams();
-          syncExtras();
-        }
-        onResetHome.end();
-        onParamsChange('settle');
-      }
-    };
-    requestAnimationFrame(tick);
+    for (const spec of map.params) controls.params[spec.key] = spec.default;
+    syncParams();
+    syncExtras();
+    onResetHome.instant();
+    markPrefsDirty();
+    onParamsChange('settle');
   });
 
   function setMenuOpen(open: boolean): void {

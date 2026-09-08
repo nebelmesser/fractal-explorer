@@ -13,6 +13,7 @@ export type ResetTransition = {
   begin(): void;
   tick(eased: number): void;
   end(): void;
+  instant(): void;
   cancel(): void;
   isAway(): boolean;
 };

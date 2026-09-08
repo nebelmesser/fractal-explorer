@@ -164,6 +164,7 @@ export async function bootViewer(
       begin: resetHomeBegin,
       tick: resetHomeTick,
       end: resetHomeEnd,
+      instant: resetHomeInstant,
       cancel: resetHomeCancel,
       isAway: () => !atDefaultView(view, world, navigation),
     },
@@ -539,6 +540,28 @@ export async function bootViewer(
     applyShift();
     drawChrome();
     syncZoomBar();
+  }
+
+  /** Jump home without starting the progressive reset prefetch pipeline. */
+  function resetHomeInstant(): void {
+    stopCoast();
+    cancelAnim();
+    cancelPrefetch();
+    gestureActive = false;
+    const folded = foldViewY(view, navigation);
+    if (!atDefaultView(folded, world, navigation)) history.push(copyView(folded));
+    view = copyView(world);
+    resetFromView = null;
+    resetParamFrom = null;
+    resetParamTo = null;
+    resetEase = 1;
+    unzoomTarget = null;
+    lastCoverParams = null;
+    parkedCover = null;
+    parkedPad = 0;
+    applyShift();
+    syncZoomBar();
+    markPrefsDirty();
   }
 
   function resetHomeCancel(): void {
