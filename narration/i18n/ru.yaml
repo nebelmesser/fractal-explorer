@@ -1,14 +1,103 @@
+budget-change:
+  text: Изменился бюджет кадра
+close-up:
+  text: На самой длинной стороне экрана около 45 градусов
+history-back:
+  text: Это предыдущий вид
 map-ready:
   text: Это карта из миллионов экспериментов с двойными маятниками. Попробуйте ее
     приблизить и рассмотреть подробнее
+menu-close:
+  text: Меню настроек закрылось
 menu-open:
   text: Это меню настроек маятника
+pan:
+  text: Карту можно двигать
+param-change:
+  text: Параметры маятника изменились
+params-reset:
+  text: Параметры сброшены
+pendulum-hang:
+  text: Больше половины маятников уже не висят на оси
 probe-detach:
   text: У маятника нет трения. Если он раскручивается слишком быстро, то срывается
     с оси
-zoom-in-1:
-  text: Траектория двойного маятника сильно зависит от начальных условий
-zoom-in-2:
-  text: Двойной маятник примечателен тем, что сильно зависит от начальных условий.
+probe-end:
+  text: Симуляция закончилась
+simulation-start:
+  text: Симуляция запущена
+still-here:
+  text: Вы уже двадцать секунд на странице
+still-running:
+  text: Симуляция идёт уже пять секунд
+ui.attachment_points:
+  text: Точки крепления
+ui.drop:
+  text: Сброс
+ui.drop_pendulums:
+  text: Сбросить маятники
+ui.enable_sound:
+  text: Включить звук
+ui.frame_budget:
+  text: Бюджет кадра
+ui.gpu.missing:
+  text: Этому обозревателю нужен WebGPU. Карта не считается на CPU.
+ui.hint:
+  text: >-
+    Нажмите или дважды коснитесь, чтобы приблизить.
+
+    Перетаскивайте карту, колесо или щипок меняют масштаб. Правый клик
+    возвращает назад.
+
+    Клавиши + / − тоже меняют масштаб.
+ui.language:
+  text: Язык
+ui.learn_more:
+  text: Узнать больше →
+ui.map:
+  text: Карта
+ui.page.description:
+  text: Каждый пиксель — опыт с двойным маятником. Приближайте живую фрактальную
+    карту движения, неустойчивости и хаоса.
+ui.page.title:
+  text: Фрактал двойного маятника
+ui.param.DT:
+  text: Плавность (dt)
+ui.param.F:
+  text: Трение
+ui.param.G:
+  text: Гравитация
+ui.param.L1:
+  text: Длина 1
+ui.param.L2:
+  text: Длина 2
+ui.param.M1:
+  text: Масса 1
+ui.param.M2:
+  text: Масса 2
+ui.reset_parameters:
+  text: Сбросить параметры
+ui.restart_simulation:
+  text: Перезапустить симуляцию
+ui.settings:
+  text: Настройки
+ui.start_simulation:
+  text: Запустить симуляцию
+ui.void.dragons:
+  text: ДРАКОНЫ
+ui.void.here_be:
+  text: ЗДЕСЬ ВОДЯТСЯ
+ui.zoom.in:
+  text: Приблизить
+ui.zoom.out:
+  text: Отдалить
+ui.zoom.reset:
+  text: Сбросить вид
+zoom-in:
+  text: Карта приблизилась
 zoom-limit:
   text: Вы дошли до предела симуляции, но карта здесь не заканчивается
+zoom-out:
+  text: Карта отдалилась
+zoom-reset:
+  text: Вид вернулся к целой карте

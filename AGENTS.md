@@ -82,7 +82,7 @@ import that package; they talk through optional `ViewerSignals` on
 
 ```ts
 signals.emit('probe-detach');
-signals.set('probe_count', 3);
+signals.set('zoom_deg', 45);
 ```
 
 `emit(name)` is a fire-and-forget app event. `set(key, value)` writes the
@@ -90,9 +90,28 @@ in-memory KV store (`string | number | boolean`). A missing key is not
 `false`. Pendulum wiring is `app/src/maps/pendulum/main.ts`: it forwards
 `emit`/`set` to the narrator and listens for highlight events coming back.
 The overlay and cues stay off unless the page URL has `narration=1`.
-Native language labels live in `narration/config.yaml` under `locales`
-(`ru: Русский`). The language select sits to the left of the settings button;
-Enable sound sits on the subtitle itself.
+UI copy is independent of that flag: author strings in `narration/ui.yaml`
+(source language). `npm run narrate` translates them with the cues, writes
+`ui.*` keys into `i18n/*.yaml`, and emits `narration/ui.json` for the app.
+UI strings are never sent to TTS. Do not hand-edit `ui.json`. The language
+select is always visible, to the left of the settings button. Enable sound
+sits on the subtitle itself. Changing language clears heard cues and starts
+the scenario again: `map-ready`, then the current `zoom_deg`,
+`page_sec`, and `simulation_sec` store values so `when:` cues can play
+in the new language.
+
+Degrees and seconds are store variables, not emit names. The longest screen
+side is `zoom_deg` (integer degrees); running physics is `simulation_sec`;
+time on the page since the narrator mounted is `page_sec`.
+The app walks every integer it crosses, so a cue like this still fires if
+the camera skips past the threshold:
+
+```yaml
+- once: close-up
+  when:
+    zoom_deg: 45
+  text: …
+```
 
 Catalog every app `emit` name in `narration/events.yaml`. Scenario cues bind
 with that same name:
@@ -100,17 +119,26 @@ with that same name:
 - `once: map-ready` — play the first time the event fires this session;
 - `on: pan` — play every time.
 
-Cue identity is that event name (i18n keys, `audio/{locale}/{name}.mp3`). A
-cue that names `zoom-in-1` will not run if the app emits `zoom-in`. After
-changing `narration/scenario.yaml`, regenerate from `fractal/app`:
+Do not hand-edit `manifest.json`, `ui.json`, generated `i18n/*.yaml`, or
+`audio/` except to set `frozen: true` on a translation you want to keep.
+Sync hashes text in `.sync-lock.json` and rebuilds only changed locales
+and mp3s. After changing `narration/scenario.yaml` or `narration/ui.yaml`,
+regenerate from `fractal/app`:
 
 ```bash
 npm run narrate
 ```
 
-Do not hand-edit `manifest.json`, generated `i18n/*.yaml`, or `audio/` except
-to set `frozen: true` on a translation you want to keep. Sync hashes text in
-`.sync-lock.json` and rebuilds only changed locales and mp3s.
+To iterate on Russian cue text and timing without translation or TTS:
+
+```bash
+npm run narrate:source && npx vite build
+```
+
+`--source-only` updates `i18n/{source}.yaml`, `manifest.json`, and `ui.json`,
+leaves `.sync-lock.json` and audio alone, and strips audio from cues whose
+source text changed so the overlay uses text timing. Full `npm run narrate`
+later still translates and rebuilds mp3s.
 
 The narrator can emit back into the app from `at_start` / `finally`. The
 format is `target-event` (`settings-panel-highlight`). `bindHighlight` /
@@ -144,8 +172,9 @@ npm run build
 ```
 
 This builds Rust/WASM, runs TypeScript checking, and writes production files to
-`fractal/`. After scenario or copy changes, run `npm run narrate` first so
-`narration/manifest.json` and audio are current before the Vite build.
+`fractal/`. After scenario or UI copy changes, run `npm run narrate` first so
+`narration/manifest.json`, `narration/ui.json`, and audio are current before
+the Vite build.
 
 For integrated preview, follow the parent repository instructions and run only
 from the playground root:

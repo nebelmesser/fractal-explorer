@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <title>Double Pendulum Fractal Explorer</title>
-    <meta name="description" content="Every pixel hides a double-pendulum experiment. Zoom into a live fractal map of motion, instability, and chaos.">
+    <title data-i18n="page.title">Фрактал двойного маятника</title>
+    <meta name="description" data-i18n-content="page.description" content="Каждый пиксель — опыт с двойным маятником. Приближайте живую фрактальную карту движения, неустойчивости и хаоса.">
     <link rel="canonical" href="https://nebelmesser.com/fractal/double-pendulum.html">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://nebelmesser.com/fractal/double-pendulum.html">
@@ -27,24 +27,28 @@
       gtag('js', new Date());
       gtag('config', 'G-5D8EGFYM3L');
     </script>
-  <script type="module" src="./assets/explorer.js?v=start-hud"></script>
-  <link rel="stylesheet" href="./assets/explorer.css?v=start-hud">
+  <script type="module" src="./assets/explorer.js?v=when"></script>
+  <link rel="stylesheet" href="./assets/explorer.css?v=when">
 </head>
 <body>
-    <button type="button" id="menu-toggle" data-viewer-ui aria-label="Settings" aria-expanded="false">
+    <select id="narration-locale" data-viewer-ui data-i18n-aria="language" aria-label="Язык">
+        <option value="ru">Русский</option>
+        <option value="en">English</option>
+    </select>
+    <button type="button" id="menu-toggle" data-viewer-ui data-i18n-aria="settings" aria-label="Настройки" aria-expanded="false">
         <span></span><span></span><span></span>
     </button>
 
-    <div id="gpu-missing" hidden>
-        This explorer needs WebGPU. The map is not computed on the CPU.
+    <div id="gpu-missing" hidden data-i18n="gpu.missing">
+        Этому обозревателю нужен WebGPU. Карта не считается на CPU.
     </div>
 
     <div id="stage">
         <aside id="sidebar" data-viewer-ui>
             <div id="zoom-bar">
-                <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
-                <button type="button" id="zoom-out" aria-label="Zoom out">−</button>
-                <button type="button" id="zoom-reset" aria-label="Reset view">
+                <button type="button" id="zoom-in" data-i18n-aria="zoom.in" aria-label="Приблизить">+</button>
+                <button type="button" id="zoom-out" data-i18n-aria="zoom.out" aria-label="Отдалить">−</button>
+                <button type="button" id="zoom-reset" data-i18n-aria="zoom.reset" aria-label="Сбросить вид">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                         <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
                             d="M9 9 4.6 4.6M9 9H5.4M9 9V5.4M15 9l4.4-4.4M15 9h3.6M15 9V5.4M9 15 4.6 19.4M9 15H5.4M9 15v3.6M15 15l4.4 4.4M15 15h3.6M15 15v3.6" />
@@ -54,7 +58,7 @@
         </aside>
         <div id="map-clip">
             <div id="map-shift">
-                <canvas id="map" class="map-view is-front" width="256" height="256" aria-label="Map"></canvas>
+                <canvas id="map" class="map-view is-front" width="256" height="256" aria-label="Карта"></canvas>
             </div>
             <canvas id="map-back" class="map-view map-pending" width="256" height="256" aria-hidden="true"></canvas>
             <svg id="map-void" aria-hidden="true">
@@ -68,14 +72,14 @@
     </div>
 
     <div id="map-hud" data-viewer-ui>
-        <div id="probe-count" role="slider" aria-hidden="true" aria-label="Attachment points" aria-valuemin="0" aria-valuemax="2" aria-valuenow="1" tabindex="-1">
+        <div id="probe-count" role="slider" aria-hidden="true" data-i18n-aria="attachment_points" aria-label="Точки крепления" aria-valuemin="0" aria-valuemax="2" aria-valuenow="1" tabindex="-1">
             <div class="probe-count-track" id="probe-count-track">
                 <div class="probe-count-fill" id="probe-count-fill"></div>
                 <div class="probe-count-ticks" id="probe-count-ticks"></div>
                 <div class="probe-count-thumb" id="probe-count-thumb"></div>
             </div>
         </div>
-        <button type="button" id="probe-start" aria-label="Start simulation">
+        <button type="button" id="probe-start" aria-label="Запустить симуляцию">
             <svg class="icon-grid" viewBox="0 0 24 24" aria-hidden="true">
                 <circle cx="5" cy="5" r="1.8" fill="currentColor" />
                 <circle cx="12" cy="5" r="1.8" fill="currentColor" />
@@ -87,10 +91,10 @@
                 <circle cx="12" cy="19" r="1.8" fill="currentColor" />
                 <circle cx="19" cy="19" r="1.8" fill="currentColor" />
             </svg>
-            <span class="probe-start-label">Start simulation</span>
+            <span class="probe-start-label">Запустить симуляцию</span>
         </button>
-        <button type="button" id="probe-drop" hidden aria-label="Drop pendulums">
-            <span class="probe-start-label">Drop</span>
+        <button type="button" id="probe-drop" hidden aria-label="Сбросить маятники">
+            <span class="probe-start-label">Сброс</span>
         </button>
     </div>
 
@@ -99,7 +103,7 @@
         <div id="map-extras">
             <div id="map-params-more"></div>
             <label class="slider-label">
-                <span class="row"><span>Frame budget</span><span id="targetValue">1000 ms</span></span>
+                <span class="row"><span data-i18n="frame_budget">Бюджет кадра</span><span id="targetValue">1000 ms</span></span>
                 <input type="range" id="targetSlider" min="200" max="4000" step="50" value="1000">
             </label>
             <button type="button" id="resetParams" class="text-button icon-button">
@@ -107,15 +111,15 @@
                     <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
                         d="M4.6 12a7.4 7.4 0 1 0 2.1-5.2M4.6 4.8v4.2h4.2" />
                 </svg>
-                Reset parameters
+                <span data-i18n="reset_parameters">Сбросить параметры</span>
             </button>
         </div>
-        <div class="hint">
-            Click or double-tap to zoom in.
-            Drag to pan, wheel or pinch to zoom. Right-click goes back.
-            Use + / − to zoom.
-        </div>
-        <a class="learn-more" href="/fractal/">Learn more →</a>
+        <div class="hint" data-i18n="hint">Нажмите или дважды коснитесь, чтобы приблизить.
+            Перетаскивайте карту, колесо или щипок меняют масштаб. Правый клик возвращает назад.
+            Клавиши + / − тоже меняют масштаб.</div>
+        <a class="learn-more" href="/fractal/" data-i18n="learn_more">Узнать больше →</a>
     </div>
+
+    <a id="site-credit" href="https://nebelmesser.com" data-viewer-ui>Nebelmesser, 2026</a>
 </body>
 </html>

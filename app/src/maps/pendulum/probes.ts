@@ -1,3 +1,4 @@
+import { onUiChange, t } from '../../i18n';
 import {
   PROBE_GRID_BOB_R,
   PROBE_CELL_MIN_PX,
@@ -333,16 +334,22 @@ export function bindProbeHud(
   function sync(): void {
     const max = lastIndex();
     const step = currentProbeStep(hud);
-    const t = probeLevelPos(hud.index, max);
-    fillEl.style.width = `${t * 100}%`;
-    thumbEl.style.left = `${t * 100}%`;
+    const pos = probeLevelPos(hud.index, max);
+    fillEl.style.width = `${pos * 100}%`;
+    thumbEl.style.left = `${pos * 100}%`;
     rootEl.setAttribute('aria-valuemin', String(hud.steps[0]?.count ?? 0));
     rootEl.setAttribute('aria-valuemax', String(hud.steps[max]?.count ?? 0));
     rootEl.setAttribute('aria-valuenow', String(step.count));
     startEl.disabled = false;
     startEl.classList.toggle('is-playing', playing);
-    startEl.setAttribute('aria-label', playing ? 'Restart simulation' : 'Start simulation');
+    const startKey = playing ? 'restart_simulation' : 'start_simulation';
+    startEl.setAttribute('aria-label', t(startKey));
+    const startLabel = startEl.querySelector('.probe-start-label');
+    if (startLabel) startLabel.textContent = t(startKey);
     dropEl.hidden = !dropVisible;
+    dropEl.setAttribute('aria-label', t('drop_pendulums'));
+    const dropLabel = dropEl.querySelector('.probe-start-label');
+    if (dropLabel) dropLabel.textContent = t('drop');
     for (const mark of ticksEl.querySelectorAll<HTMLElement>('[data-index]')) {
       mark.classList.toggle('is-on', Number(mark.dataset.index) === hud.index);
     }
@@ -392,6 +399,7 @@ export function bindProbeHud(
   dropEl.addEventListener('click', () => onDrop());
   rebuildTicks();
   sync();
+  onUiChange(() => sync());
   return {
     syncPlay(next) {
       playing = next;

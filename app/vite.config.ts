@@ -38,8 +38,8 @@ export default defineConfig({
       transformIndexHtml(html) {
         return html
           .replace(/ crossorigin(?:="[^"]*")?/g, '')
-          .replace('src="./assets/explorer.js"', 'src="./assets/explorer.js?v=start-hud"')
-          .replace('href="./assets/explorer.css"', 'href="./assets/explorer.css?v=start-hud"');
+          .replace('src="./assets/explorer.js"', 'src="./assets/explorer.js?v=when"')
+          .replace('href="./assets/explorer.css"', 'href="./assets/explorer.css?v=when"');
       },
     },
     {

@@ -1,0 +1,73 @@
+{
+  "source_lang": "ru",
+  "locales": [
+    "ru",
+    "en"
+  ],
+  "locale_names": {
+    "ru": "Русский",
+    "en": "English"
+  },
+  "strings": {
+    "ru": {
+      "page.title": "Фрактал двойного маятника",
+      "page.description": "Каждый пиксель — опыт с двойным маятником. Приближайте живую фрактальную карту движения, неустойчивости и хаоса.",
+      "settings": "Настройки",
+      "gpu.missing": "Этому обозревателю нужен WebGPU. Карта не считается на CPU.",
+      "zoom.in": "Приблизить",
+      "zoom.out": "Отдалить",
+      "zoom.reset": "Сбросить вид",
+      "map": "Карта",
+      "attachment_points": "Точки крепления",
+      "start_simulation": "Запустить симуляцию",
+      "restart_simulation": "Перезапустить симуляцию",
+      "drop_pendulums": "Сбросить маятники",
+      "drop": "Сброс",
+      "frame_budget": "Бюджет кадра",
+      "reset_parameters": "Сбросить параметры",
+      "hint": "Нажмите или дважды коснитесь, чтобы приблизить.\nПеретаскивайте карту, колесо или щипок меняют масштаб. Правый клик возвращает назад.\nКлавиши + / − тоже меняют масштаб.",
+      "learn_more": "Узнать больше →",
+      "language": "Язык",
+      "enable_sound": "Включить звук",
+      "void.here_be": "ЗДЕСЬ ВОДЯТСЯ",
+      "void.dragons": "ДРАКОНЫ",
+      "param.L1": "Длина 1",
+      "param.M1": "Масса 1",
+      "param.L2": "Длина 2",
+      "param.M2": "Масса 2",
+      "param.G": "Гравитация",
+      "param.F": "Трение",
+      "param.DT": "Плавность (dt)"
+    },
+    "en": {
+      "page.title": "Double Pendulum Fractal",
+      "page.description": "Every pixel is an experiment with a double pendulum. Zoom into a living fractal map of motion, instability, and chaos.",
+      "settings": "Settings",
+      "gpu.missing": "This browser requires WebGPU. The map is not computed on the CPU.",
+      "zoom.in": "Zoom in",
+      "zoom.out": "Zoom out",
+      "zoom.reset": "Reset view",
+      "map": "Map",
+      "attachment_points": "Attachment points",
+      "start_simulation": "Start simulation",
+      "restart_simulation": "Restart simulation",
+      "drop_pendulums": "Drop pendulums",
+      "drop": "Drop",
+      "frame_budget": "Frame budget",
+      "reset_parameters": "Reset parameters",
+      "hint": "Click or double-tap to zoom in.\nDrag the map; the wheel or pinch changes the zoom. Right-click to go back.\nThe + / − keys also change the zoom.",
+      "learn_more": "Learn more →",
+      "language": "Language",
+      "enable_sound": "Enable sound",
+      "void.here_be": "HERE BE",
+      "void.dragons": "DRAGONS",
+      "param.L1": "Length 1",
+      "param.M1": "Mass 1",
+      "param.L2": "Length 2",
+      "param.M2": "Mass 2",
+      "param.G": "Gravity",
+      "param.F": "Friction",
+      "param.DT": "Smoothness (dt)"
+    }
+  }
+}

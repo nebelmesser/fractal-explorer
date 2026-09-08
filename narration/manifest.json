@@ -21,37 +21,60 @@
       }
     },
     {
-      "once": "zoom-in-1",
+      "once": "zoom-in",
       "text": {
-        "ru": "Траектория двойного маятника сильно зависит от начальных условий",
-        "en": "The trajectory of a double pendulum strongly depends on its initial conditions"
+        "ru": "Карта приблизилась"
       },
-      "audio": {
-        "ru": "audio/ru/zoom-in-1.mp3",
-        "en": "audio/en/zoom-in-1.mp3"
-      }
+      "audio": {}
     },
     {
-      "once": "zoom-in-2",
+      "once": "zoom-out",
       "text": {
-        "ru": "Двойной маятник примечателен тем, что сильно зависит от начальных условий.",
-        "en": "A double pendulum is notable for strongly depending on its initial conditions."
+        "ru": "Карта отдалилась"
       },
-      "audio": {
-        "ru": "audio/ru/zoom-in-2.mp3",
-        "en": "audio/en/zoom-in-2.mp3"
-      }
+      "audio": {}
     },
     {
-      "once": "probe-detach",
+      "once": "zoom-reset",
       "text": {
-        "ru": "У маятника нет трения. Если он раскручивается слишком быстро, то срывается с оси",
-        "en": "The pendulum has no friction. If it spins too fast, it breaks off the axis"
+        "ru": "Вид вернулся к целой карте"
+      },
+      "audio": {}
+    },
+    {
+      "once": "zoom-limit",
+      "text": {
+        "ru": "Вы дошли до предела симуляции, но карта здесь не заканчивается",
+        "en": "You have reached the limit of the simulation, but the map does not end here"
       },
       "audio": {
-        "ru": "audio/ru/probe-detach.mp3",
-        "en": "audio/en/probe-detach.mp3"
-      }
+        "ru": "audio/ru/zoom-limit.mp3",
+        "en": "audio/en/zoom-limit.mp3"
+      },
+      "at_start": [
+        {
+          "emit": "zoom-in-highlight"
+        }
+      ],
+      "finally": [
+        {
+          "emit": "zoom-in-unhighlight"
+        }
+      ]
+    },
+    {
+      "once": "pan",
+      "text": {
+        "ru": "Карту можно двигать"
+      },
+      "audio": {}
+    },
+    {
+      "once": "history-back",
+      "text": {
+        "ru": "Это предыдущий вид"
+      },
+      "audio": {}
     },
     {
       "once": "menu-open",
@@ -75,25 +98,94 @@
       ]
     },
     {
-      "once": "zoom-limit",
+      "once": "menu-close",
       "text": {
-        "ru": "Вы дошли до предела симуляции, но карта здесь не заканчивается",
-        "en": "You have reached the limit of the simulation, but the map does not end here"
+        "ru": "Меню настроек закрылось"
+      },
+      "audio": {}
+    },
+    {
+      "once": "param-change",
+      "text": {
+        "ru": "Параметры маятника изменились"
+      },
+      "audio": {}
+    },
+    {
+      "once": "budget-change",
+      "text": {
+        "ru": "Изменился бюджет кадра"
+      },
+      "audio": {}
+    },
+    {
+      "once": "params-reset",
+      "text": {
+        "ru": "Параметры сброшены"
+      },
+      "audio": {}
+    },
+    {
+      "once": "simulation-start",
+      "text": {
+        "ru": "Симуляция запущена"
+      },
+      "audio": {}
+    },
+    {
+      "once": "probe-detach",
+      "text": {
+        "ru": "У маятника нет трения. Если он раскручивается слишком быстро, то срывается с оси",
+        "en": "The pendulum has no friction. If it spins too fast, it breaks off the axis"
       },
       "audio": {
-        "ru": "audio/ru/zoom-limit.mp3",
-        "en": "audio/en/zoom-limit.mp3"
+        "ru": "audio/ru/probe-detach.mp3",
+        "en": "audio/en/probe-detach.mp3"
+      }
+    },
+    {
+      "once": "pendulum-hang",
+      "text": {
+        "ru": "Больше половины маятников уже не висят на оси"
       },
-      "at_start": [
-        {
-          "emit": "zoom-in-highlight"
-        }
-      ],
-      "finally": [
-        {
-          "emit": "zoom-in-unhighlight"
-        }
-      ]
+      "audio": {}
+    },
+    {
+      "once": "probe-end",
+      "text": {
+        "ru": "Симуляция закончилась"
+      },
+      "audio": {}
+    },
+    {
+      "once": "close-up",
+      "when": {
+        "zoom_deg": 45
+      },
+      "text": {
+        "ru": "На самой длинной стороне экрана около 45 градусов"
+      },
+      "audio": {}
+    },
+    {
+      "once": "still-running",
+      "when": {
+        "simulation_sec": 5
+      },
+      "text": {
+        "ru": "Симуляция идёт уже пять секунд"
+      },
+      "audio": {}
+    },
+    {
+      "once": "still-here",
+      "when": {
+        "page_sec": 20
+      },
+      "text": {
+        "ru": "Вы уже двадцать секунд на странице"
+      },
+      "audio": {}
     }
   ]
 }

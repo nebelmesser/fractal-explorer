@@ -434,6 +434,7 @@ canvas.map-view.map-pending {
     font-size: 12px;
     color: var(--muted);
     line-height: 1.5;
+    white-space: pre-line;
 }
 
 .learn-more {
@@ -633,6 +634,44 @@ canvas.map-view.map-pending {
 .probe-start-label {
     display: inline;
     font: 13px Rubik, sans-serif;
+}
+
+#narration-locale {
+    appearance: none;
+    position: fixed;
+    top: max(var(--ctrl-inset), env(safe-area-inset-top));
+    right: calc(max(var(--ctrl-inset), env(safe-area-inset-right)) + var(--ctrl-size) + var(--ctrl-gap));
+    z-index: 6;
+    height: var(--ctrl-size);
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--ctrl-radius);
+    background: var(--panel);
+    color: var(--fg);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    pointer-events: auto;
+    touch-action: auto;
+}
+
+#site-credit {
+    position: absolute;
+    right: max(10px, env(safe-area-inset-right));
+    bottom: max(8px, env(safe-area-inset-bottom));
+    z-index: 5;
+    color: #cfcfcf;
+    font: 12px Rubik, sans-serif;
+    letter-spacing: 0.02em;
+    text-decoration: none;
+    -webkit-text-stroke: 3px #000;
+    paint-order: stroke fill;
+    pointer-events: auto;
+    touch-action: auto;
+}
+
+#site-credit:hover {
+    color: #fff;
 }
 
 #menu-toggle {

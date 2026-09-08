@@ -65,6 +65,314 @@
           "textHash": "2a4e5d3d17ec4d62131080f5c1dee11b8fe85360e87148ec44514ee986f3127a"
         }
       }
+    },
+    "ui.page.title": {
+      "sourceHash": "9f94b459d28cefe8ddce14f1d6d9d3d02f07aa1d258ffc94999e176688623b3a",
+      "locales": {
+        "ru": {
+          "textHash": "9f94b459d28cefe8ddce14f1d6d9d3d02f07aa1d258ffc94999e176688623b3a"
+        },
+        "en": {
+          "textHash": "2f9074d479f8f41c2888e776186bb6a81ae5e07af0abed7dfffe0605624a19ff"
+        }
+      }
+    },
+    "ui.page.description": {
+      "sourceHash": "d6bb852dcee9a1db3577b091ec7d00378075aa288bfa89033323458f730f0dfe",
+      "locales": {
+        "ru": {
+          "textHash": "d6bb852dcee9a1db3577b091ec7d00378075aa288bfa89033323458f730f0dfe"
+        },
+        "en": {
+          "textHash": "546386e42dd28b27321110c9d78f6f19c8125d46683c6b6aaf180836d4609dfc"
+        }
+      }
+    },
+    "ui.settings": {
+      "sourceHash": "985b5e0f2ccf1ba08ac53253af32d2e9a600b846d3f3b99978f28d177388b9fa",
+      "locales": {
+        "ru": {
+          "textHash": "985b5e0f2ccf1ba08ac53253af32d2e9a600b846d3f3b99978f28d177388b9fa"
+        },
+        "en": {
+          "textHash": "74a883a037bc227f91891ab654a753d3a99f31ab06ae5b5d2b6e594a692b41f8"
+        }
+      }
+    },
+    "ui.gpu.missing": {
+      "sourceHash": "0c09782c2ef2f7bca7204bc0f56f78d2139194dae577681a377a275602f8cbec",
+      "locales": {
+        "ru": {
+          "textHash": "0c09782c2ef2f7bca7204bc0f56f78d2139194dae577681a377a275602f8cbec"
+        },
+        "en": {
+          "textHash": "ce1b741e544d01a146d5f0a8349e852b7a3d68996967afca999780aa2124e86d"
+        }
+      }
+    },
+    "ui.zoom.in": {
+      "sourceHash": "bfb85a01780afd3e0d44bfbc885d0d6d67b2842827c1c7674fe33ca3c9e7e4c1",
+      "locales": {
+        "ru": {
+          "textHash": "bfb85a01780afd3e0d44bfbc885d0d6d67b2842827c1c7674fe33ca3c9e7e4c1"
+        },
+        "en": {
+          "textHash": "0e47f09a748fa1321dbaee5c8983f8e8f2880b1212956fb4f21ae9d60b88a8b2"
+        }
+      }
+    },
+    "ui.zoom.out": {
+      "sourceHash": "8e6a41ecd087ebe2d5bde1c8cae5b7bd90dcb5bfadc0c4785a546dc527beccf2",
+      "locales": {
+        "ru": {
+          "textHash": "8e6a41ecd087ebe2d5bde1c8cae5b7bd90dcb5bfadc0c4785a546dc527beccf2"
+        },
+        "en": {
+          "textHash": "bc7b631a689b45ca5c51923515d31eb3597b2d9b129d88d0dbee066ee5c35453"
+        }
+      }
+    },
+    "ui.zoom.reset": {
+      "sourceHash": "de3eec674f5115d976418531ad0998e1d8fa58db8cdc6e97d04c3c7db3bb6c25",
+      "locales": {
+        "ru": {
+          "textHash": "de3eec674f5115d976418531ad0998e1d8fa58db8cdc6e97d04c3c7db3bb6c25"
+        },
+        "en": {
+          "textHash": "ce89ae822e8ba0729e948db14281069eead9eac67edfd4a8e8fe8ab0ec79385d"
+        }
+      }
+    },
+    "ui.map": {
+      "sourceHash": "2751c910001823941e388ba560173f23db0a173d8651218335af48fd2878daea",
+      "locales": {
+        "ru": {
+          "textHash": "2751c910001823941e388ba560173f23db0a173d8651218335af48fd2878daea"
+        },
+        "en": {
+          "textHash": "be176b0015c424b78e9f343f8bc3014a7a701cc2eb9000b6acbc04d67dbecb8f"
+        }
+      }
+    },
+    "ui.attachment_points": {
+      "sourceHash": "f55f664326eedbab16fd16024c7c9ffa593cf603b12e53bc71b00c11bc537af1",
+      "locales": {
+        "ru": {
+          "textHash": "f55f664326eedbab16fd16024c7c9ffa593cf603b12e53bc71b00c11bc537af1"
+        },
+        "en": {
+          "textHash": "b0cbd3710d1608c9039b60e28f421ec39ffd11c5d08f9fad85d7adb33d3bc1d5"
+        }
+      }
+    },
+    "ui.start_simulation": {
+      "sourceHash": "7fb4ee205d0f080eb9c2c5fa9c1d87500027a9ccbde6c5559c32bdc7059f85a6",
+      "locales": {
+        "ru": {
+          "textHash": "7fb4ee205d0f080eb9c2c5fa9c1d87500027a9ccbde6c5559c32bdc7059f85a6"
+        },
+        "en": {
+          "textHash": "3a4debd873dc99a145fba394408a993178024b898bdee49f18b92b91e0a7976b"
+        }
+      }
+    },
+    "ui.restart_simulation": {
+      "sourceHash": "32bdbf25e4f31de5adb71f330c108773c6fdc547b536736764fea42d10d20925",
+      "locales": {
+        "ru": {
+          "textHash": "32bdbf25e4f31de5adb71f330c108773c6fdc547b536736764fea42d10d20925"
+        },
+        "en": {
+          "textHash": "6c5044ae93790dc2503e377b7c7eaecdf1c862e1bfe703702b428da33da1085b"
+        }
+      }
+    },
+    "ui.drop_pendulums": {
+      "sourceHash": "0ab4a2255d6b03cfd9dd45f61c7a267368e9af613cc01d9893a17aaf17baf345",
+      "locales": {
+        "ru": {
+          "textHash": "0ab4a2255d6b03cfd9dd45f61c7a267368e9af613cc01d9893a17aaf17baf345"
+        },
+        "en": {
+          "textHash": "4639627e5be7da5fdafdc26a8efbf357f28f3e6e057751d85fbb5f48c48077df"
+        }
+      }
+    },
+    "ui.drop": {
+      "sourceHash": "14b4afa6ab38f7e42e0f2ccc934ec07f80952fe50ae549554c3651b91f31d5f8",
+      "locales": {
+        "ru": {
+          "textHash": "14b4afa6ab38f7e42e0f2ccc934ec07f80952fe50ae549554c3651b91f31d5f8"
+        },
+        "en": {
+          "textHash": "c8af9ae37a48273f981bc82af63517e3a2195c4076360e73546c306a044dd38b"
+        }
+      }
+    },
+    "ui.frame_budget": {
+      "sourceHash": "0ae15ea4ca9ae9c25073e0e4a61784b9b05ee7afd66378cdfd9aee24f18c3ca8",
+      "locales": {
+        "ru": {
+          "textHash": "0ae15ea4ca9ae9c25073e0e4a61784b9b05ee7afd66378cdfd9aee24f18c3ca8"
+        },
+        "en": {
+          "textHash": "7c6e6d619fd6902a3ee2268a8285b0afd10a7868d5867202b92b50f5c803cb06"
+        }
+      }
+    },
+    "ui.reset_parameters": {
+      "sourceHash": "8529493f9380722ecb934b7a7e82bedba7da24797f0c12289507a084caeb7f1f",
+      "locales": {
+        "ru": {
+          "textHash": "8529493f9380722ecb934b7a7e82bedba7da24797f0c12289507a084caeb7f1f"
+        },
+        "en": {
+          "textHash": "c292a648a31ab4d20ca48c05a1db6f065b2179b436d692f88c568585e532c542"
+        }
+      }
+    },
+    "ui.hint": {
+      "sourceHash": "1bee0f31374cd68899d98d19804ba1aa9998e4b9c258e029c7477afff99b6b46",
+      "locales": {
+        "ru": {
+          "textHash": "1bee0f31374cd68899d98d19804ba1aa9998e4b9c258e029c7477afff99b6b46"
+        },
+        "en": {
+          "textHash": "2d11f362247fb0f8133f4b613c820b587de0cb1ea7e5ddd4be1dd687a5803610"
+        }
+      }
+    },
+    "ui.learn_more": {
+      "sourceHash": "989e5de1c499c463ba96fc7c51c3cc03b9f0a135c0bf17c0fee678ac28aabb53",
+      "locales": {
+        "ru": {
+          "textHash": "989e5de1c499c463ba96fc7c51c3cc03b9f0a135c0bf17c0fee678ac28aabb53"
+        },
+        "en": {
+          "textHash": "08e017eaa70ff69626a5eed317009befdc54a341564429e4aecf62c785c14475"
+        }
+      }
+    },
+    "ui.language": {
+      "sourceHash": "5bd57038dbadd6517fcaab9deb791efdc1c05a17fccdb975be51452a6c5326b2",
+      "locales": {
+        "ru": {
+          "textHash": "5bd57038dbadd6517fcaab9deb791efdc1c05a17fccdb975be51452a6c5326b2"
+        },
+        "en": {
+          "textHash": "a4fe65264ef7dbb38d104b1e81eb3350f3142f3d16f32bdec39b1d9b42c1b8d1"
+        }
+      }
+    },
+    "ui.enable_sound": {
+      "sourceHash": "aa1a4d976ea37aaf6af7187af225a38a278988a219b4e8edb0757a4539a51228",
+      "locales": {
+        "ru": {
+          "textHash": "aa1a4d976ea37aaf6af7187af225a38a278988a219b4e8edb0757a4539a51228"
+        },
+        "en": {
+          "textHash": "b47fa176bc080ea68ec974714f4d5977d7c927fb0c3c5c6d25005f2b418e7237"
+        }
+      }
+    },
+    "ui.void.here_be": {
+      "sourceHash": "1e77faeb4b0922f9cf1903f978494b0648b41445ebe4976373030225bf5319b0",
+      "locales": {
+        "ru": {
+          "textHash": "1e77faeb4b0922f9cf1903f978494b0648b41445ebe4976373030225bf5319b0"
+        },
+        "en": {
+          "textHash": "e882810a4df3b3516b19487d4b6a69ef9fff9870ae8f99bdcadd7f1e6832b50d"
+        }
+      }
+    },
+    "ui.void.dragons": {
+      "sourceHash": "9cfac1bd10ae441cf7c223298560ecfc4ec01cb9c703986ae7efeb30573742fd",
+      "locales": {
+        "ru": {
+          "textHash": "9cfac1bd10ae441cf7c223298560ecfc4ec01cb9c703986ae7efeb30573742fd"
+        },
+        "en": {
+          "textHash": "888cf02122d68ee98d377bb7cbcf8863a2b8ecfc98af42cad6f3ec494e109fd5"
+        }
+      }
+    },
+    "ui.param.L1": {
+      "sourceHash": "7356467ca746a6dc3e98e68bf0f27261699a6c323aabdd039959ad26cc6c634a",
+      "locales": {
+        "ru": {
+          "textHash": "7356467ca746a6dc3e98e68bf0f27261699a6c323aabdd039959ad26cc6c634a"
+        },
+        "en": {
+          "textHash": "546769681f238fdb585bd4e6422ee2af6ea5271ab9944eed49d9cb6af69ad767"
+        }
+      }
+    },
+    "ui.param.M1": {
+      "sourceHash": "9881892f1ea7f42112728def8d5cfd287cf14477ed5b0e924bfcf129b402ebcf",
+      "locales": {
+        "ru": {
+          "textHash": "9881892f1ea7f42112728def8d5cfd287cf14477ed5b0e924bfcf129b402ebcf"
+        },
+        "en": {
+          "textHash": "f8c1501d4de227e2b25156c601144578fada213ab2b686a240a5ae222dfc7ede"
+        }
+      }
+    },
+    "ui.param.L2": {
+      "sourceHash": "5c7a1c27fa8c869400d82e5d454bdeab50e8621c916728d6af0df7465fc07c60",
+      "locales": {
+        "ru": {
+          "textHash": "5c7a1c27fa8c869400d82e5d454bdeab50e8621c916728d6af0df7465fc07c60"
+        },
+        "en": {
+          "textHash": "fe099ce11045640e57f30bf51ab662cb949513540bcb335e41a389362d1a2d05"
+        }
+      }
+    },
+    "ui.param.M2": {
+      "sourceHash": "f1883ad19671367190723d2518ed3bb05a4f70c326e24cd317f611eab5b4f0cf",
+      "locales": {
+        "ru": {
+          "textHash": "f1883ad19671367190723d2518ed3bb05a4f70c326e24cd317f611eab5b4f0cf"
+        },
+        "en": {
+          "textHash": "835196e62569f9ac2ca4996cb6fc8856ddda4779e4830a8f927447f2a13358e6"
+        }
+      }
+    },
+    "ui.param.G": {
+      "sourceHash": "b0c02705b8c26a02cb9be693c5c0eddeda9ae2f44b6db42e3c2d60392ed28468",
+      "locales": {
+        "ru": {
+          "textHash": "b0c02705b8c26a02cb9be693c5c0eddeda9ae2f44b6db42e3c2d60392ed28468"
+        },
+        "en": {
+          "textHash": "19602d23667cf93d3528812e7b1eec9daeaf9d459c9cda1aa94eab8c9cdf7ccc"
+        }
+      }
+    },
+    "ui.param.F": {
+      "sourceHash": "e265f2cfa25fe962f61af10112d020ef02f0054044385e148f598cf8dbac31d7",
+      "locales": {
+        "ru": {
+          "textHash": "e265f2cfa25fe962f61af10112d020ef02f0054044385e148f598cf8dbac31d7"
+        },
+        "en": {
+          "textHash": "17e83883ff9cc3d1aa7954fea022ca87cac21274ab6db10ae3ad3c65a14aad34"
+        }
+      }
+    },
+    "ui.param.DT": {
+      "sourceHash": "b7fa0ee663053b3e47289c55a3939b2958e38caf084e78279fa9fb9e4f24ab55",
+      "locales": {
+        "ru": {
+          "textHash": "b7fa0ee663053b3e47289c55a3939b2958e38caf084e78279fa9fb9e4f24ab55"
+        },
+        "en": {
+          "textHash": "7e1b5685161a7a972b0856e7a00771855feedb7c53eec842221199586b61d387"
+        }
+      }
     }
   }
 }

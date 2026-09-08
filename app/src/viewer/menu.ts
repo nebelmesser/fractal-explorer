@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import {
   INVERT_DEFAULT,
   SLIDER_THUMB_PX,
@@ -94,7 +95,8 @@ export function bindMenu(
     const row = document.createElement('span');
     row.className = 'row';
     const name = document.createElement('span');
-    name.textContent = spec.label;
+    name.dataset.i18n = spec.label;
+    name.textContent = t(spec.label);
     const readout = document.createElement('span');
     readout.dataset.paramValue = spec.key;
     readout.textContent = formatValue(spec.kind, controls.params[spec.key]);

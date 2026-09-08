@@ -1,3 +1,4 @@
+import { onUiChange, t } from '../i18n';
 import {
   BUTTON_ZOOM_FACTOR,
   MEDIAN_DEFAULT,
@@ -146,12 +147,17 @@ export async function bootViewer(
 
   let frontCanvas = mapCanvas;
   let backCanvas = mapBack;
+  frontCanvas.setAttribute('aria-label', t('map'));
+  onUiChange(() => {
+    frontCanvas.setAttribute('aria-label', t('map'));
+  });
   let renderer: GpuMapRenderer;
   try {
     renderer = await GpuMapRenderer.create(gpuOk, backCanvas, mapDef);
   } catch (error) {
     if (gpuMissing) {
       gpuMissing.hidden = false;
+      gpuMissing.removeAttribute('data-i18n');
       gpuMissing.textContent = error instanceof Error ? error.message : String(error);
     }
     console.error(error);
@@ -332,7 +338,7 @@ export async function bootViewer(
     mapShift.appendChild(backCanvas);
     backCanvas.classList.remove('map-pending');
     backCanvas.classList.add('is-front');
-    backCanvas.setAttribute('aria-label', 'Map');
+    backCanvas.setAttribute('aria-label', t('map'));
     backCanvas.removeAttribute('aria-hidden');
     frontCanvas.classList.remove('is-front');
     frontCanvas.classList.add('map-pending');
@@ -750,6 +756,7 @@ export async function bootViewer(
       drawChrome();
       if (!live && !mapReadySent) {
         mapReadySent = true;
+        signals?.set('map_ready', true);
         signals?.emit('map-ready');
       }
       if (!live) {
@@ -769,6 +776,7 @@ export async function bootViewer(
       const hint = document.getElementById('gpu-missing');
       if (hint && frontCanvas.dataset.ready !== '1') {
         hint.hidden = false;
+        hint.removeAttribute('data-i18n');
         hint.textContent = error instanceof Error ? error.message : String(error);
       }
     } finally {

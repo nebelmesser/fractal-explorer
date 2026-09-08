@@ -1,3 +1,4 @@
+import { t } from '../../i18n';
 import type { MapParams, ViewRect } from '../types';
 import type { MapPresentation, MapPresentationFactory, PresentationHost } from '../../viewer/presentation';
 import { bindMenu, closeMenu, syncBudgetReadout } from '../../viewer/menu';
@@ -66,10 +67,12 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 function makeDragonStamp(): SVGGElement {
   const stamp = document.createElementNS(SVG_NS, 'g');
   const top = document.createElementNS(SVG_NS, 'text');
-  top.textContent = 'HERE BE';
+  top.setAttribute('data-i18n', 'void.here_be');
+  top.textContent = t('void.here_be');
   top.setAttribute('y', '-0.55em');
   const bottom = document.createElementNS(SVG_NS, 'text');
-  bottom.textContent = 'DRAGONS';
+  bottom.setAttribute('data-i18n', 'void.dragons');
+  bottom.textContent = t('void.dragons');
   bottom.setAttribute('y', '0.7em');
   stamp.append(top, bottom);
   return stamp;
@@ -108,6 +111,57 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
   let revealStride = 1;
   let gridCols = 1;
   let hudUi: ReturnType<typeof bindProbeHud> | null = null;
+  const RAD2DEG = 180 / Math.PI;
+  let lastZoomDeg: number | null = null;
+  let simOrigin = 0;
+  let lastSimSec = 0;
+
+  function longestSpanDeg(): number {
+    const box = host.clip.getBoundingClientRect();
+    const view = host.getView();
+    const span = box.width >= box.height ? viewSpanX(view) : viewSpanY(view);
+    return span * RAD2DEG;
+  }
+
+  function syncZoomDeg(): void {
+    const next = Math.max(0, Math.round(longestSpanDeg()));
+    if (lastZoomDeg === null) {
+      lastZoomDeg = next;
+      host.signals?.set('zoom_deg', next);
+      return;
+    }
+    if (next === lastZoomDeg) return;
+    const step = next > lastZoomDeg ? 1 : -1;
+    const span = Math.abs(next - lastZoomDeg);
+    if (span > 2000) {
+      host.signals?.set('zoom_deg', next);
+      lastZoomDeg = next;
+      return;
+    }
+    for (let deg = lastZoomDeg + step; deg !== next + step; deg += step) {
+      host.signals?.set('zoom_deg', deg);
+    }
+    lastZoomDeg = next;
+  }
+
+  function markSimRunning(now: number): void {
+    if (!simOrigin) {
+      simOrigin = now;
+      lastSimSec = 0;
+    }
+    host.signals?.set('simulation_running', true);
+  }
+
+  function emitSimSecs(now: number): void {
+    if (!playing || !simOrigin) return;
+    const sec = Math.max(0, Math.floor((now - simOrigin) / 1000));
+    if (sec <= lastSimSec) return;
+    const until = Math.min(sec, lastSimSec + 120);
+    for (let n = lastSimSec + 1; n <= until; n++) {
+      host.signals?.set('simulation_sec', n);
+    }
+    lastSimSec = until;
+  }
 
   type PresentationFrame = {
     origins: { x: number; y: number }[];
@@ -171,6 +225,10 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     hangWatchAt = 0;
     hangEmitted = false;
     playAcc = 0;
+    simOrigin = 0;
+    lastSimSec = 0;
+    host.signals?.set('simulation_sec', 0);
+    host.signals?.set('simulation_running', false);
   }
 
   function placeOverlayProbes(): boolean {
@@ -190,7 +248,6 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     if (!placeOverlayProbes()) return;
     playing = false;
     hudUi?.syncPlay(false);
-    host.signals?.set('probe_count', probes?.length ?? 1);
   }
 
   function armPinnedGrid(): void {
@@ -212,7 +269,6 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     hangWatchAt = 0;
     hangEmitted = false;
     hudUi?.syncPlay(false);
-    host.signals?.set('probe_count', pinnedWorlds.length);
   }
 
   function mix(a: number, b: number, t: number): number {
@@ -314,6 +370,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     revealCount = probes.length;
     if (any) host.signals?.emit('probe-detach');
     playing = true;
+    markSimRunning(performance.now());
     playAcc = 0;
     playLast = 0;
     hangWatchAt = 0;
@@ -327,6 +384,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     intro = false;
     revealCount = probes.length;
     playing = true;
+    markSimRunning(now);
     playAcc = 0;
     playLast = now;
     hangWatchAt = 0;
@@ -511,6 +569,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
   /** Pointer events may arrive faster than the display refresh rate. Coalesce all
    * presentation work so axis DOM and pendulum canvases render at most once per frame. */
   function draw(): void {
+    syncZoomDeg();
     if (drawFrame) return;
     drawFrame = requestAnimationFrame(drawNow);
   }
@@ -590,6 +649,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
       if (!hanging && !flying) {
         playing = false;
         hudUi?.syncPlay(false);
+        host.signals?.set('simulation_running', false);
         host.signals?.emit('probe-end');
         if (singleHud) reset();
         else syncDrop();
@@ -601,6 +661,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
 
   function tick(now: number): void {
     syncVoid();
+    emitSimSecs(now);
     if (intro) {
       if (stepReveal(now)) draw();
       return;
@@ -615,9 +676,6 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
   hudUi = bindProbeHud(probeHud, () => {
     reset();
     draw();
-    const stepNow = currentProbeStep(probeHud);
-    host.signals?.set('probe_count', stepNow.count);
-    host.signals?.emit('probe-count');
   }, () => {
     if (singleHud) armSingle();
     else armPinnedGrid();

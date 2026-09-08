@@ -5,11 +5,65 @@ menu-open:
   text: This is the pendulum settings menu
 probe-detach:
   text: The pendulum has no friction. If it spins too fast, it breaks off the axis
-zoom-in-1:
-  text: The trajectory of a double pendulum strongly depends on its initial
-    conditions
-zoom-in-2:
-  text: A double pendulum is notable for strongly depending on its initial
-    conditions.
+ui.attachment_points:
+  text: Attachment points
+ui.drop:
+  text: Drop
+ui.drop_pendulums:
+  text: Drop pendulums
+ui.enable_sound:
+  text: Enable sound
+ui.frame_budget:
+  text: Frame budget
+ui.gpu.missing:
+  text: This browser requires WebGPU. The map is not computed on the CPU.
+ui.hint:
+  text: |-
+    Click or double-tap to zoom in.
+    Drag the map; the wheel or pinch changes the zoom. Right-click to go back.
+    The + / − keys also change the zoom.
+ui.language:
+  text: Language
+ui.learn_more:
+  text: Learn more →
+ui.map:
+  text: Map
+ui.page.description:
+  text: Every pixel is an experiment with a double pendulum. Zoom into a living
+    fractal map of motion, instability, and chaos.
+ui.page.title:
+  text: Double Pendulum Fractal
+ui.param.DT:
+  text: Smoothness (dt)
+ui.param.F:
+  text: Friction
+ui.param.G:
+  text: Gravity
+ui.param.L1:
+  text: Length 1
+ui.param.L2:
+  text: Length 2
+ui.param.M1:
+  text: Mass 1
+ui.param.M2:
+  text: Mass 2
+ui.reset_parameters:
+  text: Reset parameters
+ui.restart_simulation:
+  text: Restart simulation
+ui.settings:
+  text: Settings
+ui.start_simulation:
+  text: Start simulation
+ui.void.dragons:
+  text: DRAGONS
+ui.void.here_be:
+  text: HERE BE
+ui.zoom.in:
+  text: Zoom in
+ui.zoom.out:
+  text: Zoom out
+ui.zoom.reset:
+  text: Reset view
 zoom-limit:
   text: You have reached the limit of the simulation, but the map does not end here

@@ -1,22 +1,72 @@
+# once: / on: — id реплики (i18n, mp3). Если это имя из events.yaml, реплика ещё
+# и подписывается на эвент приложения. Цифр в имени быть не должно: порог в when.
+# when / unless — точное совпадение store (zoom_deg, simulation_sec, page_sec, …).
+# once — один раз за сессию, on — каждый раз. Смена языка сбрасывает once.
+
 cues:
   - once: map-ready
     text: Это карта из миллионов экспериментов с двойными маятниками. Попробуйте ее приблизить и рассмотреть подробнее
 
-  - once: zoom-in-1
-    text: Траектория двойного маятника сильно зависит от начальных условий
+  - once: zoom-in
+    text: Карта приблизилась
 
-  - once: zoom-in-2
-    text: Двойной маятник примечателен тем, что сильно зависит от начальных условий.
+  - once: zoom-out
+    text: Карта отдалилась
 
-  - once: probe-detach
-    text: У маятника нет трения. Если он раскручивается слишком быстро, то срывается с оси
+  - once: zoom-reset
+    text: Вид вернулся к целой карте
+
+  - once: zoom-limit
+    text: Вы дошли до предела симуляции, но карта здесь не заканчивается
+    at_start: zoom-in-highlight
+    finally: zoom-in-unhighlight
+
+  - once: pan
+    text: Карту можно двигать
+
+  - once: history-back
+    text: Это предыдущий вид
 
   - once: menu-open
     text: Это меню настроек маятника
     at_start: settings-panel-highlight
     finally: settings-panel-unhighlight
 
-  - once: zoom-limit
-    text: Вы дошли до предела симуляции, но карта здесь не заканчивается
-    at_start: zoom-in-highlight
-    finally: zoom-in-unhighlight
+  - once: menu-close
+    text: Меню настроек закрылось
+
+  - once: param-change
+    text: Параметры маятника изменились
+
+  - once: budget-change
+    text: Изменился бюджет кадра
+
+  - once: params-reset
+    text: Параметры сброшены
+
+  - once: simulation-start
+    text: Симуляция запущена
+
+  - once: probe-detach
+    text: У маятника нет трения. Если он раскручивается слишком быстро, то срывается с оси
+
+  - once: pendulum-hang
+    text: Больше половины маятников уже не висят на оси
+
+  - once: probe-end
+    text: Симуляция закончилась
+
+  - once: close-up
+    when:
+      zoom_deg: 45
+    text: На самой длинной стороне экрана около 45 градусов
+
+  - once: still-running
+    when:
+      simulation_sec: 5
+    text: Симуляция идёт уже пять секунд
+
+  - once: still-here
+    when:
+      page_sec: 20
+    text: Вы уже двадцать секунд на странице

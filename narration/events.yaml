@@ -1,5 +1,16 @@
 # App emit() names. Bind them from scenario.yaml with `on:` or `once:`.
-# Store keys the app writes: menu, param, param_value, budget_ms, probe_count.
+# Store keys the app writes. Cues can wait on them with `when` / `unless`
+# (exact match). A missing key is not false.
+#
+#   zoom_deg            integer degrees on the longest screen side
+#   simulation_sec      wall-clock seconds since physics started
+#   simulation_running  true while pendulums are integrating
+#   page_sec            wall-clock seconds since the narrator mounted
+#   map_ready           true after the first settled frame
+#   menu                "open" | "closed"
+#   param               slider key (L1, M1, …)
+#   param_value         that slider's number
+#   budget_ms           frame budget
 
 events:
   map-ready: First settled map frame is on screen.
@@ -14,8 +25,6 @@ events:
   param-change: A pendulum slider moved. Store: param, param_value.
   budget-change: Frame budget slider. Store: budget_ms.
   params-reset: Reset parameters.
-  probe-count: Attachment-point slider. Store: probe_count.
-  probe-start: Simulation started (play or autostart).
   probe-detach: A pendulum left its pivot.
   probe-end: Simulation finished.
   simulation-start: Start button launched a map-tied pendulum grid.
