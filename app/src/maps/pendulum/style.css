@@ -31,6 +31,7 @@
     --slider-track: #3a3a3a;
     --slider-fill: #8d8d8d;
     --slider-thumb: #9a9a9a;
+    --map-void-text: #242424;
     --track-h: 4px;
     --thumb: 14px;
     --ctrl-size: 36px;
@@ -213,7 +214,35 @@ html, body {
     will-change: transform;
 }
 
+/* The oversized layer follows the cached map transform and fills exposed space. */
+#map-void {
+    position: absolute;
+    inset: -1000%;
+    width: 2100%;
+    height: 2100%;
+    z-index: 0;
+    pointer-events: none;
+    overflow: visible;
+}
+
+#map-void .map-void-background {
+    fill: var(--bg);
+}
+
+#map-void .map-void-labels {
+    fill: url(#dragons-pattern);
+}
+
+#map-void text {
+    fill: var(--map-void-text);
+    font-family: Asimovian, sans-serif;
+    font-size: 40px;
+    text-anchor: middle;
+}
+
 canvas.map-view {
+    position: relative;
+    z-index: 1;
     display: block;
     width: 100%;
     height: 100%;

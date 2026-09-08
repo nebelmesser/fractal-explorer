@@ -138,11 +138,6 @@ export function probePxPerLen(cell: number, params: MapParams): number {
   return Math.max(4, (cell - hangPad(params)) / total);
 }
 
-/** Map area left of the θ₂ labels — grid cells are centered in this strip. */
-export function gridPlotWidth(width: number): number {
-  return Math.max(1, width - PROBE_SCALE_BAND_Y);
-}
-
 export function gridLayout(
   width: number,
   height: number,
@@ -181,16 +176,13 @@ export function probeOrigins(
       { x: cx + half, y: cy },
     ];
   }
-  const plotW = gridPlotWidth(width);
-  const { cols, rows, cellW, cellH } = gridLayout(plotW, height, spacing);
-  const inset = PROBE_CROSS_PX + 4;
-  const ox = (plotW - cols * cellW) / 2;
+  const { cols, rows, cellW, cellH } = gridLayout(width, height, spacing);
   const out: ProbeOrigin[] = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       out.push({
-        x: ox + (c + 0.5) * cellW,
-        y: r * cellH + inset,
+        x: (c + 0.5) * cellW,
+        y: (r + 0.5) * cellH,
       });
     }
   }
@@ -211,7 +203,7 @@ export function overlayPxPerLen(
 ): number {
   if (mode === 'one' || mode === 'two') return PROBE_PX_PER_LEN * overlaySightScale(mode);
   if (mode !== 'grid') return PROBE_PX_PER_LEN;
-  const { cellW, cellH } = gridLayout(gridPlotWidth(width), height, spacing);
+  const { cellW, cellH } = gridLayout(width, height, spacing);
   return probePxPerLen(Math.min(cellW, cellH), params);
 }
 
@@ -246,16 +238,18 @@ export type ProbeHudUi = {
 export function buildProbeSteps(clip: HTMLElement): ProbeStep[] {
   const box = clip.getBoundingClientRect();
   const blocked = chromeRects(clip);
-  const countOf = (mode: ProbeMode, spacing: number): number => (
-    probeOrigins(box.width, box.height, mode, spacing)
-      .filter((origin) => !originHitsChrome(origin, blocked, PROBE_CROSS_PX * overlaySightScale(mode) + 6))
-      .length
-  );
+  const countOf = (mode: ProbeMode, spacing: number): number => {
+    const points = probeOrigins(box.width, box.height, mode, spacing);
+    if (mode === 'grid') return points.length;
+    return points.filter((origin) => (
+      !originHitsChrome(origin, blocked, PROBE_CROSS_PX * overlaySightScale(mode) + 6)
+    )).length;
+  };
   const seen = new Set([0, 1, 2]);
   const grids: ProbeStep[] = [];
   const keys = new Set<string>();
   for (let cell = PROBE_CELL_PX; cell >= PROBE_CELL_MIN_PX; cell -= 1) {
-    const layout = gridLayout(gridPlotWidth(box.width), box.height, cell);
+    const layout = gridLayout(box.width, box.height, cell);
     const key = `${layout.cols}x${layout.rows}`;
     if (keys.has(key)) continue;
     keys.add(key);

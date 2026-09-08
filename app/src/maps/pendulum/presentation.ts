@@ -69,11 +69,12 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
   };
 
   function origins(box = host.clip.getBoundingClientRect()): { x: number; y: number }[] {
-    const blocked = chromeRects(host.clip);
     const mode = currentProbeStep(probeHud).mode;
+    const points = layoutOrigins(box.width, box.height, mode, probeSpacing(probeHud));
+    if (mode === 'grid') return points;
+    const blocked = chromeRects(host.clip);
     const hitR = PROBE_CROSS_PX * overlaySightScale(mode) + 6;
-    return layoutOrigins(box.width, box.height, mode, probeSpacing(probeHud))
-      .filter((origin) => !originHitsChrome(origin, blocked, hitR));
+    return points.filter((origin) => !originHitsChrome(origin, blocked, hitR));
   }
 
   function sampleFrame(): PresentationFrame {
