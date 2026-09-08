@@ -31,6 +31,17 @@ export const MIN_VIEW_SPAN = 1e-5; // stop zooming before float32 coordinate pre
 export const OVERSCAN_PAD = 0.5; // half a screen on each side of the visible view
 export const OVERSCAN_RELOAD = 0.6; // prefetch a new halo while this much pad remains
 
+// World-aligned LOD cache. Raw f32 values survive camera movement and are
+// normalized only while the visible tile set is composed.
+export const LOD_TILE_PX = 256;
+export const LOD_CACHE_TILES = 192;
+export const LOD_PREFETCH_PAD = 0.35;
+export const LOD_COARSE_GAP = 2;
+export const LOD_MAX_LEVEL = 24;
+export const LOD_EXPOSURE_LOW = 0.01;
+export const LOD_EXPOSURE_HIGH = 0.995;
+export const LOD_EXPOSURE_TAU_MS = 360;
+
 // Post-process. Median kills single-pixel fireflies after log-normalization.
 export const MEDIAN_DEFAULT = 3; // scipy-style window (3 → 3×3)
 export const MEDIAN_MAX = 5; // shader sorts n² samples; keep n small

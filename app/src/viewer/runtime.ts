@@ -231,16 +231,11 @@ export async function bootViewer(
   }
 
   function presentMotion(coasting: boolean): void {
-    applyShift();
+    applyShift(true);
     drawChrome();
     syncZoomBar();
-    // Gesture is still moving: only CSS-shift (and a parked halo). Never start a
-    // budgeted pass here — that is what made desktop pan hitch.
-    if (coverageInset() < 0) promoteParked();
-    if (isUnzoom(computedView, view)) {
-      unzoomTarget = copyView(world);
-      void prefetchUnzoom(world);
-    }
+    // Cached world tiles are composited immediately. Missing fine cells refine
+    // in the renderer without lowering the resolution of cached cells.
     if (!coasting) gestureActive = true;
   }
 
@@ -340,16 +335,21 @@ export async function bootViewer(
     return true;
   }
 
-  function applyShift(): void {
-    const cover = alignViewY(computedView, view, navigation);
-    const sx = viewSpanX(cover) / viewSpanX(view);
-    const sy = viewSpanY(cover) / viewSpanY(view);
-    const cc = viewCenter(cover);
-    const nc = viewCenter(view);
-    const box = clip.getBoundingClientRect();
-    const dx = ((cc.x - nc.x) / viewSpanX(view)) * box.width;
-    const dy = ((cc.y - nc.y) / viewSpanY(view)) * box.height;
-    mapShift.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+  function applyShift(moving = animating || gestureActive): void {
+    mapShift.style.transform = 'none';
+    if (frontCanvas.dataset.ready === '1') {
+      renderer.setCanvas(frontCanvas);
+      renderer.present(
+        view,
+        params,
+        Math.max(1, frontCanvas.width),
+        Math.max(1, frontCanvas.height),
+        controls.invert,
+        controls.median,
+        moving,
+      );
+    }
+    computedView = copyView(view);
   }
 
   function drawChrome(): void {
@@ -365,16 +365,7 @@ export async function bootViewer(
   }
 
   function snapWorld(p: { x: number; y: number }): { x: number; y: number } {
-    const q = wrapPointToCover(p, computedView, navigation);
-    const nx = (q.x - computedView.xMin) / viewSpanX(computedView);
-    const ny = (q.y - computedView.yMin) / viewSpanY(computedView);
-    const texel = nx >= 0 && nx <= 1 && ny >= 0 && ny <= 1 ? renderer.mapTexel(nx, ny) : null;
-    if (!texel) return p;
-    const xDen = Math.max(texel.width - 1, 1);
-    const yDen = Math.max(texel.height - 1, 1);
-    const sx = computedView.xMin + (viewSpanX(computedView) * texel.ix) / xDen;
-    const sy = computedView.yMin + (viewSpanY(computedView) * texel.iy) / yDen;
-    return { x: sx, y: p.y + (sy - q.y) };
+    return renderer.snapWorld(p);
   }
 
   function cancelAnim(): void {
@@ -403,18 +394,12 @@ export async function bootViewer(
   }
 
   function computeForced(target: ViewRect, from?: ViewRect, lookParams?: MapParams): Promise<void> {
-    return new Promise((resolve) => {
-      forcedWaiters.push(resolve);
-      const landing = foldViewY(target, navigation);
-      forcedView = from
-        ? unionView(alignViewY(foldViewY(from, navigation), landing, navigation), landing)
-        : landing;
-      forcedUnit = unzoomTarget ? foldViewY(view, navigation) : landing;
-      forcedParams = lookParams ?? null;
-      wantRefine = false;
-      wantHalo = true;
-      renderGen += 1;
-    });
+    const landing = foldViewY(target, navigation);
+    const source = from
+      ? unionView(alignViewY(foldViewY(from, navigation), landing, navigation), landing)
+      : landing;
+    const size = computeSize(display, settledPx);
+    return renderer.prefetch(source, lookParams ?? params, size.width, size.height);
   }
 
   function waitForced(): Promise<void> {
@@ -454,21 +439,8 @@ export async function bootViewer(
 
   function prefetchUnzoom(target: ViewRect): Promise<void> {
     const landing = foldViewY(target, navigation);
-    const have = widestCover();
-    const next = nextUnzoomCover(have, landing, navigation);
-    const look = lookaheadParams(next);
-    const haveAligned = alignViewY(foldViewY(have, navigation), landing, navigation);
-    const spatialDone = tiledInset(landing, haveAligned, navigation) >= 0;
-    const need = spatialDone ? landing : next;
-    if (forcedView && tiledInset(need, forcedView, navigation) >= -0.02) return waitForced();
-    if (spatialDone) {
-      if (!look || (lastCoverParams && paramsClose(look, lastCoverParams))) {
-        return Promise.resolve();
-      }
-      if (rendering && !forcedView) return Promise.resolve();
-      return computeForced(landing, undefined, look);
-    }
-    return computeForced(next, undefined, look);
+    const size = computeSize(display, settledPx);
+    return renderer.prefetch(landing, lookaheadParams(landing) ?? params, size.width, size.height);
   }
 
   function resetToWorld(): void {
@@ -624,18 +596,12 @@ export async function bootViewer(
     const landing = foldViewY(next, navigation);
     const token = zoomToken;
     unzoomTarget = landing;
-    const grown = lerpViewShortY(view, landing, 0.05, navigation);
-    const have = widestCover();
     const begin = (): void => {
       if (token !== zoomToken) return;
-      promoteParked();
       animateViewTo(next, then);
     };
-    if (tiledInset(grown, have, navigation) >= 0) {
-      void prefetchUnzoom(landing);
-      begin();
-      return;
-    }
+    // Seed the landing LOD before animation. The compositor then keeps one
+    // coherent exposure while finer cells arrive.
     void prefetchUnzoom(landing).then(begin);
   }
 
@@ -660,7 +626,6 @@ export async function bootViewer(
       unzoomTarget = null;
       void computeForced(landing, view);
       animateViewTo(next, () => {
-        promoteParked(true);
         scheduleView({ immediate: true });
       });
       return;
@@ -694,17 +659,8 @@ export async function bootViewer(
       return presentation.pickPoint(x, y, clientX, clientY);
     },
     prefetchView(target) {
-      if (animating) return;
-      if (isUnzoom(view, target)) {
-        unzoomTarget = foldViewY(target, navigation);
-        void prefetchUnzoom(unzoomTarget);
-        return;
-      }
-      const landing = foldViewY(target, navigation);
-      if (forcedView && tiledInset(landing, forcedView, navigation) > 0.05) return;
-      if (parkedCover && tiledInset(landing, parkedCover, navigation) > 0.05) return;
-      if (!forcedView && !parkedCover && tiledInset(landing, computedView, navigation) > OVERSCAN_RELOAD * 0.5) return;
-      void computeForced(target, view);
+      const size = computeSize(display, settledPx);
+      void renderer.prefetch(foldViewY(target, navigation), params, size.width, size.height);
     },
     interrupt() {
       cancelZoomAnim();
@@ -712,7 +668,6 @@ export async function bootViewer(
     settleView() {
       gestureActive = false;
       unzoomTarget = null;
-      promoteParked(true);
       scheduleView({ immediate: true });
     },
     dismissUi() {
@@ -757,103 +712,48 @@ export async function bootViewer(
   ro.observe(stage);
 
   async function renderOnce(): Promise<void> {
-    if (rendering) return;
-    if (animating && !forcedView) return;
-    if (!wantRefine && !wantHalo) return;
-    const forced = forcedView ? copyView(forcedView) : null;
-    const passParams = forcedParams ?? params;
-    const live = paramDragging && !forced;
-    const unzoomPass = Boolean(forced && unzoomTarget);
-    const padded = !live && !unzoomPass && (wantHalo || Boolean(forced));
+    if (rendering || (!wantRefine && !wantHalo)) return;
+    const live = paramDragging;
     const gen = renderGen;
     rendering = true;
     renderingLive = live;
     wantRefine = false;
     wantHalo = false;
-    if (!live && !unzoomPass) {
-      parkedCover = null;
-      parkedPad = 0;
-    }
     try {
-      const vis = computeSize(display, live ? paramPreviewPx() : settledPx);
-      const haloBase = computeSize(display, cssShortPx(display));
-      const textureLimit = Math.min(MAX_OVERSCAN_PX, gpuOk.device.limits.maxTextureDimension2D);
-      // A halo is useful only if promoting it does not make the visible map
-      // coarser. On very large displays, reduce its width before its density.
-      const pad = padded ? densityPreservingPad(vis, OVERSCAN_PAD, textureLimit) : 0;
-      const unit = foldViewY(forcedUnit ?? view, navigation);
-      const source = foldViewY(forced ?? view, navigation);
-      const renderView = pad > 0 ? padViewWith(source, pad, unit) : copyView(source);
-      const foldedVis = foldViewY(view, navigation);
-      const normView = {
-        xMin: Math.max(renderView.xMin, foldedVis.xMin),
-        xMax: Math.min(renderView.xMax, foldedVis.xMax),
-        yMin: Math.max(renderView.yMin, foldedVis.yMin),
-        yMax: Math.min(renderView.yMax, foldedVis.yMax),
-      };
-      const normOk = normView.xMax > normView.xMin && normView.yMax > normView.yMin;
-      const rx = viewSpanX(renderView) / Math.max(viewSpanX(unit), 1e-12);
-      const ry = viewSpanY(renderView) / Math.max(viewSpanY(unit), 1e-12);
-      const size = scaleSize(padded ? vis : unzoomPass ? haloBase : vis, Math.max(1, rx, ry), textureLimit);
-      renderer.setCanvas(backCanvas);
+      const size = computeSize(display, live ? paramPreviewPx() : settledPx);
+      renderer.setCanvas(frontCanvas);
       const ms = await renderer.render(
-        renderView,
-        passParams,
+        foldViewY(view, navigation),
+        params,
         size.width,
         size.height,
         controls.invert,
         controls.median,
-        unzoomPass || !normOk ? renderView : normView,
       );
-      if (gen !== renderGen) return;
+      if (gen != renderGen) return;
       if (live) lastParamMapMs = ms;
       else lastRefineMs = ms;
       await waitForPresent();
-      if (gen !== renderGen) return;
-      const visCovers = lastOverscanPad === 0
-        && frontCanvas.dataset.ready === '1'
-        && tiledInset(view, computedView, navigation) >= 0;
-      const newCovers = tiledInset(view, renderView, navigation) >= 0;
-      if (padded && newCovers && (visCovers || gestureActive) && !unzoomTarget) {
-        parkedCover = renderView;
-        parkedPad = pad;
-        if (forced) {
-          lastCoverParams = passParams;
-          notifyForcedDone();
-        }
-      } else {
-        swapMapCanvases();
-        computedView = renderView;
-        if (unzoomPass) {
-          parkedCover = null;
-          parkedPad = 0;
-        }
-        lastOverscanPad = pad;
-        lastUnitSpan = { x: viewSpanX(unit), y: viewSpanY(unit) };
-        if (forced) {
-          lastCoverParams = passParams;
-          notifyForcedDone();
-        } else if (!padded && !live) {
-          const prevPx = settledPx;
-          const prevWork = params[mapDef.workBudget.param];
-          applyBudget();
-          markPrefsDirty();
-          if (
-            (settledPx > prevPx || params[mapDef.workBudget.param] > prevWork)
-            && lastRefineMs < controls.targetFrameMs * 0.85
-          ) {
-            wantRefine = true;
-          } else {
-            wantHalo = true;
-          }
-        }
-      }
-      applyShift();
+      if (gen != renderGen) return;
+      computedView = copyView(view);
+      lastOverscanPad = 0;
+      lastUnitSpan = { x: viewSpanX(view), y: viewSpanY(view) };
+      applyShift(false);
       syncZoomBar();
       drawChrome();
-      if (forced && unzoomTarget) void prefetchUnzoom(unzoomTarget);
+      if (!live) {
+        const prevPx = settledPx;
+        const prevWork = params[mapDef.workBudget.param];
+        applyBudget();
+        markPrefsDirty();
+        if (
+          (settledPx > prevPx || params[mapDef.workBudget.param] > prevWork)
+          && lastRefineMs < controls.targetFrameMs * 0.85
+        ) {
+          wantRefine = true;
+        }
+      }
     } catch (error) {
-      if (forced) notifyForcedDone();
       console.error(error);
       const hint = document.getElementById('gpu-missing');
       if (hint && frontCanvas.dataset.ready !== '1') {
