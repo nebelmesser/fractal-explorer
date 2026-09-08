@@ -1,0 +1,99 @@
+{
+  "source_lang": "ru",
+  "locales": [
+    "ru",
+    "en"
+  ],
+  "locale_names": {
+    "ru": "Русский",
+    "en": "English"
+  },
+  "cues": [
+    {
+      "once": "map-ready",
+      "text": {
+        "ru": "Это карта из миллионов экспериментов с двойными маятниками. Попробуйте ее приблизить и рассмотреть подробнее",
+        "en": "This is a map of millions of experiments with double pendulums. Try zooming in and examining it more closely"
+      },
+      "audio": {
+        "ru": "audio/ru/map-ready.mp3",
+        "en": "audio/en/map-ready.mp3"
+      }
+    },
+    {
+      "once": "zoom-in-1",
+      "text": {
+        "ru": "Траектория двойного маятника сильно зависит от начальных условий",
+        "en": "The trajectory of a double pendulum strongly depends on its initial conditions"
+      },
+      "audio": {
+        "ru": "audio/ru/zoom-in-1.mp3",
+        "en": "audio/en/zoom-in-1.mp3"
+      }
+    },
+    {
+      "once": "zoom-in-2",
+      "text": {
+        "ru": "Двойной маятник примечателен тем, что сильно зависит от начальных условий.",
+        "en": "A double pendulum is notable for strongly depending on its initial conditions."
+      },
+      "audio": {
+        "ru": "audio/ru/zoom-in-2.mp3",
+        "en": "audio/en/zoom-in-2.mp3"
+      }
+    },
+    {
+      "once": "probe-detach",
+      "text": {
+        "ru": "У маятника нет трения. Если он раскручивается слишком быстро, то срывается с оси",
+        "en": "The pendulum has no friction. If it spins too fast, it breaks off the axis"
+      },
+      "audio": {
+        "ru": "audio/ru/probe-detach.mp3",
+        "en": "audio/en/probe-detach.mp3"
+      }
+    },
+    {
+      "once": "menu-open",
+      "text": {
+        "ru": "Это меню настроек маятника",
+        "en": "This is the pendulum settings menu"
+      },
+      "audio": {
+        "ru": "audio/ru/menu-open.mp3",
+        "en": "audio/en/menu-open.mp3"
+      },
+      "at_start": [
+        {
+          "emit": "settings-panel-highlight"
+        }
+      ],
+      "finally": [
+        {
+          "emit": "settings-panel-unhighlight"
+        }
+      ]
+    },
+    {
+      "once": "zoom-limit",
+      "text": {
+        "ru": "Вы дошли до предела симуляции, но карта здесь не заканчивается",
+        "en": "You have reached the limit of the simulation, but the map does not end here"
+      },
+      "audio": {
+        "ru": "audio/ru/zoom-limit.mp3",
+        "en": "audio/en/zoom-limit.mp3"
+      },
+      "at_start": [
+        {
+          "emit": "zoom-in-highlight"
+        }
+      ],
+      "finally": [
+        {
+          "emit": "zoom-in-unhighlight"
+        }
+      ]
+    }
+  ]
+}

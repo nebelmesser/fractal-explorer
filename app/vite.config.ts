@@ -36,7 +36,10 @@ export default defineConfig({
     {
       name: 'strip-crossorigin',
       transformIndexHtml(html) {
-        return html.replace(/ crossorigin(?:="[^"]*")?/g, '');
+        return html
+          .replace(/ crossorigin(?:="[^"]*")?/g, '')
+          .replace('src="./assets/explorer.js"', 'src="./assets/explorer.js?v=start-hud"')
+          .replace('href="./assets/explorer.css"', 'href="./assets/explorer.css?v=start-hud"');
       },
     },
     {

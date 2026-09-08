@@ -33,6 +33,7 @@ import {
   type MapPresentation,
   type MapPresentationFactory,
   type ViewerControls,
+  type ViewerSignals,
 } from './presentation';
 import {
   alignViewY,
@@ -50,6 +51,7 @@ import {
   worldFromDisplay,
   wrapPointToCover,
   zoomAbout,
+  shortSpan,
 } from './view';
 
 /** WebGPU presents a frame later than CSS. Wait until the hidden canvas has pixels. */
@@ -64,6 +66,7 @@ function waitForPresent(): Promise<void> {
 export async function bootViewer(
   mapDef: MapDefinition,
   presentationFactory?: MapPresentationFactory,
+  signals?: ViewerSignals,
 ): Promise<void> {
   const gpuMissing = document.getElementById('gpu-missing');
   const mapCanvas = document.getElementById('map') as HTMLCanvasElement;
@@ -172,6 +175,7 @@ export async function bootViewer(
     getView: () => view,
     clientToWorld,
     snapToRenderedPixel: snapWorld,
+    signals,
   }) ?? emptyPresentation;
   bindPrefs(preferencesKey, () => {
     const stored = { ...params };
@@ -192,6 +196,19 @@ export async function bootViewer(
     zoomOut.disabled = !canZoomOut(view, world);
     zoomReset.disabled = !canZoomOut(view, world) && atDefaultView(view, world, navigation);
   }
+
+  function noteCamera(prev: ViewRect, next: ViewRect, kind?: 'reset' | 'back'): void {
+    if (kind === 'back') signals?.emit('history-back');
+    if (viewsEqual(prev, next)) return;
+    const before = shortSpan(prev);
+    const after = shortSpan(next);
+    if (after < before * 0.99) signals?.emit('zoom-in');
+    else if (after > before * 1.01) signals?.emit('zoom-out');
+    else signals?.emit('pan');
+    if (canZoomIn(prev) && !canZoomIn(next)) signals?.emit('zoom-limit');
+  }
+
+  let mapReadySent = false;
 
   function scaleDrift(): number {
     if (!(lastUnitSpan.x > 0 && lastUnitSpan.y > 0)) return 0;
@@ -586,6 +603,7 @@ export async function bootViewer(
   }
 
   function applyView(next: ViewRect, opts?: { pushHistory?: boolean; animate?: boolean; immediate?: boolean; navigating?: boolean; coasting?: boolean; keepPrefetch?: boolean }): void {
+    if (!opts?.coasting) noteCamera(view, next);
     presentation.noteActivity();
     if (opts?.navigating || opts?.coasting) gestureActive = true;
     if (!opts?.coasting) stopCoast();
@@ -627,10 +645,12 @@ export async function bootViewer(
     },
     popHistory() {
       if (history.length <= 1) return;
+      const prev = copyView(view);
       stopCoast();
       cancelZoomAnim();
       history.pop();
       view = copyView(history[history.length - 1]);
+      noteCamera(prev, view, 'back');
       markPrefsDirty();
       scheduleView({ immediate: true });
       presentation.noteActivity();
@@ -663,6 +683,7 @@ export async function bootViewer(
   zoomOut.addEventListener('click', () => buttonZoom(1 / BUTTON_ZOOM_FACTOR));
   zoomIn.addEventListener('click', () => buttonZoom(BUTTON_ZOOM_FACTOR));
   zoomReset.addEventListener('click', () => {
+    signals?.emit('zoom-reset');
     resetToWorld();
   });
   syncZoomBar();
@@ -727,6 +748,10 @@ export async function bootViewer(
       applyShift(false);
       syncZoomBar();
       drawChrome();
+      if (!live && !mapReadySent) {
+        mapReadySent = true;
+        signals?.emit('map-ready');
+      }
       if (!live) {
         const prevPx = settledPx;
         const prevWork = params[mapDef.workBudget.param];

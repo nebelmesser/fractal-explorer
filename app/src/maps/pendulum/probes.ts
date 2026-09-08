@@ -24,7 +24,7 @@ export type ProbeStep = {
   spacing: number;
 };
 
-const CHROME_IDS = ['map-hud', 'sidebar', 'menu-toggle', 'ui-container'] as const;
+const CHROME_IDS = ['map-hud', 'sidebar', 'menu-toggle', 'ui-container', 'narration-locale'] as const;
 const CHROME_PAD = 10;
 /** 0–1–2 sit farther apart than the later grid steps. */
 const EARLY_GAP = 1.85;
@@ -216,6 +216,7 @@ export function probeSpacing(hud: ProbeHud): number {
   return currentProbeStep(hud).spacing;
 }
 
+/** Old attachment-point slider. Default HUD is Start-only. */
 export function emptyProbeSteps(): ProbeStep[] {
   return [
     { count: 0, mode: 'none', spacing: 0 },
@@ -231,7 +232,8 @@ export const defaultProbeHud = (): ProbeHud => ({
 
 export type ProbeHudUi = {
   syncPlay(playing: boolean): void;
-  setSteps(steps: ProbeStep[]): void;
+  syncDrop(show: boolean): void;
+  setSteps(steps: ProbeStep[], silent?: boolean): void;
 };
 
 /** Distinct 0 / 1 / 2 + each unique grid that actually places pendulums. */
@@ -276,6 +278,7 @@ export function bindProbeHud(
   hud: ProbeHud,
   onChange: () => void,
   onStart: () => void,
+  onDrop: () => void,
 ): ProbeHudUi {
   const root = document.getElementById('probe-count');
   const track = document.getElementById('probe-count-track');
@@ -283,7 +286,8 @@ export function bindProbeHud(
   const ticks = document.getElementById('probe-count-ticks');
   const thumb = document.getElementById('probe-count-thumb');
   const start = document.getElementById('probe-start') as HTMLButtonElement | null;
-  if (!root || !track || !fill || !ticks || !thumb || !start) {
+  const drop = document.getElementById('probe-drop') as HTMLButtonElement | null;
+  if (!root || !track || !fill || !ticks || !thumb || !start || !drop) {
     throw new Error('Probe HUD DOM is incomplete');
   }
   const rootEl = root;
@@ -292,7 +296,9 @@ export function bindProbeHud(
   const ticksEl = ticks;
   const thumbEl = thumb;
   const startEl = start;
+  const dropEl = drop;
   let playing = false;
+  let dropVisible = false;
 
   function lastIndex(): number {
     return Math.max(0, hud.steps.length - 1);
@@ -333,9 +339,10 @@ export function bindProbeHud(
     rootEl.setAttribute('aria-valuemin', String(hud.steps[0]?.count ?? 0));
     rootEl.setAttribute('aria-valuemax', String(hud.steps[max]?.count ?? 0));
     rootEl.setAttribute('aria-valuenow', String(step.count));
-    startEl.disabled = step.count <= 0;
+    startEl.disabled = false;
     startEl.classList.toggle('is-playing', playing);
     startEl.setAttribute('aria-label', playing ? 'Restart simulation' : 'Start simulation');
+    dropEl.hidden = !dropVisible;
     for (const mark of ticksEl.querySelectorAll<HTMLElement>('[data-index]')) {
       mark.classList.toggle('is-on', Number(mark.dataset.index) === hud.index);
     }
@@ -382,6 +389,7 @@ export function bindProbeHud(
   });
 
   startEl.addEventListener('click', () => onStart());
+  dropEl.addEventListener('click', () => onDrop());
   rebuildTicks();
   sync();
   return {
@@ -389,14 +397,18 @@ export function bindProbeHud(
       playing = next;
       sync();
     },
-    setSteps(next) {
+    syncDrop(show) {
+      dropVisible = show;
+      dropEl.hidden = !show;
+    },
+    setSteps(next, silent = false) {
       const prev = currentProbeStep(hud);
       hud.steps = next.length ? next : emptyProbeSteps();
       hud.index = indexForCount(hud.steps, prev.count || PROBE_LEVEL_DEFAULT);
       rebuildTicks();
       sync();
       const cur = currentProbeStep(hud);
-      if (cur.count !== prev.count || cur.mode !== prev.mode || cur.spacing !== prev.spacing) {
+      if (!silent && (cur.count !== prev.count || cur.mode !== prev.mode || cur.spacing !== prev.spacing)) {
         onChange();
       }
     },

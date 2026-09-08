@@ -73,6 +73,56 @@ rendering engine.
 The concrete page entrypoint composes a `MapDefinition`, its presentation, and
 `bootViewer`. Keep this composition thin.
 
+## Narration
+
+Voiceover and subtitles are `@nebelmesser/narration` (`file:../../narration`).
+Only the page entrypoint mounts it. The engine and presentations must not
+import that package; they talk through optional `ViewerSignals` on
+`PresentationHost`:
+
+```ts
+signals.emit('probe-detach');
+signals.set('probe_count', 3);
+```
+
+`emit(name)` is a fire-and-forget app event. `set(key, value)` writes the
+in-memory KV store (`string | number | boolean`). A missing key is not
+`false`. Pendulum wiring is `app/src/maps/pendulum/main.ts`: it forwards
+`emit`/`set` to the narrator and listens for highlight events coming back.
+The overlay and cues stay off unless the page URL has `narration=1`.
+Native language labels live in `narration/config.yaml` under `locales`
+(`ru: Русский`). The language select sits to the left of the settings button;
+Enable sound sits on the subtitle itself.
+
+Catalog every app `emit` name in `narration/events.yaml`. Scenario cues bind
+with that same name:
+
+- `once: map-ready` — play the first time the event fires this session;
+- `on: pan` — play every time.
+
+Cue identity is that event name (i18n keys, `audio/{locale}/{name}.mp3`). A
+cue that names `zoom-in-1` will not run if the app emits `zoom-in`. After
+changing `narration/scenario.yaml`, regenerate from `fractal/app`:
+
+```bash
+npm run narrate
+```
+
+Do not hand-edit `manifest.json`, generated `i18n/*.yaml`, or `audio/` except
+to set `frozen: true` on a translation you want to keep. Sync hashes text in
+`.sync-lock.json` and rebuilds only changed locales and mp3s.
+
+The narrator can emit back into the app from `at_start` / `finally`. The
+format is `target-event` (`settings-panel-highlight`). `bindHighlight` /
+`bindUnhighlight` listen for `highlight` / `unhighlight`; the prefix is the
+target token. Register tokens in the entrypoint map (`settings-panel` →
+`#ui-container`). Highlighted nodes use `.is-narrate-on` in the map's CSS.
+
+Engine-generic events (camera, menu chrome, map-ready) belong in
+`app/src/viewer/`. Map-specific events (probes, pendulum sliders) belong in
+that map's presentation. Keep names in `narration/events.yaml` in sync when
+you add or rename an emit.
+
 ## Rendering transitions
 
 Pan, pinch, wheel, and inertia transform the best available texture while the
@@ -94,7 +144,8 @@ npm run build
 ```
 
 This builds Rust/WASM, runs TypeScript checking, and writes production files to
-`fractal/`.
+`fractal/`. After scenario or copy changes, run `npm run narrate` first so
+`narration/manifest.json` and audio are current before the Vite build.
 
 For integrated preview, follow the parent repository instructions and run only
 from the playground root:
@@ -104,8 +155,9 @@ from the playground root:
 ./scripts/preview
 ```
 
-Open `https://127.0.0.1:4000/fractal/double-pendulum.html`. Do not start another
-Jekyll, Python, Vite preview, or static-file server.
+Open `https://127.0.0.1:4000/fractal/double-pendulum.html`. Add `?narration=1`
+to show the narrator overlay and play cues. Do not start another Jekyll, Python,
+Vite preview, or static-file server.
 
 After engine changes, verify cold load, desktop and mobile gestures, inertia,
 zoom in/out, view reset, parameter reset, resizing, visible normalization, and

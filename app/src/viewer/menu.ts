@@ -5,7 +5,7 @@ import {
   TARGET_FRAME_MS_MIN,
 } from '../constants';
 import type { MapDefinition, MapParam, MapParams } from '../maps/types';
-import type { ResetTransition, ViewerControls } from './presentation';
+import type { ResetTransition, ViewerControls, ViewerSignals } from './presentation';
 import { markPrefsDirty } from './prefs';
 
 function formatValue(kind: 'float' | 'int', value: number): string {
@@ -54,6 +54,7 @@ export function bindMenu(
   controls: ViewerControls,
   onParamsChange: (phase: 'live' | 'reset' | 'settle') => void,
   onResetHome: ResetTransition,
+  signals?: ViewerSignals,
 ): void {
   const menuToggle = document.getElementById('menu-toggle') as HTMLButtonElement;
   const uiContainer = document.getElementById('ui-container') as HTMLElement;
@@ -117,6 +118,9 @@ export function bindMenu(
       readout.textContent = formatValue(spec.kind, next);
       paintParam(spec, input);
       markPrefsDirty();
+      signals?.set('param', spec.key);
+      signals?.set('param_value', next);
+      signals?.emit('param-change');
       onParamsChange('live');
     });
     input.addEventListener('change', () => onParamsChange('settle'));
@@ -154,6 +158,8 @@ export function bindMenu(
     paintRange(target);
     syncBudgetReadout(controls.targetFrameMs, controls.params[map.workBudget.param]);
     markPrefsDirty();
+    signals?.set('budget_ms', controls.targetFrameMs);
+    signals?.emit('budget-change');
     onParamsChange('live');
   });
   target.addEventListener('change', () => onParamsChange('settle'));
@@ -172,17 +178,26 @@ export function bindMenu(
     syncExtras();
     onResetHome.instant();
     markPrefsDirty();
+    signals?.emit('params-reset');
     onParamsChange('settle');
   });
 
   function setMenuOpen(open: boolean): void {
+    const wasOpen = uiContainer.classList.contains('is-open');
     uiContainer.classList.toggle('is-open', open);
     menuToggle.classList.toggle('is-open', open);
     menuToggle.setAttribute('aria-expanded', String(open));
+    if (open === wasOpen) return;
+    signals?.set('menu', open ? 'open' : 'closed');
+    signals?.emit(open ? 'menu-open' : 'menu-close');
   }
 
   function isMenuChrome(target: EventTarget | null): boolean {
-    return target instanceof Node && (uiContainer.contains(target) || menuToggle.contains(target));
+    return target instanceof Node && (
+      uiContainer.contains(target)
+      || menuToggle.contains(target)
+      || (target instanceof Element && Boolean(target.closest('#narration-locale')))
+    );
   }
 
   hideMenu = () => setMenuOpen(false);

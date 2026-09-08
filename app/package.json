@@ -5,7 +5,11 @@
   "scripts": {
     "build:wasm": "wasm-pack build crates/map_core --target web --out-dir ../../src/maps/pendulum/pkg --release",
     "dev": "npm run build:wasm && vite",
-    "build": "npm run build:wasm && tsc --noEmit && vite build"
+    "build": "npm run build:wasm && tsc --noEmit && vite build",
+    "narrate": "narration sync --dir ../narration"
+  },
+  "dependencies": {
+    "@nebelmesser/narration": "file:../../narration"
   },
   "devDependencies": {
     "@webgpu/types": "^0.1.72",

@@ -1,0 +1,70 @@
+{
+  "cues": {
+    "map-ready": {
+      "sourceHash": "82d5089d4160d38d303f34ed52d0ad03a236e7b0253644742b2b1a900c65e400",
+      "locales": {
+        "ru": {
+          "textHash": "82d5089d4160d38d303f34ed52d0ad03a236e7b0253644742b2b1a900c65e400"
+        },
+        "en": {
+          "textHash": "8d4aaf4a32f609c3af5345921692d9af8372cd927ad4cea3e5a18ddec479949a"
+        }
+      }
+    },
+    "zoom-in-1": {
+      "sourceHash": "578aa562e754419797b52b5efa58333737c6d261557192ee8558f075ed5a75df",
+      "locales": {
+        "ru": {
+          "textHash": "578aa562e754419797b52b5efa58333737c6d261557192ee8558f075ed5a75df"
+        },
+        "en": {
+          "textHash": "1228a571498a5075f36e0ab04c3c8db349365eb5bd3bea1448558ef1f49fbdf4"
+        }
+      }
+    },
+    "zoom-in-2": {
+      "sourceHash": "3a9d264be25c80c433dc21bcf1d1e4fd0a716df2c70ab75caa954d9e501b36b8",
+      "locales": {
+        "ru": {
+          "textHash": "3a9d264be25c80c433dc21bcf1d1e4fd0a716df2c70ab75caa954d9e501b36b8"
+        },
+        "en": {
+          "textHash": "b909e8a5ff0bf77d1175dd7d69bc18207a6a816ddc2d91c9674c815ad476b706"
+        }
+      }
+    },
+    "probe-detach": {
+      "sourceHash": "66a4bdbd67dec67d8b8e005cd358e4cc2ef52f2f32b0c835ce1227a5fb157b12",
+      "locales": {
+        "ru": {
+          "textHash": "66a4bdbd67dec67d8b8e005cd358e4cc2ef52f2f32b0c835ce1227a5fb157b12"
+        },
+        "en": {
+          "textHash": "6bc25538be68f00e87ea051eb5124574f339d0a742be1c0a9d35ec5917aa9107"
+        }
+      }
+    },
+    "menu-open": {
+      "sourceHash": "61c6ddfab22b01ef947aedf4ea3371e86363314db3182707e70ef8898d8f96a9",
+      "locales": {
+        "ru": {
+          "textHash": "61c6ddfab22b01ef947aedf4ea3371e86363314db3182707e70ef8898d8f96a9"
+        },
+        "en": {
+          "textHash": "44c062b5001992b69a547dee36108f9324e33f2b08ee6906f7cda828cf37c719"
+        }
+      }
+    },
+    "zoom-limit": {
+      "sourceHash": "9952d77c617fd61247563616e8e3a3d2fc191725809c89f317f6863c967148d2",
+      "locales": {
+        "ru": {
+          "textHash": "9952d77c617fd61247563616e8e3a3d2fc191725809c89f317f6863c967148d2"
+        },
+        "en": {
+          "textHash": "2a4e5d3d17ec4d62131080f5c1dee11b8fe85360e87148ec44514ee986f3127a"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+cues:
+  - once: map-ready
+    text: Это карта из миллионов экспериментов с двойными маятниками. Попробуйте ее приблизить и рассмотреть подробнее
+
+  - once: zoom-in-1
+    text: Траектория двойного маятника сильно зависит от начальных условий
+
+  - once: zoom-in-2
+    text: Двойной маятник примечателен тем, что сильно зависит от начальных условий.
+
+  - once: probe-detach
+    text: У маятника нет трения. Если он раскручивается слишком быстро, то срывается с оси
+
+  - once: menu-open
+    text: Это меню настроек маятника
+    at_start: settings-panel-highlight
+    finally: settings-panel-unhighlight
+
+  - once: zoom-limit
+    text: Вы дошли до предела симуляции, но карта здесь не заканчивается
+    at_start: zoom-in-highlight
+    finally: zoom-in-unhighlight

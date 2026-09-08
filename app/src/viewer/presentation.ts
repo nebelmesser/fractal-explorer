@@ -18,6 +18,11 @@ export type ResetTransition = {
   isAway(): boolean;
 };
 
+export type ViewerSignals = {
+  emit(name: string): void;
+  set(key: string, value: string | number | boolean): void;
+};
+
 /** Services exposed by the map viewer to a map-specific UI presentation. */
 export type PresentationHost = {
   clip: HTMLElement;
@@ -30,6 +35,7 @@ export type PresentationHost = {
   getView(): ViewRect;
   clientToWorld(clientX: number, clientY: number): MapPoint;
   snapToRenderedPixel(point: MapPoint): MapPoint;
+  signals?: ViewerSignals;
 };
 
 /** Map-specific axes, overlays, HUD, and interaction hooks. */

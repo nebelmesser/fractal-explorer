@@ -1,0 +1,15 @@
+map-ready:
+  text: This is a map of millions of experiments with double pendulums. Try
+    zooming in and examining it more closely
+menu-open:
+  text: This is the pendulum settings menu
+probe-detach:
+  text: The pendulum has no friction. If it spins too fast, it breaks off the axis
+zoom-in-1:
+  text: The trajectory of a double pendulum strongly depends on its initial
+    conditions
+zoom-in-2:
+  text: A double pendulum is notable for strongly depending on its initial
+    conditions.
+zoom-limit:
+  text: You have reached the limit of the simulation, but the map does not end here

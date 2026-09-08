@@ -1,0 +1,22 @@
+# App emit() names. Bind them from scenario.yaml with `on:` or `once:`.
+# Store keys the app writes: menu, param, param_value, budget_ms, probe_count.
+
+events:
+  map-ready: First settled map frame is on screen.
+  menu-open: Hamburger opened the settings panel.
+  menu-close: Settings panel closed.
+  zoom-in: Camera zoomed in (button, click, wheel, pinch).
+  zoom-out: Camera zoomed out.
+  zoom-reset: Fit-to-map button.
+  zoom-limit: Shortest view span hit the compute limit.
+  pan: View translated without a zoom (not during coast).
+  history-back: Right-click / two-finger back in view history.
+  param-change: A pendulum slider moved. Store: param, param_value.
+  budget-change: Frame budget slider. Store: budget_ms.
+  params-reset: Reset parameters.
+  probe-count: Attachment-point slider. Store: probe_count.
+  probe-start: Simulation started (play or autostart).
+  probe-detach: A pendulum left its pivot.
+  probe-end: Simulation finished.
+  simulation-start: Start button launched a map-tied pendulum grid.
+  pendulum-hang: Fewer than half the pendulums stayed hanging with no detach for 5s.
