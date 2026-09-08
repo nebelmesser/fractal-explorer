@@ -42,10 +42,16 @@ export class GpuMapRenderer {
   private gpuTail: Promise<void> = Promise.resolve();
   private exposure: Exposure | null = null;
   private exposureTarget: Exposure | null = null;
+  private exposureAnchor: Exposure | null = null;
   private exposureAt = performance.now();
   private exposureRaf = 0;
+  private exposureQueued = false;
+  private lastExposureUpdate = 0;
+  private lastExposureSignature = '';
+  private awaitingFirstFrame = true;
   private readonly canvasPx = new WeakMap<HTMLCanvasElement, { w: number; h: number }>();
   private readonly drawBuffers: GPUBuffer[] = [];
+  private readonly histogramUniforms: GPUBuffer[] = [];
   private readonly computeLayout: GPUBindGroupLayout;
   private readonly reduceLayout: GPUBindGroupLayout;
   private readonly histogramLayout: GPUBindGroupLayout;
@@ -153,14 +159,21 @@ export class GpuMapRenderer {
   present(view: ViewRect, params: MapParams, width: number, height: number, invert: boolean, median: number, moving = true): void {
     const request = this.makeRequest(view, params, width, height, invert, median, moving);
     this.compose(request);
-    this.scheduleRefine();
+    this.scheduleDynamicExposure(request);
+    // Long simulation dispatches can starve the compositor on integrated GPUs.
+    // Cached LODs move at display rate; refinement resumes on the settled frame.
+    if (!moving) this.scheduleRefine();
   }
 
   prefetch(view: ViewRect, params: MapParams, width: number, height: number): Promise<void> {
     const request = this.makeRequest(view, params, width, height, false, 1, true, false);
     const coarse = Math.max(0, request.level - LOD_COARSE_GAP);
     return this.enqueue(async () => {
-      if (request.generation === this.generation) await this.ensureCells(request, [0, coarse, request.level], LOD_PREFETCH_PAD);
+      if (request.generation === this.generation) {
+        // One center-first coarse tile is useful lookahead without occupying the
+        // GPU for the duration of a visible gesture.
+        await this.ensureCells(request, [0, coarse], LOD_PREFETCH_PAD, 1);
+      }
     });
   }
 
@@ -233,7 +246,14 @@ export class GpuMapRenderer {
     if (key === this.paramsKey) return;
     this.paramsKey = key; this.generation += 1;
     const retired = [...this.tiles.values()];
-    this.tiles.clear(); this.exposure = null; this.exposureTarget = null;
+    this.tiles.clear();
+    // Parameter changes replace map values and exposure as one atomic frame.
+    // No tonal interpolation is carried across incompatible simulations.
+    this.exposure = null;
+    this.exposureTarget = null;
+    this.exposureAnchor = null;
+    this.awaitingFirstFrame = true;
+    this.lastExposureSignature = '';
     void this.gpuTail.then(async () => {
       await this.gpu.device.queue.onSubmittedWorkDone();
       for (const tile of retired) this.destroyTile(tile);
@@ -288,17 +308,30 @@ export class GpuMapRenderer {
     return out;
   }
 
-  private async ensureCells(request: PresentRequest, levels: number[], pad: number): Promise<void> {
+  private async ensureCells(request: PresentRequest, levels: number[], pad: number, limit = Number.POSITIVE_INFINITY): Promise<void> {
     const unique = new Map<string, Cell>();
     for (const level of [...new Set(levels)].sort((a, b) => a - b)) {
       for (const cell of this.cells(request.view, level, pad)) if (!this.tiles.has(cell.key)) unique.set(cell.key, cell);
     }
     const cx = (request.view.xMin + request.view.xMax) / 2; const cy = (request.view.yMin + request.view.yMax) / 2;
-    const cells = [...unique.values()].sort((a, b) => a.level - b.level || distance(a.drawView, cx, cy) - distance(b.drawView, cx, cy));
+    const cells = [...unique.values()]
+      .sort((a, b) => a.level - b.level || distance(a.drawView, cx, cy) - distance(b.drawView, cx, cy))
+      .slice(0, limit);
     for (let i = 0; i < cells.length; i += 6) {
       if (request.generation !== this.generation) return;
       await this.computeBatch(cells.slice(i, i + 6), request);
-      if (this.latest?.generation === request.generation) this.compose(this.latest);
+      if (this.latest?.generation === request.generation) {
+        // Parameter changes replace the old canvas only after the complete
+        // coarse cover is ready. Ordinary LOD refinement stays progressive.
+        if (this.awaitingFirstFrame) continue;
+        // A new parameter generation has no valid exposure yet. Compute it
+        // before presenting any of its tiles; otherwise log values above 1 are
+        // briefly clamped to white.
+        if (!this.exposure || performance.now() - this.lastExposureUpdate >= 120) {
+          await this.updateExposure(this.latest);
+        }
+        this.compose(this.latest);
+      }
     }
     this.evict();
   }
@@ -367,6 +400,9 @@ export class GpuMapRenderer {
 
   private compose(request: PresentRequest): void {
     if (request.generation !== this.generation) return;
+    // Keep the previous canvas contents until the new parameter generation has
+    // both map values and a matching histogram. This makes replacement atomic.
+    if (!this.exposure && !this.exposureTarget) return;
     this.configureCanvas(request.width, request.height);
     const draws = this.visibleTiles(request); this.advanceExposure();
     const exposure = this.exposure ?? this.exposureTarget ?? { lo: 0, hi: 1 }; this.lastScale = exposure;
@@ -400,19 +436,46 @@ export class GpuMapRenderer {
       pass.draw(6);
     }
     pass.end(); this.gpu.device.queue.submit([encoder.finish()]);
-    if (draws.length) this.target.canvas.dataset.ready = '1'; this.lastError = null;
+    if (draws.length) {
+      this.target.canvas.dataset.ready = '1';
+      this.awaitingFirstFrame = false;
+    }
+    this.lastError = null;
   }
 
   private async updateExposure(request: PresentRequest): Promise<void> {
     if (request.generation !== this.generation) return;
-    const all = this.visibleTiles(request).filter((item) => item.tile.level === request.level).map((item) => item.tile);
-    const tiles = [...new Map(all.map((tile) => [tile.key, tile])).values()];
-    if (!tiles.length) return;
+    const candidates = this.visibleTiles(request);
+    if (!candidates.length) return;
+    const exposureLevel = Math.max(...candidates.map((item) => item.tile.level));
+    const visible = candidates.filter((item) => item.tile.level === exposureLevel);
     const { device } = this.gpu; const encoder = device.createCommandEncoder(); encoder.clearBuffer(this.histogramBuffer);
-    for (const tile of tiles) {
+    while (this.histogramUniforms.length < visible.length) {
+      this.histogramUniforms.push(device.createBuffer({
+        size: this.map.gpu.uniformBytes,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      }));
+    }
+    for (let i = 0; i < visible.length; i++) {
+      const { tile, drawView } = visible[i];
+      const clipped = {
+        xMin: Math.max(request.view.xMin, drawView.xMin),
+        xMax: Math.min(request.view.xMax, drawView.xMax),
+        yMin: Math.max(request.view.yMin, drawView.yMin),
+        yMax: Math.min(request.view.yMax, drawView.yMax),
+      };
+      const dy = tile.view.yMin - drawView.yMin;
+      const normView = {
+        xMin: clipped.xMin, xMax: clipped.xMax,
+        yMin: clipped.yMin + dy, yMax: clipped.yMax + dy,
+      };
+      device.queue.writeBuffer(this.histogramUniforms[i], 0, this.map.gpu.packUniforms(
+        tile.view, LOD_TILE_PX, LOD_TILE_PX, request.params,
+        { invert: false, median: 1, normView },
+      ));
       const pass = encoder.beginComputePass(); pass.setPipeline(this.histogramPipeline);
       pass.setBindGroup(0, this.bind(this.histogramLayout, [
-        { binding: 0, resource: { buffer: tile.uniform } }, { binding: 1, resource: { buffer: tile.raw } },
+        { binding: 0, resource: { buffer: this.histogramUniforms[i] } }, { binding: 1, resource: { buffer: tile.raw } },
         { binding: 2, resource: { buffer: this.histogramBuffer } },
       ]));
       pass.dispatchWorkgroups(LOD_TILE_PX * LOD_TILE_PX / 256); pass.end();
@@ -426,10 +489,53 @@ export class GpuMapRenderer {
     const highBin = percentileBin(bins, total * LOD_EXPOSURE_HIGH);
     const maxIterations = Math.max(1, request.params[this.map.workBudget.param] ?? this.map.workBudget.min);
     const maxLog = Math.log1p(maxIterations);
-    this.exposureTarget = { lo: lowBin / 256 * maxLog, hi: (highBin + 1) / 256 * maxLog };
-    if (this.exposureTarget.hi <= this.exposureTarget.lo) this.exposureTarget.hi = this.exposureTarget.lo + maxLog / 256;
+    const measured = { lo: lowBin / 256 * maxLog, hi: (highBin + 1) / 256 * maxLog };
+    if (measured.hi <= measured.lo) measured.hi = measured.lo + maxLog / 256;
+    // Adapt only when the selected region still contains enough of the global
+    // tonal range. A uniformly dark region stays dark instead of being expanded
+    // into a misleading full-brightness image.
+    if (!this.exposureAnchor) this.exposureAnchor = { ...measured };
+    const anchor = this.exposureAnchor;
+    const span = Math.max(1e-6, anchor.hi - anchor.lo);
+    const localTop = (measured.hi - anchor.lo) / span;
+    const adapt = smoothstep(0.42, 0.78, localTop) * 0.72;
+    this.exposureTarget = {
+      lo: anchor.lo + (measured.lo - anchor.lo) * adapt,
+      hi: anchor.hi + (measured.hi - anchor.hi) * adapt,
+    };
     if (!this.exposure) this.exposure = { ...this.exposureTarget };
-    this.exposureAt = performance.now(); this.scheduleExposureFrames();
+    this.exposureAt = performance.now(); this.lastExposureUpdate = this.exposureAt;
+    this.scheduleExposureFrames();
+  }
+
+  /** Re-estimate exposure while the camera moves, without re-running the map. */
+  private scheduleDynamicExposure(request: PresentRequest): void {
+    if (this.exposureQueued || performance.now() - this.lastExposureUpdate < 120) return;
+    const candidates = this.visibleTiles(request);
+    const exposureLevel = candidates.length
+      ? Math.max(...candidates.map((item) => item.tile.level))
+      : -1;
+    const signature = candidates
+      .filter((item) => item.tile.level === exposureLevel)
+      .map((item) => item.tile.key)
+      .sort()
+      .join('|') + `@${[
+        request.view.xMin, request.view.xMax, request.view.yMin, request.view.yMax,
+      ].map((value) => value.toPrecision(5)).join(':')}`;
+    if (!signature || signature === this.lastExposureSignature) return;
+    this.lastExposureSignature = signature;
+    this.exposureQueued = true;
+    void this.enqueue(async () => {
+      try {
+        const latest = this.latest;
+        if (latest?.generation === this.generation) {
+          await this.updateExposure(latest);
+          this.compose(latest);
+        }
+      } finally {
+        this.exposureQueued = false;
+      }
+    });
   }
 
   private advanceExposure(): void {
@@ -516,6 +622,10 @@ function clampIndex(value: number): number { return Math.max(0, Math.min(LOD_TIL
 function distance(view: ViewRect, x: number, y: number): number { return Math.hypot((view.xMin + view.xMax) / 2 - x, (view.yMin + view.yMax) / 2 - y); }
 function percentileBin(bins: Uint32Array, target: number): number {
   let sum = 0; for (let i = 0; i < bins.length; i++) { sum += bins[i]; if (sum >= target) return i; } return bins.length - 1;
+}
+function smoothstep(edge0: number, edge1: number, value: number): number {
+  const t = Math.max(0, Math.min(1, (value - edge0) / Math.max(1e-9, edge1 - edge0)));
+  return t * t * (3 - 2 * t);
 }
 async function assertShader(mod: GPUShaderModule, label: string): Promise<void> {
   const info = await mod.getCompilationInfo(); const bad = info.messages.filter((message) => message.type === 'error');

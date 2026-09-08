@@ -114,6 +114,7 @@ export async function bootViewer(
   let lastParamMapMs = Infinity;
   let paramDragging = false;
   let renderingLive = false;
+  let parameterRenderPending = false;
   let zoomToken = 0;
   let lastOverscanPad = 0;
   let lastUnitSpan = { x: 0, y: 0 };
@@ -293,16 +294,21 @@ export async function bootViewer(
     presentation.reset();
     drawChrome();
     presentation.noteActivity();
+    parameterRenderPending = true;
     if (phase === 'live' || phase === 'reset') {
       paramDragging = true;
       wantHalo = false;
       wantRefine = true;
-      if (rendering && !renderingLive) renderGen += 1;
+      // Every slider value supersedes the in-flight tile generation. A running
+      // pass may finish on the GPU, but it must never consume the final redraw.
+      renderGen += 1;
+      if (!rendering) void renderOnce();
       return;
     }
     paramDragging = false;
     applyBudget();
     requestVisible();
+    if (!rendering) void renderOnce();
   }
 
   function swapMapCanvases(): void {
@@ -483,7 +489,6 @@ export async function bootViewer(
     unzoomTarget = copyView(world);
     presentation.reset();
     markPrefsDirty();
-    void prefetchUnzoom(unzoomTarget);
   }
 
   function resetHomeTick(eased: number): void {
@@ -492,14 +497,11 @@ export async function bootViewer(
       const desired = eased >= 1
         ? copyView(world)
         : lerpViewShortY(resetFromView, world, eased, navigation);
-      const cover = widestCover();
-      if (tiledInset(desired, cover, navigation) >= 0) view = desired;
-      if (coverageInset() < 0) promoteParked();
+      view = desired;
     }
     applyShift();
     drawChrome();
     syncZoomBar();
-    if (unzoomTarget) void prefetchUnzoom(unzoomTarget);
   }
 
   function resetHomeEnd(): void {
@@ -548,34 +550,12 @@ export async function bootViewer(
   function animateViewTo(target: ViewRect, then: () => void): void {
     const from = copyView(view);
     const token = zoomToken;
-    let origin = performance.now();
-    let last = origin;
-    let held = 0;
+    const origin = performance.now();
     animating = true;
     const step = (now: number): void => {
       if (token !== zoomToken) return;
-      const dt = Math.max(0, now - last);
-      last = now;
       const u = Math.min(1, (now - origin) / SMOOTH_ZOOM_MS);
       const desired = lerpViewShortY(from, target, easeInOutCubic(u), navigation);
-      if (unzoomTarget) {
-        if (coverageInset() < 0) promoteParked();
-        const cover = widestCover();
-        if (tiledInset(desired, cover, navigation) < 0 && held < SMOOTH_ZOOM_MS) {
-          origin += dt;
-          held += dt;
-          void prefetchUnzoom(unzoomTarget);
-          applyShift();
-          drawChrome();
-          syncZoomBar();
-          requestAnimationFrame(step);
-          return;
-        }
-        held = 0;
-        void prefetchUnzoom(unzoomTarget);
-      } else if (coverageInset() < 0) {
-        promoteParked();
-      }
       view = desired;
       applyShift();
       drawChrome();
@@ -600,9 +580,9 @@ export async function bootViewer(
       if (token !== zoomToken) return;
       animateViewTo(next, then);
     };
-    // Seed the landing LOD before animation. The compositor then keeps one
-    // coherent exposure while finer cells arrive.
-    void prefetchUnzoom(landing).then(begin);
+    // Do not enqueue simulation before animation: even a background compute
+    // dispatch would make cached-LOD presentation miss frames.
+    begin();
   }
 
   function applyView(next: ViewRect, opts?: { pushHistory?: boolean; animate?: boolean; immediate?: boolean; navigating?: boolean; coasting?: boolean; keepPrefetch?: boolean }): void {
@@ -714,6 +694,8 @@ export async function bootViewer(
   async function renderOnce(): Promise<void> {
     if (rendering || (!wantRefine && !wantHalo)) return;
     const live = paramDragging;
+    const parameterFrame = parameterRenderPending;
+    parameterRenderPending = false;
     const gen = renderGen;
     rendering = true;
     renderingLive = live;
@@ -721,7 +703,10 @@ export async function bootViewer(
     wantHalo = false;
     try {
       const size = computeSize(display, live ? paramPreviewPx() : settledPx);
-      renderer.setCanvas(frontCanvas);
+      // Parameter generations render off-screen. Resizing/configuring a visible
+      // WebGPU canvas clears it immediately, before the submitted frame arrives.
+      const targetCanvas = parameterFrame ? backCanvas : frontCanvas;
+      renderer.setCanvas(targetCanvas);
       const ms = await renderer.render(
         foldViewY(view, navigation),
         params,
@@ -735,6 +720,7 @@ export async function bootViewer(
       else lastRefineMs = ms;
       await waitForPresent();
       if (gen != renderGen) return;
+      if (parameterFrame) swapMapCanvases();
       computedView = copyView(view);
       lastOverscanPad = 0;
       lastUnitSpan = { x: viewSpanX(view), y: viewSpanY(view) };
@@ -763,6 +749,9 @@ export async function bootViewer(
     } finally {
       rendering = false;
       renderingLive = false;
+      // Do not rely on the animation-frame loop to notice a parameter update
+      // that arrived while the previous GPU pass was completing.
+      if (wantRefine || wantHalo) queueMicrotask(() => void renderOnce());
     }
   }
 

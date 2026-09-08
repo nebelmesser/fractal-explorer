@@ -62,7 +62,7 @@ fn log_sample(uv: vec2f) -> f32 {
 
 fn filtered_sample(uv: vec2f) -> f32 {
   let n = i32(exposure.options.x);
-  if (n <= 1 || exposure.range.w > 0.5) {
+  if (n <= 1) {
     return log_sample(uv);
   }
   let dims = vec2f(f32(exposure.options.y - 1u), f32(exposure.options.z - 1u));
