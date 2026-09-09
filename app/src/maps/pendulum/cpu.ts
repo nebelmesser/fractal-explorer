@@ -16,7 +16,7 @@ const waiters: Array<(worker: Worker) => void> = [];
 
 function poolSize(): number {
   const cores = typeof navigator === 'undefined' ? 4 : navigator.hardwareConcurrency ?? 4;
-  return Math.max(1, Math.min(PENDULUM_CPU_WORKERS, cores));
+  return Math.max(1, Math.min(PENDULUM_CPU_WORKERS, cores - 1));
 }
 
 /** How many independent tiles the engine should dispatch together. */
@@ -74,51 +74,47 @@ function runStrip(worker: Worker, req: TileStripRequest): Promise<ArrayBuffer> {
   });
 }
 
-/** f64 escape-time tile, split across WASM workers by rows. */
+/**
+ * Fill one f64 escape-time tile on one worker.
+ *
+ * The renderer already submits one independent tile per worker. Splitting every
+ * tile into row jobs made the first tile reserve the whole pool while the other
+ * center-first tiles waited, and multiplied worker messages for small strips.
+ */
 export async function fillPendulumTile(
   view: ViewRect,
   width: number,
   height: number,
   params: MapParams,
 ): Promise<Float32Array> {
-  const workers = ensurePool();
+  ensurePool();
   const w = Math.max(1, Math.round(width));
   const h = Math.max(1, Math.round(height));
-  // Keep an 8×8 tile on one worker so the pool can run many tiles at once.
-  // Split only when a strip is fat enough that one core would sit on it.
-  const samples = w * h;
-  const count = samples <= 64 ? 1 : Math.min(workers.length, h);
-  const rowsPer = Math.ceil(h / count);
-  const out = new Float32Array(w * h);
   const maxIter = Math.max(PENDULUM_MIN_ITER, Math.round(params.MAX_ITERATIONS ?? PENDULUM_MIN_ITER));
-  const base = {
-    width: w,
-    height: h,
-    xMin: view.xMin,
-    xMax: view.xMax,
-    yMin: view.yMin,
-    yMax: view.yMax,
-    L1: params.L1,
-    L2: params.L2,
-    M1: params.M1,
-    M2: params.M2,
-    G: params.G,
-    DT: params.DT,
-    F: params.F ?? 0,
-    maxIter,
-  };
-  await Promise.all(Array.from({ length: count }, async (_, i) => {
-    const row0 = i * rowsPer;
-    const row1 = Math.min(h, row0 + rowsPer);
-    if (row0 >= row1) return;
-    const worker = await acquire();
-    try {
-      const id = nextId++;
-      const buffer = await runStrip(worker, { id, row0, row1, ...base });
-      out.set(new Float32Array(buffer), row0 * w);
-    } finally {
-      release(worker);
-    }
-  }));
-  return out;
+  const worker = await acquire();
+  try {
+    const id = nextId++;
+    const buffer = await runStrip(worker, {
+      id,
+      row0: 0,
+      row1: h,
+      width: w,
+      height: h,
+      xMin: view.xMin,
+      xMax: view.xMax,
+      yMin: view.yMin,
+      yMax: view.yMax,
+      L1: params.L1,
+      L2: params.L2,
+      M1: params.M1,
+      M2: params.M2,
+      G: params.G,
+      DT: params.DT,
+      F: params.F ?? 0,
+      maxIter,
+    });
+    return new Float32Array(buffer);
+  } finally {
+    release(worker);
+  }
 }

@@ -3,7 +3,6 @@ import type { MapParams, ViewRect } from '../types';
 import type { MapPresentation, MapPresentationFactory, PresentationHost } from '../../viewer/presentation';
 import { bindMenu, closeMenu, syncBudgetReadout } from '../../viewer/menu';
 import { viewsEqual, copyView, viewSpanX, viewSpanY } from '../types';
-import { MIN_VIEW_SPAN } from '../../constants';
 import { drawMapAxes } from './axes';
 import {
   bindProbeHud,
@@ -49,11 +48,14 @@ import {
   START_REVEAL_SLOW_RAD,
   START_REVEAL_SLOW_ROW_MS,
   PENDULUM_HANG_MS,
-  DRAGON_FONT,
+  DRAGON_FONT_MAX_PX,
+  DRAGON_FONT_START_PX,
   DRAGON_OPACITY,
-  DRAGON_FADE_SPAN,
-  DRAGON_TILE_X,
-  DRAGON_TILE_Y,
+  DRAGON_PARALLAX,
+  DRAGON_SCALE_MAX,
+  DRAGON_SCALE_START_PX,
+  DRAGON_TILE_X_PX,
+  DRAGON_TILE_Y_PX,
 } from './constants';
 
 function requireElement<T extends Element>(id: string): T {
@@ -89,6 +91,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
   const yScale = requireElement<HTMLElement>('map-scale-y');
   const params = host.params;
   const dragonStamps: SVGGElement[] = [];
+  let dragonAnchor: { x: number; y: number; spanX: number; spanY: number } | null = null;
   const probeHud = defaultProbeHud();
   const singleHud = new URLSearchParams(window.location.search).get('single') === '1';
   let probes: Trajectory[] | null = null;
@@ -496,49 +499,71 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
   }
 
   function syncVoid(): void {
-    const view = host.getView();
-    const spanX = viewSpanX(view);
-    const spanY = viewSpanY(view);
-    const short = Math.min(spanX, spanY);
-    const fade = short >= DRAGON_FADE_SPAN
-      ? 0
-      : Math.min(1, Math.log(DRAGON_FADE_SPAN / short) / Math.log(DRAGON_FADE_SPAN / MIN_VIEW_SPAN));
-    const alpha = fade * DRAGON_OPACITY;
-    mapVoid.style.opacity = String(alpha);
-    if (!(alpha > 0)) {
+    const grid = host.precisionGrid?.();
+    const visible = (grid?.voidMix ?? 0) > 0;
+    mapVoid.style.opacity = visible ? '1' : '0';
+    if (!visible) {
+      dragonAnchor = null;
       for (const stamp of dragonStamps) stamp.setAttribute('visibility', 'hidden');
       return;
     }
     const box = host.clip.getBoundingClientRect();
     const width = Math.max(1, box.width);
     const height = Math.max(1, box.height);
+    const view = host.getView();
+    const center = {
+      x: (view.xMin + view.xMax) / 2,
+      y: (view.yMin + view.yMax) / 2,
+    };
+    if (!dragonAnchor) {
+      dragonAnchor = {
+        ...center,
+        spanX: viewSpanX(view),
+        spanY: viewSpanY(view),
+      };
+    }
+    // A more distant plane: it moves only a little and grows with the square
+    // pixels' square root, reaching 2× while the foreground reaches 4×.
+    const dragonScale = Math.max(1, Math.min(
+      DRAGON_SCALE_MAX,
+      Math.sqrt((grid?.pixelPx ?? DRAGON_SCALE_START_PX) / DRAGON_SCALE_START_PX),
+    ));
+    let dy = dragonAnchor.y - center.y;
+    const period = host.navigation.yPeriod?.period;
+    if (period && period > 0) dy -= period * Math.round(dy / period);
+    const offsetX = ((dragonAnchor.x - center.x) / Math.max(dragonAnchor.spanX, Number.MIN_VALUE))
+      * width * dragonScale * DRAGON_PARALLAX;
+    const offsetY = (dy / Math.max(dragonAnchor.spanY, Number.MIN_VALUE))
+      * height * dragonScale * DRAGON_PARALLAX;
+    const tileX = DRAGON_TILE_X_PX * dragonScale;
+    const tileY = DRAGON_TILE_Y_PX * dragonScale;
+    // Keep an actual label origin anchored in map space instead of accumulating
+    // or wrapping a screen-space phase. Integer row/column indices therefore
+    // retain their identity while panning and while the pattern scales.
+    const originX = width / 2 + offsetX;
+    const originY = height / 2 + offsetY;
     mapVoid.setAttribute('viewBox', `0 0 ${width} ${height}`);
     dragonLayer.removeAttribute('transform');
-    const sx = width / spanX;
-    const sy = height / spanY;
-    const fontPx = DRAGON_FONT * Math.min(sx, sy);
-    const pad = Math.max(DRAGON_TILE_X, DRAGON_TILE_Y);
-    const ix0 = Math.floor((view.xMin - pad) / DRAGON_TILE_X);
-    const ix1 = Math.floor((view.xMax + pad) / DRAGON_TILE_X);
-    const iy0 = Math.floor((view.yMin - pad) / DRAGON_TILE_Y);
-    const iy1 = Math.floor((view.yMax + pad) / DRAGON_TILE_Y);
+    const fontPx = Math.min(DRAGON_FONT_MAX_PX, DRAGON_FONT_START_PX * dragonScale);
     let n = 0;
-    for (let iy = iy0; iy <= iy1; iy++) {
-      for (let ix = ix0; ix <= ix1; ix++) {
+    const row0 = Math.floor(-originY / tileY) - 1;
+    const row1 = Math.ceil((height - originY) / tileY) + 1;
+    for (let row = row0; row <= row1; row++) {
+      const y = originY + row * tileY;
+      const stagger = (row & 1) * tileX * 0.5;
+      const col0 = Math.floor((-originX - stagger) / tileX) - 1;
+      const col1 = Math.ceil((width - originX - stagger) / tileX) + 1;
+      for (let col = col0; col <= col1; col++) {
+        const x = originX + col * tileX + stagger;
         let stamp = dragonStamps[n];
         if (!stamp) {
           stamp = makeDragonStamp();
           dragonStamps.push(stamp);
           dragonLayer.appendChild(stamp);
         }
-        const cx = (ix + 0.5) * DRAGON_TILE_X;
-        const cy = (iy + 0.5) * DRAGON_TILE_Y;
-        const x = (cx - view.xMin) * sx;
-        const y = (cy - view.yMin) * sy;
         stamp.setAttribute('transform', `translate(${x} ${y}) rotate(-24)`);
-        for (const text of stamp.querySelectorAll('text')) {
-          text.setAttribute('font-size', String(fontPx));
-        }
+        stamp.setAttribute('font-size', String(fontPx));
+        stamp.setAttribute('opacity', String(DRAGON_OPACITY * (grid?.voidMix ?? 0)));
         stamp.setAttribute('visibility', 'visible');
         n += 1;
       }

@@ -1,5 +1,3 @@
-import { MIN_VIEW_SPAN } from '../../constants';
-
 // Coordinate domain.
 export const PENDULUM_VIEW_HALF = Math.PI;
 export const PENDULUM_TILE_HALF = Math.PI * 2;
@@ -57,11 +55,12 @@ export const PROBE_ALPHA = 0.5;
 export const PROBE_PLAY_FPS = 24;
 export const PROBE_MAX_STEPS = 40000;
 
-// World-space "HERE BE DRAGONS". Size is ~half a short-axis at max zoom;
-// opacity ramps in over the last several zoom steps.
-export const DRAGON_TILE_X = MIN_VIEW_SPAN * 0.35;
-export const DRAGON_TILE_Y = MIN_VIEW_SPAN * 0.25;
-export const DRAGON_FONT = MIN_VIEW_SPAN * 0.055;
-export const DRAGON_FADE_SPAN = MIN_VIEW_SPAN * 8;
-export const DRAGON_OPACITY = 0.22;
-
+// "HERE BE DRAGONS" sits in the black precision void behind sparse samples.
+export const DRAGON_FONT_START_PX = 28;
+export const DRAGON_FONT_MAX_PX = 64;
+export const DRAGON_OPACITY = 0.2;
+export const DRAGON_TILE_X_PX = 340;
+export const DRAGON_TILE_Y_PX = 230;
+export const DRAGON_PARALLAX = 0.14;
+export const DRAGON_SCALE_START_PX = 4;
+export const DRAGON_SCALE_MAX = 2;

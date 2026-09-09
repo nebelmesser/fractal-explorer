@@ -3,11 +3,15 @@ import type { MapDefinition, MapParams, ViewRect } from '../maps/types';
 import { viewSpanX, viewSpanY } from '../maps/types';
 import {
   LOD_CACHE_TILES, LOD_COARSE_GAP, LOD_CPU_GPU_PX, LOD_CPU_MIN_PX,
-  LOD_CPU_PARALLEL, LOD_CPU_RINGS, LOD_CPU_SLICE_MS, LOD_CPU_STEP, LOD_CPU_TILE_PX,
+  LOD_CPU_EXPOSURE_MS, LOD_CPU_INITIAL_RES, LOD_CPU_PARALLEL,
+  LOD_CPU_REFINE_FACTOR, LOD_CPU_RINGS,
+  LOD_CPU_SLICE_MS, LOD_CPU_SPARSE_MAX_PX, LOD_CPU_SPARSE_START_PX,
+  LOD_CPU_STEP, LOD_CPU_TILE_PX, LOD_CPU_VOID_FADE_START_PX,
+  LOD_CPU_VOID_MAP_OPACITY,
   LOD_EXPOSURE_HIGH, LOD_EXPOSURE_LOW,
   LOD_EXPOSURE_TAU_MS, LOD_MAX_LEVEL, LOD_MAX_LEVEL_F64, LOD_PREFETCH_PAD, LOD_TILE_PX,
 } from '../constants';
-import { f32Ulp } from './precision';
+import { f32Ulp, f64Ulp } from './precision';
 import reduceWgsl from './reduce.wgsl?raw';
 import histogramWgsl from './histogram.wgsl?raw';
 import tileBlitWgsl from './tile_blit.wgsl?raw';
@@ -17,7 +21,7 @@ type Exposure = { lo: number; hi: number };
 type Tile = {
   key: string; generation: number; level: number; ix: number; iy: number; view: ViewRect;
   uniform: GPUBuffer; raw: GPUBuffer; minmax: GPUBuffer; counts: Float32Array;
-  lo: number; hi: number; used: number; cpuRes?: number;
+  width: number; height: number; lo: number; hi: number; used: number; cpuRes?: number;
 };
 type Cell = {
   key: string; level: number; ix: number; iy: number; canonicalIy: number;
@@ -67,7 +71,7 @@ export class GpuMapRenderer {
   private readonly exposureBuffer: GPUBuffer;
   private readonly histogramBuffer: GPUBuffer;
   private readonly histogramRead: GPUBuffer;
-  private readonly maxres: boolean;
+  private readonly cpuLevelCap: number;
   private cpuWave = 0;
   private cpuWaveView: ViewRect | null = null;
 
@@ -80,7 +84,6 @@ export class GpuMapRenderer {
       histogramLayout: GPUBindGroupLayout; composeLayout: GPUBindGroupLayout;
       compute: GPUComputePipeline; reduce: GPUComputePipeline;
       histogram: GPUComputePipeline; compose: GPURenderPipeline;
-      maxres: boolean;
     },
   ) {
     const context = canvas.getContext('webgpu');
@@ -90,7 +93,7 @@ export class GpuMapRenderer {
     this.histogramLayout = p.histogramLayout; this.composeLayout = p.composeLayout;
     this.computePipeline = p.compute; this.reducePipeline = p.reduce;
     this.histogramPipeline = p.histogram; this.composePipeline = p.compose;
-    this.maxres = p.maxres && Boolean(map.cpu);
+    this.cpuLevelCap = this.preciseCpuLevelCap();
     const device = gpu.device;
     this.exposureBuffer = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.histogramBuffer = device.createBuffer({ size: 1024, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST });
@@ -101,7 +104,6 @@ export class GpuMapRenderer {
     gpu: GpuContext,
     canvas: HTMLCanvasElement,
     map: MapDefinition,
-    opts?: { maxres?: boolean },
   ): Promise<GpuMapRenderer> {
     const device = gpu.device;
     const computeLayout = device.createBindGroupLayout({ entries: [
@@ -121,7 +123,7 @@ export class GpuMapRenderer {
     const composeLayout = device.createBindGroupLayout({ entries: [
       { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
       { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-      { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
+      { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
     ] });
     const computeMod = device.createShaderModule({ code: map.gpu.computeWgsl });
     const reduceMod = device.createShaderModule({ code: reduceWgsl });
@@ -150,13 +152,23 @@ export class GpuMapRenderer {
     });
     return new GpuMapRenderer(gpu, map, canvas, {
       computeLayout, reduceLayout, histogramLayout, composeLayout, compute, reduce, histogram, compose,
-      maxres: opts?.maxres === true,
     });
   }
 
   async render(view: ViewRect, params: MapParams, width: number, height: number, invert: boolean, median: number, _normView: ViewRect = view): Promise<number> {
     const t0 = performance.now();
     const request = this.makeRequest(view, params, width, height, invert, median, false);
+    const progressiveCpu = this.cpuView(request);
+    if (progressiveCpu) {
+      // The last moving presentation already has this exact camera view. Keep
+      // its cached tiles and exposure unchanged when the gesture settles;
+      // recomputing the histogram here made the release frame flash before CPU
+      // refinement even started. Infinity also keeps the outer synchronous
+      // frame-budget controller from invalidating progressive work.
+      this.compose(request);
+      this.scheduleRefine();
+      return Number.POSITIVE_INFINITY;
+    }
     const coarse = Math.max(0, request.level - this.levelStep(request));
     await this.enqueue(async () => {
       if (request.generation !== this.generation) return;
@@ -177,7 +189,7 @@ export class GpuMapRenderer {
     this.scheduleDynamicExposure(request);
     // Long simulation dispatches can starve the compositor on integrated GPUs.
     // Cached LODs move at display rate; refinement resumes on the settled frame.
-    if (!moving || this.cpuView(request)) this.scheduleRefine();
+    if (!moving) this.scheduleRefine();
   }
 
   prefetch(view: ViewRect, params: MapParams, width: number, height: number): Promise<void> {
@@ -198,15 +210,47 @@ export class GpuMapRenderer {
     return this.viewUsesCpu(view, width, height);
   }
 
+  precisionGrid(view: ViewRect, width: number, height: number): {
+    spacing: number; spacingPx: number; pixelPx: number; sparse: boolean;
+    voidMix: number; mapOpacity: number;
+  } | null {
+    if (!this.viewUsesCpu(view, width, height)) return null;
+    const spacing = this.tileSpan(this.cpuLevelCap) / Math.max(1, LOD_CPU_TILE_PX - 1);
+    const pixelX = spacing / Math.max(Number.MIN_VALUE, viewSpanX(view) / Math.max(width, 1));
+    const pixelY = spacing / Math.max(Number.MIN_VALUE, viewSpanY(view) / Math.max(height, 1));
+    const cssScaleX = (this.target.canvas.clientWidth || width) / Math.max(width, 1);
+    const cssScaleY = (this.target.canvas.clientHeight || height) / Math.max(height, 1);
+    const spacingPx = Math.min(pixelX * cssScaleX, pixelY * cssScaleY);
+    const atPrecisionFloor = this.levelFor(view, width, height) === this.cpuLevelCap;
+    const sparse = atPrecisionFloor && spacingPx > LOD_CPU_SPARSE_START_PX;
+    const voidMix = atPrecisionFloor
+      ? smoothstep(LOD_CPU_VOID_FADE_START_PX, LOD_CPU_SPARSE_START_PX, spacingPx)
+      : 0;
+    // The grid separates immediately after 4 px, while the square itself grows
+    // only with sqrt(zoom): 4 px at the threshold, 8 px at a 16 px pitch, and
+    // no more than 16 px once the samples are far apart.
+    const pixelPx = sparse
+      ? Math.min(LOD_CPU_SPARSE_MAX_PX, Math.sqrt(LOD_CPU_SPARSE_START_PX * spacingPx))
+      : spacingPx;
+    return {
+      spacing,
+      spacingPx,
+      pixelPx,
+      sparse,
+      voidMix,
+      mapOpacity: 1 - (1 - LOD_CPU_VOID_MAP_OPACITY) * voidMix,
+    };
+  }
+
   snapWorld(point: { x: number; y: number }): { x: number; y: number } {
     const tile = this.tileAt(point.x, point.y);
     if (!tile) return point;
     const cy = this.canonicalY(point.y);
-    const ix = clampIndex(Math.round(((point.x - tile.view.xMin) / viewSpanX(tile.view)) * (LOD_TILE_PX - 1)));
-    const iy = clampIndex(Math.round(((cy - tile.view.yMin) / viewSpanY(tile.view)) * (LOD_TILE_PX - 1)));
+    const ix = clampSample(Math.round(((point.x - tile.view.xMin) / viewSpanX(tile.view)) * (tile.width - 1)), tile.width);
+    const iy = clampSample(Math.round(((cy - tile.view.yMin) / viewSpanY(tile.view)) * (tile.height - 1)), tile.height);
     return {
-      x: tile.view.xMin + (ix / (LOD_TILE_PX - 1)) * viewSpanX(tile.view),
-      y: point.y + tile.view.yMin + (iy / (LOD_TILE_PX - 1)) * viewSpanY(tile.view) - cy,
+      x: tile.view.xMin + (ix / Math.max(tile.width - 1, 1)) * viewSpanX(tile.view),
+      y: point.y + tile.view.yMin + (iy / Math.max(tile.height - 1, 1)) * viewSpanY(tile.view) - cy,
     };
   }
 
@@ -291,22 +335,41 @@ export class GpuMapRenderer {
   }
 
   private baseSpan(): number { return Math.min(viewSpanX(this.map.defaultView), viewSpanY(this.map.defaultView)); }
-  private maxLevel(): number { return this.maxres ? LOD_MAX_LEVEL_F64 : LOD_MAX_LEVEL; }
+  private maxLevel(): number { return this.map.cpu ? this.cpuLevelCap : LOD_MAX_LEVEL; }
+  private preciseCpuLevelCap(): number {
+    if (!this.map.cpu) return LOD_MAX_LEVEL;
+    const p = this.map.navigation;
+    const coordinateLimit = Math.max(
+      Math.abs(this.map.defaultView.xMin), Math.abs(this.map.defaultView.xMax),
+      Math.abs(this.map.defaultView.yMin), Math.abs(this.map.defaultView.yMax),
+      Math.abs(p?.xCenter?.min ?? 0), Math.abs(p?.xCenter?.max ?? 0),
+      Math.abs((p?.yPeriod?.center ?? 0) - (p?.yPeriod?.period ?? 0) / 2),
+      Math.abs((p?.yPeriod?.center ?? 0) + (p?.yPeriod?.period ?? 0) / 2),
+    );
+    // Freeze the deepest tile grid while all 64 sample coordinates are still
+    // distinct throughout the navigable domain. Further zoom flies through
+    // this fixed grid instead of manufacturing duplicate f64 coordinates.
+    const minTileSpan = f64Ulp(coordinateLimit) * 2 * (LOD_CPU_TILE_PX - 1);
+    const exact = Math.floor(Math.log2(this.baseSpan() / Math.max(Number.MIN_VALUE, minTileSpan)));
+    return Math.max(LOD_MAX_LEVEL, Math.min(LOD_MAX_LEVEL_F64, exact));
+  }
   private tileSpan(level: number): number { return this.baseSpan() / (2 ** level); }
   private levelFor(view: ViewRect, width: number, height: number): number {
     const worldPerPixel = Math.max(viewSpanX(view) / width, viewSpanY(view) / height);
     const gpuExact = Math.log2(this.baseSpan() / Math.max(Number.MIN_VALUE, LOD_TILE_PX * worldPerPixel));
     const gpuLevel = Math.max(0, Math.min(LOD_MAX_LEVEL, Math.round(gpuExact)));
     if (!this.viewUsesCpu(view, width, height)) return gpuLevel;
-    const cpuExact = Math.log2(this.baseSpan() / Math.max(Number.MIN_VALUE, LOD_CPU_MIN_PX * worldPerPixel));
-    const stepped = Math.floor(cpuExact / LOD_CPU_STEP) * LOD_CPU_STEP;
-    return Math.max(0, Math.min(this.maxLevel(), stepped));
+    const cpuExact = Math.log2(this.baseSpan() / Math.max(Number.MIN_VALUE, LOD_CPU_TILE_PX * worldPerPixel));
+    return Math.max(0, Math.min(this.maxLevel(), Math.round(cpuExact)));
   }
   private levelStep(request: PresentRequest): number {
     return this.cpuView(request) ? LOD_CPU_STEP : LOD_COARSE_GAP;
   }
   private cpuView(request: PresentRequest): boolean {
     return this.viewUsesCpu(request.view, request.width, request.height);
+  }
+  private cpuSparse(request: PresentRequest): boolean {
+    return this.precisionGrid(request.view, request.width, request.height)?.sparse === true;
   }
   /** True when one f32 sample already covers more than `LOD_CPU_GPU_PX` map pixels. */
   private viewUsesCpu(view: ViewRect, width: number, height: number): boolean {
@@ -316,7 +379,7 @@ export class GpuMapRenderer {
     return this.gpuPixelCoarse(view, LOD_TILE_PX, LOD_TILE_PX);
   }
   private gpuPixelCoarse(view: ViewRect, width: number, height: number): boolean {
-    if (!this.maxres || !this.map.cpu) return false;
+    if (!this.map.cpu) return false;
     const pixel = Math.max(
       viewSpanX(view) / Math.max(width - 1, 1),
       viewSpanY(view) / Math.max(height - 1, 1),
@@ -340,11 +403,16 @@ export class GpuMapRenderer {
     return Math.max(1, this.map.cpu?.concurrency ?? LOD_CPU_PARALLEL);
   }
   private cpuWaveMax(): number {
-    return Math.round(Math.log2(LOD_CPU_TILE_PX)) + LOD_CPU_RINGS - 1;
+    const stages = Math.ceil(
+      Math.log(LOD_CPU_TILE_PX / LOD_CPU_INITIAL_RES) / Math.log(LOD_CPU_REFINE_FACTOR),
+    );
+    return Math.max(0, stages + LOD_CPU_RINGS - 2);
   }
   private cpuLevels(request: PresentRequest): number[] {
-    const step = this.levelStep(request);
-    return [...new Set([0, Math.max(0, request.level - step), request.level])];
+    // The GPU tile underneath is the coarse preview. CPU work belongs only to
+    // the current pixel-density level; computing ancestor CPU tiles spends most
+    // of its samples outside the live FOV and then covers them immediately.
+    return [request.level];
   }
   /** Screen-space distance from the live view center to the cell center. */
   private cpuScreenDist(cell: Cell, request: PresentRequest): number {
@@ -375,15 +443,40 @@ export class GpuMapRenderer {
     return Math.min(LOD_CPU_RINGS - 1, Math.floor(t * LOD_CPU_RINGS));
   }
   private cpuCap(cell: Cell, request: PresentRequest, wave = this.cpuWave): number {
-    // Wave 0: every on-screen cell may take one sample so the worker pool fills.
-    // Later waves double from the center outward.
-    const steps = Math.max(0, wave - this.cpuRing(cell, request));
-    return 2 ** Math.min(Math.round(Math.log2(LOD_CPU_TILE_PX)), steps);
+    // Start every tile at the density of the f32 preview. The innermost ring is
+    // allowed to reach 64×64 immediately; later waves move that detail outward.
+    const steps = Math.max(0, wave - this.cpuRing(cell, request) + 1);
+    const maxSteps = Math.ceil(
+      Math.log(LOD_CPU_TILE_PX / LOD_CPU_INITIAL_RES) / Math.log(LOD_CPU_REFINE_FACTOR),
+    );
+    return Math.min(
+      LOD_CPU_TILE_PX,
+      LOD_CPU_INITIAL_RES * LOD_CPU_REFINE_FACTOR ** Math.min(maxSteps, steps),
+    );
   }
   private cpuNeedsWork(cell: Cell, request: PresentRequest): boolean {
     const cap = this.cpuCap(cell, request);
     if (cap <= 0) return false;
     return (this.tiles.get(cell.key)?.cpuRes ?? 0) < cap;
+  }
+  /** Match the best cached parent density so a new LOD never looks coarser. */
+  private cpuInheritedRes(cell: Cell): number {
+    const cx = (cell.sourceView.xMin + cell.sourceView.xMax) / 2;
+    const cy = (cell.sourceView.yMin + cell.sourceView.yMax) / 2;
+    for (let level = cell.level - 1; level >= Math.max(0, cell.level - 8); level--) {
+      const span = this.tileSpan(level);
+      const ix = Math.floor((cx - this.xOrigin()) / span);
+      const iy = Math.floor((cy - this.yOrigin()) / span);
+      const parent = this.tiles.get(`${this.generation}:${level}:${ix}:${this.canonicalIy(iy, level)}`);
+      if (!parent?.cpuRes) continue;
+      const inherited = parent.cpuRes / (2 ** (cell.level - level));
+      let resolution = LOD_CPU_INITIAL_RES;
+      while (resolution < inherited && resolution < LOD_CPU_TILE_PX) {
+        resolution *= LOD_CPU_REFINE_FACTOR;
+      }
+      return Math.min(LOD_CPU_TILE_PX, resolution);
+    }
+    return LOD_CPU_INITIAL_RES;
   }
   private xOrigin(): number { return this.map.defaultView.xMin; }
   private yOrigin(): number {
@@ -459,7 +552,7 @@ export class GpuMapRenderer {
     let any = false;
     while (performance.now() - t0 < LOD_CPU_SLICE_MS) {
       const live = this.latest;
-      if (!live || live.generation !== this.generation || !this.cpuView(live)) break;
+      if (!live || live.moving || live.generation !== this.generation || !this.cpuView(live)) break;
       this.syncCpuFovea(live);
       const parallel = this.cpuParallel();
       let jobs = this.nextCpuJobs(live, parallel);
@@ -484,7 +577,9 @@ export class GpuMapRenderer {
         if (cap <= 0 || have >= cap) continue;
         jobs.push({
           cell,
-          nextRes: have > 0 ? Math.min(cap, have * 2) : 1,
+          nextRes: have > 0
+            ? Math.min(cap, have * LOD_CPU_REFINE_FACTOR)
+            : Math.max(LOD_CPU_INITIAL_RES, this.cpuInheritedRes(cell)),
           dist: this.cpuScreenDist(cell, request),
         });
       }
@@ -504,26 +599,32 @@ export class GpuMapRenderer {
   }
 
   private allocTileBuffers(cell: Cell, request: PresentRequest): {
-    cell: Cell; uniform: GPUBuffer; raw: GPUBuffer; minmax: GPUBuffer;
+    cell: Cell; uniform: GPUBuffer; raw: GPUBuffer; minmax: GPUBuffer; width: number; height: number;
+  };
+  private allocTileBuffers(cell: Cell, request: PresentRequest, width: number, height: number): {
+    cell: Cell; uniform: GPUBuffer; raw: GPUBuffer; minmax: GPUBuffer; width: number; height: number;
+  };
+  private allocTileBuffers(cell: Cell, request: PresentRequest, width = LOD_TILE_PX, height = LOD_TILE_PX): {
+    cell: Cell; uniform: GPUBuffer; raw: GPUBuffer; minmax: GPUBuffer; width: number; height: number;
   } {
     const { device } = this.gpu;
     const uniform = device.createBuffer({ size: this.map.gpu.uniformBytes, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const raw = device.createBuffer({
-      size: LOD_TILE_PX * LOD_TILE_PX * 4,
+      size: width * height * 4,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
     });
     const minmax = device.createBuffer({ size: 8, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
     device.queue.writeBuffer(uniform, 0, this.map.gpu.packUniforms(
-      cell.sourceView, LOD_TILE_PX, LOD_TILE_PX, request.params,
+      cell.sourceView, width, height, request.params,
       { invert: false, median: 1, normView: cell.sourceView },
     ));
-    return { cell, uniform, raw, minmax };
+    return { cell, uniform, raw, minmax, width, height };
   }
 
   private commitTile(
     cell: Cell,
     request: PresentRequest,
-    buffers: { uniform: GPUBuffer; raw: GPUBuffer; minmax: GPUBuffer },
+    buffers: { uniform: GPUBuffer; raw: GPUBuffer; minmax: GPUBuffer; width: number; height: number },
     counts: Float32Array,
     lo: number,
     hi: number,
@@ -533,12 +634,15 @@ export class GpuMapRenderer {
       buffers.uniform.destroy(); buffers.raw.destroy(); buffers.minmax.destroy();
       return;
     }
+    const previous = this.tiles.get(cell.key);
     this.tiles.set(cell.key, {
       key: cell.key, generation: request.generation, level: cell.level,
       ix: cell.ix, iy: cell.canonicalIy, view: cell.sourceView,
-      uniform: buffers.uniform, raw: buffers.raw, minmax: buffers.minmax, counts, lo, hi, used: ++this.useCounter,
+      uniform: buffers.uniform, raw: buffers.raw, minmax: buffers.minmax, counts,
+      width: buffers.width, height: buffers.height, lo, hi, used: ++this.useCounter,
       cpuRes,
     });
+    if (previous && previous.raw !== buffers.raw) this.destroyTile(previous);
   }
 
   private async computeGpu(cells: Cell[], request: PresentRequest): Promise<void> {
@@ -589,9 +693,7 @@ export class GpuMapRenderer {
     if (!this.cpuCellWanted(cell, live)) return;
     const existing = this.tiles.get(cell.key);
     if (existing && (existing.cpuRes ?? 0) >= nextRes) return;
-    const buffers = existing
-      ? { uniform: existing.uniform, raw: existing.raw, minmax: existing.minmax }
-      : this.allocTileBuffers(cell, request);
+    const buffers = this.allocTileBuffers(cell, request, nextRes, nextRes);
     let samples: Float32Array;
     try {
       samples = await cpu.fillTile(
@@ -606,15 +708,14 @@ export class GpuMapRenderer {
         request.params,
       );
     } catch (error) {
-      if (!existing) { buffers.uniform.destroy(); buffers.raw.destroy(); buffers.minmax.destroy(); }
+      buffers.uniform.destroy(); buffers.raw.destroy(); buffers.minmax.destroy();
       throw error;
     }
     const latest = this.latest;
     if (!latest || latest.generation !== request.generation || !this.cellOnScreen(cell, latest.view)) {
-      if (!existing) { buffers.uniform.destroy(); buffers.raw.destroy(); buffers.minmax.destroy(); }
+      buffers.uniform.destroy(); buffers.raw.destroy(); buffers.minmax.destroy();
       return;
     }
-    const counts = expandTile(samples, nextRes, LOD_TILE_PX);
     let lo = Number.POSITIVE_INFINITY;
     let hi = Number.NEGATIVE_INFINITY;
     for (let i = 0; i < samples.length; i++) {
@@ -624,14 +725,17 @@ export class GpuMapRenderer {
     }
     if (!(lo <= hi)) { lo = 0; hi = 1; }
     this.gpu.device.queue.writeBuffer(
-      buffers.raw, 0, counts.buffer, counts.byteOffset, counts.byteLength,
+      buffers.raw, 0, samples.buffer, samples.byteOffset, samples.byteLength,
     );
-    this.commitTile(cell, request, buffers, counts, lo, hi, nextRes);
+    this.commitTile(cell, request, buffers, samples, lo, hi, nextRes);
   }
 
   private visibleTiles(request: PresentRequest): Array<{ tile: Tile; drawView: ViewRect }> {
     const found = new Map<string, { tile: Tile; drawView: ViewRect }>();
-    for (let level = 0; level <= request.level; level++) {
+    // In the precision void, gaps must reveal the black/dragon layer rather than
+    // a magnified lower-LOD map, so only the frozen f64 grid is composited.
+    const firstLevel = this.cpuSparse(request) ? request.level : 0;
+    for (let level = firstLevel; level <= request.level; level++) {
       for (const cell of this.cells(request.view, level, 0)) {
         const tile = this.tiles.get(cell.key); if (!tile) continue;
         tile.used = ++this.useCounter;
@@ -652,23 +756,42 @@ export class GpuMapRenderer {
     const exposureData = new ArrayBuffer(32); const f32 = new Float32Array(exposureData); const u32 = new Uint32Array(exposureData);
     f32[0] = exposure.lo; f32[1] = Math.max(exposure.lo + 1e-6, exposure.hi);
     f32[2] = request.invert ? 1 : 0; f32[3] = request.moving ? 1 : 0;
-    u32[4] = Math.max(1, Math.min(5, Math.round(request.median))); u32[5] = LOD_TILE_PX; u32[6] = LOD_TILE_PX;
+    u32[4] = Math.max(1, Math.min(5, Math.round(request.median)));
     this.gpu.device.queue.writeBuffer(this.exposureBuffer, 0, exposureData);
     while (this.drawBuffers.length < draws.length) {
-      this.drawBuffers.push(this.gpu.device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }));
+      this.drawBuffers.push(this.gpu.device.createBuffer({ size: 48, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }));
     }
     const sx = viewSpanX(request.view); const sy = viewSpanY(request.view);
+    const grid = this.precisionGrid(request.view, request.width, request.height);
+    const sparse = grid?.sparse === true;
+    const sparseW = (grid?.pixelPx ?? LOD_CPU_SPARSE_MAX_PX) * request.width
+      / Math.max(this.target.canvas.clientWidth || request.width, 1);
+    const sparseH = (grid?.pixelPx ?? LOD_CPU_SPARSE_MAX_PX) * request.height
+      / Math.max(this.target.canvas.clientHeight || request.height, 1);
     for (let i = 0; i < draws.length; i++) {
       const draw = draws[i].drawView;
-      this.gpu.device.queue.writeBuffer(this.drawBuffers[i], 0, new Float32Array([
-        ((draw.xMin - request.view.xMin) / sx) * 2 - 1, ((draw.xMax - request.view.xMin) / sx) * 2 - 1,
-        1 - ((draw.yMin - request.view.yMin) / sy) * 2, 1 - ((draw.yMax - request.view.yMin) / sy) * 2,
-      ]));
+      const tile = draws[i].tile;
+      const drawData = new ArrayBuffer(48);
+      const drawF32 = new Float32Array(drawData); const drawU32 = new Uint32Array(drawData);
+      drawF32[0] = ((draw.xMin - request.view.xMin) / sx) * 2 - 1;
+      drawF32[1] = ((draw.xMax - request.view.xMin) / sx) * 2 - 1;
+      drawF32[2] = 1 - ((draw.yMin - request.view.yMin) / sy) * 2;
+      drawF32[3] = 1 - ((draw.yMax - request.view.yMin) / sy) * 2;
+      drawU32[4] = tile.width; drawU32[5] = tile.height;
+      const screenW = Math.abs(viewSpanX(draw) / sx * request.width);
+      const screenH = Math.abs(viewSpanY(draw) / sy * request.height);
+      const sampleW = tile.width > 1 ? screenW / (tile.width - 1) : screenW;
+      const sampleH = tile.height > 1 ? screenH / (tile.height - 1) : screenH;
+      drawF32[8] = sparse ? Math.min(1, sparseW / Math.max(sampleW, 1e-9)) : 1;
+      drawF32[9] = sparse ? Math.min(1, sparseH / Math.max(sampleH, 1e-9)) : 1;
+      drawF32[10] = sparse ? 1 : 0;
+      drawF32[11] = grid?.mapOpacity ?? 1;
+      this.gpu.device.queue.writeBuffer(this.drawBuffers[i], 0, drawData);
     }
     const encoder = this.gpu.device.createCommandEncoder();
     const pass = encoder.beginRenderPass({ colorAttachments: [{
       view: this.target.context.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store',
-      clearValue: { r: 0, g: 0, b: 0, a: 1 },
+      clearValue: { r: 0, g: 0, b: 0, a: 0 },
     }] });
     pass.setPipeline(this.composePipeline);
     for (let i = 0; i < draws.length; i++) {
@@ -713,7 +836,7 @@ export class GpuMapRenderer {
         yMin: clipped.yMin + dy, yMax: clipped.yMax + dy,
       };
       device.queue.writeBuffer(this.histogramUniforms[i], 0, this.map.gpu.packUniforms(
-        tile.view, LOD_TILE_PX, LOD_TILE_PX, request.params,
+        tile.view, tile.width, tile.height, request.params,
         { invert: false, median: 1, normView },
       ));
       const pass = encoder.beginComputePass(); pass.setPipeline(this.histogramPipeline);
@@ -721,7 +844,7 @@ export class GpuMapRenderer {
         { binding: 0, resource: { buffer: this.histogramUniforms[i] } }, { binding: 1, resource: { buffer: tile.raw } },
         { binding: 2, resource: { buffer: this.histogramBuffer } },
       ]));
-      pass.dispatchWorkgroups(LOD_TILE_PX * LOD_TILE_PX / 256); pass.end();
+      pass.dispatchWorkgroups(Math.ceil(tile.width * tile.height / 256)); pass.end();
     }
     encoder.copyBufferToBuffer(this.histogramBuffer, 0, this.histogramRead, 0, 1024);
     device.queue.submit([encoder.finish()]); await device.queue.onSubmittedWorkDone();
@@ -748,12 +871,19 @@ export class GpuMapRenderer {
     };
     if (!this.exposure) this.exposure = { ...this.exposureTarget };
     this.exposureAt = performance.now(); this.lastExposureUpdate = this.exposureAt;
-    this.scheduleExposureFrames();
+    if (this.cpuView(request)) {
+      // CPU refinement already composes after each completed worker batch. A
+      // 60 fps exposure tween would multiply draw calls while workers are busy.
+      this.exposure = { ...this.exposureTarget };
+    } else {
+      this.scheduleExposureFrames();
+    }
   }
 
   /** Re-estimate exposure while the camera moves, without re-running the map. */
   private scheduleDynamicExposure(request: PresentRequest): void {
-    if (this.exposureQueued || performance.now() - this.lastExposureUpdate < 120) return;
+    const interval = this.cpuView(request) ? LOD_CPU_EXPOSURE_MS : 120;
+    if (this.exposureQueued || performance.now() - this.lastExposureUpdate < interval) return;
     const candidates = this.visibleTiles(request);
     const exposureLevel = candidates.length
       ? Math.max(...candidates.map((item) => item.tile.level))
@@ -808,11 +938,19 @@ export class GpuMapRenderer {
         while (this.latest) {
           const request = this.latest; if (request.generation !== this.generation) break;
           const pad = this.cpuView(request) ? 0 : LOD_PREFETCH_PAD;
-          const levels = [0, Math.max(0, request.level - this.levelStep(request)), request.level];
+          const levels = this.cpuView(request)
+            ? [request.level]
+            : [0, Math.max(0, request.level - this.levelStep(request)), request.level];
           if (!this.hasMissingWanted(request, levels, pad)) break;
           if (this.cpuView(request)) {
             const progressed = await this.refineCpu();
-            if (this.latest?.generation === this.generation) this.compose(this.latest);
+            if (this.latest?.generation === this.generation) {
+              if (!this.exposure || performance.now() - this.lastExposureUpdate >= LOD_CPU_EXPOSURE_MS) {
+                await this.updateExposure(this.latest);
+              }
+              this.compose(this.latest);
+              this.evict();
+            }
             if (!progressed) break;
             continue;
           }
@@ -825,7 +963,7 @@ export class GpuMapRenderer {
       } finally {
         this.refining = false;
         const latest = this.latest;
-        if (latest) {
+        if (latest && !latest.moving) {
           const pad = this.cpuView(latest) ? 0 : LOD_PREFETCH_PAD;
           if (this.hasMissingWanted(latest, [latest.level], pad)) this.scheduleRefine();
         }
@@ -861,9 +999,9 @@ export class GpuMapRenderer {
 
   private stepsAt(x: number, y: number): number | null {
     const tile = this.tileAt(x, y); if (!tile) return null; const cy = this.canonicalY(y);
-    const ix = clampIndex(Math.round(((x - tile.view.xMin) / viewSpanX(tile.view)) * (LOD_TILE_PX - 1)));
-    const iy = clampIndex(Math.round(((cy - tile.view.yMin) / viewSpanY(tile.view)) * (LOD_TILE_PX - 1)));
-    const value = tile.counts[iy * LOD_TILE_PX + ix]; return Number.isFinite(value) ? value : null;
+    const ix = clampSample(Math.round(((x - tile.view.xMin) / viewSpanX(tile.view)) * (tile.width - 1)), tile.width);
+    const iy = clampSample(Math.round(((cy - tile.view.yMin) / viewSpanY(tile.view)) * (tile.height - 1)), tile.height);
+    const value = tile.counts[iy * tile.width + ix]; return Number.isFinite(value) ? value : null;
   }
 
   private evict(): void {
@@ -882,26 +1020,13 @@ export class GpuMapRenderer {
     const { canvas, context } = this.target;
     if (this.target.configuredW === width && this.target.configuredH === height && canvas.width === width && canvas.height === height) return;
     canvas.width = width; canvas.height = height;
-    context.configure({ device: this.gpu.device, format: this.gpu.format, alphaMode: 'opaque' });
+    context.configure({ device: this.gpu.device, format: this.gpu.format, alphaMode: 'premultiplied' });
     this.target.configuredW = width; this.target.configuredH = height; this.canvasPx.set(canvas, { w: width, h: height });
   }
 }
 
-function clampIndex(value: number): number { return Math.max(0, Math.min(LOD_TILE_PX - 1, value)); }
+function clampSample(value: number, size: number): number { return Math.max(0, Math.min(size - 1, value)); }
 function distance(view: ViewRect, x: number, y: number): number { return Math.hypot((view.xMin + view.xMax) / 2 - x, (view.yMin + view.yMax) / 2 - y); }
-function expandTile(src: Float32Array, srcPx: number, dstPx: number): Float32Array {
-  if (srcPx === dstPx) return src;
-  const dst = new Float32Array(dstPx * dstPx);
-  const scale = dstPx / srcPx;
-  for (let y = 0; y < dstPx; y++) {
-    const srcRow = Math.min(srcPx - 1, Math.floor(y / scale)) * srcPx;
-    const dstRow = y * dstPx;
-    for (let x = 0; x < dstPx; x++) {
-      dst[dstRow + x] = src[srcRow + Math.min(srcPx - 1, Math.floor(x / scale))];
-    }
-  }
-  return dst;
-}
 function percentileBin(bins: Uint32Array, target: number): number {
   let sum = 0; for (let i = 0; i < bins.length; i++) { sum += bins[i]; if (sum >= target) return i; } return bins.length - 1;
 }

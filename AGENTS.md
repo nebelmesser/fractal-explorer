@@ -27,9 +27,11 @@ It owns:
 
 The engine must not import a concrete map module or refer to pendulum concepts,
 parameter names, angle units, DOM IDs for map-specific UI, or overlay state.
-The map is computed in f32 on the GPU. With `?maxres=1`, tiles finer than f32
-can sample are filled by the map's optional CPU/WASM kernel; the f32 zoom floor
-and "here be dragons" stay where they are. Default visitors never take that path.
+The map is computed in f32 on the GPU until the current view needs finer
+coordinates. Tiles past that point are filled automatically by the map's
+optional CPU/WASM kernel. At the deepest distinct f64 grid, samples separate
+once their pitch reaches 4 CSS pixels, grow more slowly to at most 16 pixels,
+and reveal the black precision void between them.
 
 Keep the last complete texture visible during asynchronous work. Normalize
 brightness against the visible view, never against overscan or prefetched
@@ -191,9 +193,9 @@ from the playground root:
 ```
 
 Open `https://127.0.0.1:4000/fractal/double-pendulum.html`. Add `?narration=1`
-to show the narrator overlay and play cues. Add `?maxres=1` to zoom past the f32
-floor with CPU/WASM tiles. Do not start another Jekyll, Python,
-Vite preview, or static-file server.
+to show the narrator overlay and play cues. Deep views switch to CPU/WASM tiles
+automatically. Do not start another Jekyll, Python, Vite preview, or static-file
+server.
 
 After engine changes, verify cold load, desktop and mobile gestures, inertia,
 zoom in/out, view reset, parameter reset, resizing, visible normalization, and

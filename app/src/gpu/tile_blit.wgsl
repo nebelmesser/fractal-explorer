@@ -2,12 +2,15 @@
 // shader reads raw map values, so changing exposure never invalidates a tile.
 
 struct Exposure {
-  range: vec4f, // low, high, invert, moving
-  options: vec4u, // median window, tile width, tile height, unused
+  range: vec4f, // low, high, invert, reserved
+  options: vec4u, // median window, unused
 }
 
 struct Draw {
   rect: vec4f, // NDC left, right, top, bottom
+  size: vec2u, // native scalar-buffer dimensions
+  pad: vec2u,
+  sparse: vec4f, // visible fraction x/y, sparse flag, map opacity
 }
 
 @group(0) @binding(0) var<storage, read> raw: array<f32>;
@@ -38,26 +41,20 @@ fn tile_vs(@builtin(vertex_index) i: u32) -> VertexOut {
 }
 
 fn raw_at(x: i32, y: i32) -> f32 {
-  let width = i32(exposure.options.y);
-  let height = i32(exposure.options.z);
+  let width = i32(draw.size.x);
+  let height = i32(draw.size.y);
   let sx = clamp(x, 0, width - 1);
   let sy = clamp(y, 0, height - 1);
   return raw[u32(sy * width + sx)];
 }
 
 fn log_sample(uv: vec2f) -> f32 {
-  let dims = vec2f(f32(exposure.options.y - 1u), f32(exposure.options.z - 1u));
+  let dims = vec2f(f32(draw.size.x - 1u), f32(draw.size.y - 1u));
   let p = clamp(uv, vec2f(0.0), vec2f(1.0)) * dims;
-  let base = vec2i(floor(p));
-  if (exposure.range.w < 0.5) {
-    return log(1.0 + raw_at(i32(round(p.x)), i32(round(p.y))));
-  }
-  let f = fract(p);
-  let a = log(1.0 + raw_at(base.x, base.y));
-  let b = log(1.0 + raw_at(base.x + 1, base.y));
-  let c = log(1.0 + raw_at(base.x, base.y + 1));
-  let d = log(1.0 + raw_at(base.x + 1, base.y + 1));
-  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+  // Use one sampling rule both during and after a gesture. Switching from
+  // bilinear motion to nearest-neighbor on release visibly changed chaotic
+  // regions on the settle frame.
+  return log(1.0 + raw_at(i32(round(p.x)), i32(round(p.y))));
 }
 
 fn filtered_sample(uv: vec2f) -> f32 {
@@ -65,7 +62,7 @@ fn filtered_sample(uv: vec2f) -> f32 {
   if (n <= 1) {
     return log_sample(uv);
   }
-  let dims = vec2f(f32(exposure.options.y - 1u), f32(exposure.options.z - 1u));
+  let dims = vec2f(f32(draw.size.x - 1u), f32(draw.size.y - 1u));
   let center = vec2i(round(clamp(uv, vec2f(0.0), vec2f(1.0)) * dims));
   let radius = n / 2;
   let count = n * n;
@@ -89,8 +86,25 @@ fn filtered_sample(uv: vec2f) -> f32 {
   return samples[count / 2];
 }
 
+fn sparse_sample_visible(uv: vec2f) -> bool {
+  if (draw.sparse.z < 0.5) {
+    return true;
+  }
+  if (draw.size.x <= 1u || draw.size.y <= 1u) {
+    let d = abs(uv - vec2f(0.5));
+    return d.x <= draw.sparse.x * 0.5 && d.y <= draw.sparse.y * 0.5;
+  }
+  let dims = vec2f(f32(draw.size.x - 1u), f32(draw.size.y - 1u));
+  let p = clamp(uv, vec2f(0.0), vec2f(1.0)) * dims;
+  let d = abs(p - round(p));
+  return d.x <= draw.sparse.x * 0.5 && d.y <= draw.sparse.y * 0.5;
+}
+
 @fragment
 fn tile_fs(in: VertexOut) -> @location(0) vec4f {
+  if (!sparse_sample_visible(in.uv)) {
+    return vec4f(0.0);
+  }
   let value = filtered_sample(in.uv);
   var gray = 0.0;
   if (exposure.range.y > exposure.range.x) {
@@ -99,5 +113,6 @@ fn tile_fs(in: VertexOut) -> @location(0) vec4f {
   if (exposure.range.z > 0.5) {
     gray = 1.0 - gray;
   }
-  return vec4f(gray, gray, gray, 1.0);
+  let alpha = draw.sparse.w;
+  return vec4f(gray * alpha, gray * alpha, gray * alpha, alpha);
 }

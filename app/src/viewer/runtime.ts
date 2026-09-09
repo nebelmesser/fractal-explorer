@@ -66,16 +66,10 @@ function waitForPresent(): Promise<void> {
   });
 }
 
-export type BootViewerOptions = {
-  /** Unlock f64 CPU tiles past the f32 zoom floor. Test with `?maxres=1`. */
-  maxres?: boolean;
-};
-
 export async function bootViewer(
   mapDef: MapDefinition,
   presentationFactory?: MapPresentationFactory,
   signals?: ViewerSignals,
-  options?: BootViewerOptions,
 ): Promise<void> {
   const gpuMissing = document.getElementById('gpu-missing');
   const mapCanvas = document.getElementById('map') as HTMLCanvasElement;
@@ -102,8 +96,7 @@ export async function bootViewer(
     return;
   }
   const gpuOk = gpu;
-  const maxres = options?.maxres === true && Boolean(mapDef.cpu);
-  const minSpan = maxres ? MIN_VIEW_SPAN_F64 : MIN_VIEW_SPAN;
+  const minSpan = mapDef.cpu ? MIN_VIEW_SPAN_F64 : MIN_VIEW_SPAN;
 
   await presentationFactory?.init?.();
 
@@ -163,7 +156,7 @@ export async function bootViewer(
   });
   let renderer: GpuMapRenderer;
   try {
-    renderer = await GpuMapRenderer.create(gpuOk, backCanvas, mapDef, { maxres });
+    renderer = await GpuMapRenderer.create(gpuOk, backCanvas, mapDef);
   } catch (error) {
     if (gpuMissing) {
       gpuMissing.hidden = false;
@@ -192,6 +185,11 @@ export async function bootViewer(
     clientToWorld,
     snapToRenderedPixel: snapWorld,
     samplesF64: () => renderer.samplesF64(
+      view,
+      Math.max(1, frontCanvas.width),
+      Math.max(1, frontCanvas.height),
+    ),
+    precisionGrid: () => renderer.precisionGrid(
       view,
       Math.max(1, frontCanvas.width),
       Math.max(1, frontCanvas.height),
@@ -244,6 +242,14 @@ export async function bootViewer(
   }
 
   function applyBudget(): void {
+    const currentSize = computeSize(display, settledPx);
+    if (renderer.samplesF64(foldViewY(view, navigation), currentSize.width, currentSize.height)) {
+      // Progressive CPU work has no synchronous full-frame duration. Keep the
+      // last settled pixel/iteration budget instead of changing parameters and
+      // invalidating already computed f64 tiles on the next interaction.
+      presentation.syncBudget(controls.targetFrameMs, params[mapDef.workBudget.param]);
+      return;
+    }
     if (!Number.isFinite(lastRefineMs)) {
       params[mapDef.workBudget.param] = preferredWork(controls.targetFrameMs, mapDef.workBudget);
       presentation.syncBudget(controls.targetFrameMs, params[mapDef.workBudget.param]);

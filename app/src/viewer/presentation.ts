@@ -35,8 +35,13 @@ export type PresentationHost = {
   getView(): ViewRect;
   clientToWorld(clientX: number, clientY: number): MapPoint;
   snapToRenderedPixel(point: MapPoint): MapPoint;
-  /** True when the live view is past the f32 sample floor (`?maxres=1` CPU tiles). */
+  /** True when the live view is past the f32 sample floor and uses CPU tiles. */
   samplesF64?(): boolean;
+  /** Fixed deepest f64 grid and its current pitch/square size in CSS pixels. */
+  precisionGrid?(): {
+    spacing: number; spacingPx: number; pixelPx: number; sparse: boolean;
+    voidMix: number; mapOpacity: number;
+  } | null;
   signals?: ViewerSignals;
 };
 

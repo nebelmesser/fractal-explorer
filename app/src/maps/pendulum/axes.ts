@@ -257,11 +257,12 @@ function probeYTickLabels(
 function wrapYTickLabel(tick: AxisTick, navigation: NavigationPolicy): string {
   if (!tick.major) return '';
   const wrapped = wrapViewY(tick.deg / RAD2DEG, navigation) * RAD2DEG;
-  const n = Number(wrapped.toFixed(8));
+  const dot = tick.label.indexOf('.');
+  const degree = tick.label.indexOf('°');
+  const places = dot >= 0 && degree > dot ? degree - dot - 1 : 0;
+  const n = Number(wrapped.toFixed(places));
   if (Object.is(n, -0) || n === 0) return '0°';
-  const abs = Math.abs(n);
-  const text = Number.isInteger(abs) ? String(abs) : String(Number(abs.toFixed(6)));
-  return `${n < 0 ? '−' : ''}${text}°`;
+  return `${n < 0 ? '−' : ''}${Math.abs(n).toFixed(places)}°`;
 }
 
 function formatDeltaDeg(rad: number, digits: number): string {

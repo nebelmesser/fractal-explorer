@@ -88,7 +88,7 @@ export type MapDefinition = {
   workBudget: WorkBudget;
   params: MapParam[];
   gpu: GpuKernel;
-  /** Used past the f32 zoom floor when the viewer is in `maxres` mode. */
+  /** Used automatically past the f32 zoom floor. */
   cpu?: CpuKernel;
 };
 

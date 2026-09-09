@@ -1,7 +1,7 @@
 //! Double-pendulum ODE shared with the GPU map kernel.
 //!
 //! `Pendulum` steps one f32 trajectory so the overlay matches GPU tiles.
-//! `PendulumF64` is the same integrator in f64 for `maxres` views where f32
+//! `PendulumF64` is the same integrator in f64 for deep views where f32
 //! samples collapse. `fill_map_tile` fills a pixel strip in f64.
 
 mod constants;
@@ -63,7 +63,7 @@ impl Pendulum {
     }
 }
 
-/// Overlay trajectory in f64. Used past the f32 zoom floor (`?maxres=1`).
+/// Overlay trajectory in f64. Used automatically past the f32 zoom floor.
 #[wasm_bindgen]
 pub struct PendulumF64 {
     th1: f64,

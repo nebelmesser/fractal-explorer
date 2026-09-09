@@ -47,8 +47,7 @@ async function main(): Promise<void> {
       set: (key, value) => narrator.store.set(key, value),
     };
   }
-  const maxres = new URLSearchParams(location.search).get('maxres') === '1';
-  await bootViewer(pendulumMap, pendulumPresentation, signals, { maxres });
+  await bootViewer(pendulumMap, pendulumPresentation, signals);
   applyUi();
 }
 

@@ -14,3 +14,12 @@ export function f32Ulp(x: number): number {
   }
   return next - Math.abs(y);
 }
+
+/** Spacing of IEEE-754 binary64 values around the magnitude of `x`. */
+export function f64Ulp(x: number): number {
+  const value = Math.abs(x);
+  if (!Number.isFinite(value)) return Number.POSITIVE_INFINITY;
+  if (value === 0) return Number.MIN_VALUE;
+  if (value < 2 ** -1022) return Number.MIN_VALUE;
+  return 2 ** (Math.floor(Math.log2(value)) - 52);
+}
