@@ -49,8 +49,8 @@ fn raw_at(x: i32, y: i32) -> f32 {
 }
 
 fn log_sample(uv: vec2f) -> f32 {
-  let dims = vec2f(f32(draw.size.x - 1u), f32(draw.size.y - 1u));
-  let p = clamp(uv, vec2f(0.0), vec2f(1.0)) * dims;
+  let dims = vec2f(f32(draw.size.x), f32(draw.size.y));
+  let p = clamp(uv, vec2f(0.0), vec2f(1.0)) * dims - vec2f(0.5);
   // Use one sampling rule both during and after a gesture. Switching from
   // bilinear motion to nearest-neighbor on release visibly changed chaotic
   // regions on the settle frame.
@@ -62,8 +62,8 @@ fn filtered_sample(uv: vec2f) -> f32 {
   if (n <= 1) {
     return log_sample(uv);
   }
-  let dims = vec2f(f32(draw.size.x - 1u), f32(draw.size.y - 1u));
-  let center = vec2i(round(clamp(uv, vec2f(0.0), vec2f(1.0)) * dims));
+  let dims = vec2f(f32(draw.size.x), f32(draw.size.y));
+  let center = vec2i(round(clamp(uv, vec2f(0.0), vec2f(1.0)) * dims - vec2f(0.5)));
   let radius = n / 2;
   let count = n * n;
   var samples: array<f32, 25>;
@@ -94,8 +94,8 @@ fn sparse_sample_visible(uv: vec2f) -> bool {
     let d = abs(uv - vec2f(0.5));
     return d.x <= draw.sparse.x * 0.5 && d.y <= draw.sparse.y * 0.5;
   }
-  let dims = vec2f(f32(draw.size.x - 1u), f32(draw.size.y - 1u));
-  let p = clamp(uv, vec2f(0.0), vec2f(1.0)) * dims;
+  let dims = vec2f(f32(draw.size.x), f32(draw.size.y));
+  let p = clamp(uv, vec2f(0.0), vec2f(1.0)) * dims - vec2f(0.5);
   let d = abs(p - round(p));
   return d.x <= draw.sparse.x * 0.5 && d.y <= draw.sparse.y * 0.5;
 }

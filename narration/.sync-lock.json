@@ -1,68 +1,222 @@
 {
   "cues": {
     "map-ready": {
-      "sourceHash": "82d5089d4160d38d303f34ed52d0ad03a236e7b0253644742b2b1a900c65e400",
+      "sourceHash": "aa5eb94ccd7fc6b53cfdf6612c1019e21280d6369423809b3320b39e0aad0735",
       "locales": {
         "ru": {
-          "textHash": "82d5089d4160d38d303f34ed52d0ad03a236e7b0253644742b2b1a900c65e400"
+          "textHash": "aa5eb94ccd7fc6b53cfdf6612c1019e21280d6369423809b3320b39e0aad0735"
         },
         "en": {
           "textHash": "8d4aaf4a32f609c3af5345921692d9af8372cd927ad4cea3e5a18ddec479949a"
         }
       }
     },
-    "zoom-in-1": {
-      "sourceHash": "578aa562e754419797b52b5efa58333737c6d261557192ee8558f075ed5a75df",
+    "zoom-forecast": {
+      "sourceHash": "e4ae3cfe44d17bd7523e6323e9b118e5c41988d1bf130e9e7a634568c98c5844",
       "locales": {
         "ru": {
-          "textHash": "578aa562e754419797b52b5efa58333737c6d261557192ee8558f075ed5a75df"
+          "textHash": "e4ae3cfe44d17bd7523e6323e9b118e5c41988d1bf130e9e7a634568c98c5844"
         },
         "en": {
-          "textHash": "1228a571498a5075f36e0ab04c3c8db349365eb5bd3bea1448558ef1f49fbdf4"
+          "textHash": "f52073beeeae81e83f0924a9b0f682bad2e00ce96a1f936929ccc193859417d9"
         }
       }
     },
-    "zoom-in-2": {
-      "sourceHash": "3a9d264be25c80c433dc21bcf1d1e4fd0a716df2c70ab75caa954d9e501b36b8",
+    "zoom-neighbors": {
+      "sourceHash": "3389cc2cbbc562ee1758738ed48fdd79e3d278df803464a8bd3edb2ef4034261",
       "locales": {
         "ru": {
-          "textHash": "3a9d264be25c80c433dc21bcf1d1e4fd0a716df2c70ab75caa954d9e501b36b8"
+          "textHash": "3389cc2cbbc562ee1758738ed48fdd79e3d278df803464a8bd3edb2ef4034261"
         },
         "en": {
-          "textHash": "b909e8a5ff0bf77d1175dd7d69bc18207a6a816ddc2d91c9674c815ad476b706"
+          "textHash": "0ddd82853adf63ec4d0efbe897f64e2f0bbdc432ae90280f423ac2a2ea680ff7"
+        }
+      }
+    },
+    "zoom-butterfly": {
+      "sourceHash": "428993801b20a5a05250f9ff6572ca518263a89165caa90dc3b2a9cef3394546",
+      "locales": {
+        "ru": {
+          "textHash": "428993801b20a5a05250f9ff6572ca518263a89165caa90dc3b2a9cef3394546"
+        },
+        "en": {
+          "textHash": "3979810f674112f426e186f8d6d149fa1313f3ea2254a51301becf88cd0b464e"
+        }
+      }
+    },
+    "zoom-error": {
+      "sourceHash": "674f201204df028e371beb4096c9161881d1dda1121c0021ced5305d4a238075",
+      "locales": {
+        "ru": {
+          "textHash": "674f201204df028e371beb4096c9161881d1dda1121c0021ced5305d4a238075"
+        },
+        "en": {
+          "textHash": "3aa5cdad6bc286bbbd16b8f48a429dcff211d0deae0cde9ac4e768ac5d9a17c4"
+        }
+      }
+    },
+    "zoom-laws": {
+      "sourceHash": "25431a5e522979589018c92bc130a34132404a096122662f67fd490c47d3f98f",
+      "locales": {
+        "ru": {
+          "textHash": "25431a5e522979589018c92bc130a34132404a096122662f67fd490c47d3f98f"
+        },
+        "en": {
+          "textHash": "3996281bdb72d5cd3564bcfe2269a7d615bee484f431242a9373176540db150b"
+        }
+      }
+    },
+    "zoom-absurd": {
+      "sourceHash": "19eed1c660127ec3ebf7989a7c1085c26851f5d5ec22f8c286a56c55ef50e7a5",
+      "locales": {
+        "ru": {
+          "textHash": "19eed1c660127ec3ebf7989a7c1085c26851f5d5ec22f8c286a56c55ef50e7a5"
+        },
+        "en": {
+          "textHash": "a2acb15ded248ca450900816b25445c8529ee4f3b194a7f05ab2c749f54b39d3"
+        }
+      }
+    },
+    "zoom-society": {
+      "sourceHash": "11e7d9a61295a0778becf405744de4ed381f910553c18b37b3a5a82b9762a432",
+      "locales": {
+        "ru": {
+          "textHash": "11e7d9a61295a0778becf405744de4ed381f910553c18b37b3a5a82b9762a432"
+        },
+        "en": {
+          "textHash": "3da81a2d125c445fd7c0b656b517b1bfc586111ec0a2b6113d40313afffb64ea"
+        }
+      }
+    },
+    "zoom-horizon": {
+      "sourceHash": "ea54c1c616859b756ac24fea56fa930c98e7928c071913d3a875bdca213f6ce1",
+      "locales": {
+        "ru": {
+          "textHash": "ea54c1c616859b756ac24fea56fa930c98e7928c071913d3a875bdca213f6ce1"
+        },
+        "en": {
+          "textHash": "dd09cd3d029f8896537a0649dc39d7d944badc5ba9c2dfb38ce60b262832498b"
+        }
+      }
+    },
+    "zoom-8": {
+      "sourceHash": "680505f3bd8ac4d8d3b1d5dea9f9eeb10f1e2c5f1e83861acc1c7d251bc19d4b",
+      "locales": {
+        "ru": {
+          "textHash": "680505f3bd8ac4d8d3b1d5dea9f9eeb10f1e2c5f1e83861acc1c7d251bc19d4b"
+        },
+        "en": {
+          "textHash": "cae55fedaea11fbde7c33047d067fedad0fc69a7ffac04d32e225c54ff3f8f51"
+        }
+      }
+    },
+    "zoom-limit": {
+      "sourceHash": "7f90ba732b8e39ed8208f90be9d147c231c9a9e16df6598bf845177957d31b90",
+      "locales": {
+        "ru": {
+          "textHash": "7f90ba732b8e39ed8208f90be9d147c231c9a9e16df6598bf845177957d31b90"
+        },
+        "en": {
+          "textHash": "2a4e5d3d17ec4d62131080f5c1dee11b8fe85360e87148ec44514ee986f3127a"
+        }
+      }
+    },
+    "simulation-start": {
+      "sourceHash": "d831f04f13740a0f9ba34900a13180013217376742a98373c944f4a4f06fd89c",
+      "locales": {
+        "ru": {
+          "textHash": "d831f04f13740a0f9ba34900a13180013217376742a98373c944f4a4f06fd89c"
+        },
+        "en": {
+          "textHash": "440d98ad848c291b50005f452d82c71e96cde9e5ea88f96f239c8e767fc19a6b"
+        }
+      }
+    },
+    "simulation-repeat": {
+      "sourceHash": "1c081bfece769b487c0fa635b47170fa8966360ecf1921af27047e1c8ff0e056",
+      "locales": {
+        "ru": {
+          "textHash": "1c081bfece769b487c0fa635b47170fa8966360ecf1921af27047e1c8ff0e056"
+        },
+        "en": {
+          "textHash": "0a9b51c7fe9d240aff9fbb046f388e19112949a9a493c04dfbbadbe9ed9751a6"
+        }
+      }
+    },
+    "simulation-other": {
+      "sourceHash": "d892a5297ff5a6942a50d01e0425ea8947b63c4802e6f03f3f47f40b9042f113",
+      "locales": {
+        "ru": {
+          "textHash": "d892a5297ff5a6942a50d01e0425ea8947b63c4802e6f03f3f47f40b9042f113"
+        },
+        "en": {
+          "textHash": "3e7ddb77d0be554a2526836b65fdb98f32997d9840cb4596fd6b3f3626216ff1"
+        }
+      }
+    },
+    "simulation-others": {
+      "sourceHash": "92b19cb2e922955740997f8dcac5776a30dc87af234530cd93d4772300a83483",
+      "locales": {
+        "ru": {
+          "textHash": "92b19cb2e922955740997f8dcac5776a30dc87af234530cd93d4772300a83483"
+        },
+        "en": {
+          "textHash": "2c8c44fbc8a605d6173dac012a3600fcb53ceba4ee13073dc37c6681b7af4a9c"
         }
       }
     },
     "probe-detach": {
-      "sourceHash": "66a4bdbd67dec67d8b8e005cd358e4cc2ef52f2f32b0c835ce1227a5fb157b12",
+      "sourceHash": "caea105b1271cca9606d5977db8c985083ab0da562439f94b35e4f830015f750",
       "locales": {
         "ru": {
-          "textHash": "66a4bdbd67dec67d8b8e005cd358e4cc2ef52f2f32b0c835ce1227a5fb157b12"
+          "textHash": "caea105b1271cca9606d5977db8c985083ab0da562439f94b35e4f830015f750"
         },
         "en": {
           "textHash": "6bc25538be68f00e87ea051eb5124574f339d0a742be1c0a9d35ec5917aa9107"
         }
       }
     },
-    "menu-open": {
-      "sourceHash": "61c6ddfab22b01ef947aedf4ea3371e86363314db3182707e70ef8898d8f96a9",
+    "pendulum-hang": {
+      "sourceHash": "32e384de48cf50fd7eeec6a03dd83ce43f7f503d5952e126363cd7d1f5213610",
       "locales": {
         "ru": {
-          "textHash": "61c6ddfab22b01ef947aedf4ea3371e86363314db3182707e70ef8898d8f96a9"
+          "textHash": "32e384de48cf50fd7eeec6a03dd83ce43f7f503d5952e126363cd7d1f5213610"
+        },
+        "en": {
+          "textHash": "69cbd0d9ad8d778b5a7c5ed13eee0cbbf1382d1868b0ce8748146fec96b972d1"
+        }
+      }
+    },
+    "menu-open": {
+      "sourceHash": "1c6515870ca7cc3e8a4b6241c732c4240177ff928795c167fe452acef4c4e12b",
+      "locales": {
+        "ru": {
+          "textHash": "1c6515870ca7cc3e8a4b6241c732c4240177ff928795c167fe452acef4c4e12b"
         },
         "en": {
           "textHash": "44c062b5001992b69a547dee36108f9324e33f2b08ee6906f7cda828cf37c719"
         }
       }
     },
-    "zoom-limit": {
-      "sourceHash": "9952d77c617fd61247563616e8e3a3d2fc191725809c89f317f6863c967148d2",
+    "param-change": {
+      "sourceHash": "1efba910cdc0de4442179bc0250d83d635028a0b916d391049e23ac7e1f488af",
       "locales": {
         "ru": {
-          "textHash": "9952d77c617fd61247563616e8e3a3d2fc191725809c89f317f6863c967148d2"
+          "textHash": "1efba910cdc0de4442179bc0250d83d635028a0b916d391049e23ac7e1f488af"
         },
         "en": {
-          "textHash": "2a4e5d3d17ec4d62131080f5c1dee11b8fe85360e87148ec44514ee986f3127a"
+          "textHash": "38beea657bd7deca07957ceb67e0a28ebf375ec88428ea594e25ac1ea82c039e"
+        }
+      }
+    },
+    "params-reset": {
+      "sourceHash": "669f9eac7088af26f57583182bbaff475f31905bc28431f40b731b5a6462a32f",
+      "locales": {
+        "ru": {
+          "textHash": "669f9eac7088af26f57583182bbaff475f31905bc28431f40b731b5a6462a32f"
+        },
+        "en": {
+          "textHash": "a8370a9493bf749b956dd0e82dc73e4a995997718f324db4ad5ed140e6435533"
         }
       }
     },

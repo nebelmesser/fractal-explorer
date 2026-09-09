@@ -33,5 +33,8 @@ fn histogram(@builtin(global_invocation_id) gid: vec3u) {
   let max_log = max(log(1.0 + f32(u.size.x)), 1e-6);
   let value = clamp(log(1.0 + raw[id]) / max_log, 0.0, 1.0);
   let bin = min(255u, u32(floor(value * 256.0)));
-  atomicAdd(&bins[bin], 1u);
+  // Progressive CPU tiles can have different native resolutions while
+  // covering the same world area. Their samples are weighted so a refined
+  // tile does not take over the exposure merely because it contains more data.
+  atomicAdd(&bins[bin], max(1u, u.extra.w));
 }

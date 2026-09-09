@@ -51,11 +51,10 @@ import {
   PENDULUM_HANG_MS,
   PROBE_GRID_MAX,
   PROBE_KERNEL_CHUNK,
-  DRAGON_FONT_MAX_PX,
   DRAGON_FONT_START_PX,
   DRAGON_OPACITY,
   DRAGON_PARALLAX,
-  DRAGON_SCALE_MAX,
+  DRAGON_SCALE_PER_OCTAVE,
   DRAGON_SCALE_START_PX,
   DRAGON_TILE_X_PX,
   DRAGON_TILE_Y_PX,
@@ -125,33 +124,29 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
   let lastZoomDeg: number | null = null;
   let simOrigin = 0;
   let lastSimSec = 0;
+  let simCount = 0;
+  let paramsDirty = false;
 
-  function longestSpanDeg(): number {
-    const box = host.clip.getBoundingClientRect();
+  if (host.signals) {
+    const emit = host.signals.emit;
+    host.signals.emit = (name) => {
+      if (name === 'param-change') paramsDirty = true;
+      else if (name === 'params-reset') paramsDirty = false;
+      emit(name);
+    };
+  }
+
+  function shortSpanDeg(): number {
     const view = host.getView();
-    const span = box.width >= box.height ? viewSpanX(view) : viewSpanY(view);
-    return span * RAD2DEG;
+    return Math.min(viewSpanX(view), viewSpanY(view)) * RAD2DEG;
   }
 
   function syncZoomDeg(): void {
-    const next = Math.max(0, Math.round(longestSpanDeg()));
-    if (lastZoomDeg === null) {
-      lastZoomDeg = next;
-      host.signals?.set('zoom_deg', next);
-      return;
-    }
-    if (next === lastZoomDeg) return;
-    const step = next > lastZoomDeg ? 1 : -1;
-    const span = Math.abs(next - lastZoomDeg);
-    if (span > 2000) {
-      host.signals?.set('zoom_deg', next);
-      lastZoomDeg = next;
-      return;
-    }
-    for (let deg = lastZoomDeg + step; deg !== next + step; deg += step) {
-      host.signals?.set('zoom_deg', deg);
-    }
+    const next = shortSpanDeg();
+    if (!Number.isFinite(next)) return;
+    if (lastZoomDeg !== null && next === lastZoomDeg) return;
     lastZoomDeg = next;
+    host.signals?.set('zoom_deg', next);
   }
 
   function markSimRunning(now: number): void {
@@ -661,12 +656,12 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
         spanY: viewSpanY(view),
       };
     }
-    // A more distant plane: it moves only a little and grows with the square
-    // pixels' square root, reaching 2× while the foreground reaches 4×.
-    const dragonScale = Math.max(1, Math.min(
-      DRAGON_SCALE_MAX,
-      Math.sqrt((grid?.pixelPx ?? DRAGON_SCALE_START_PX) / DRAGON_SCALE_START_PX),
-    ));
+    // The foreground squares stop growing at 16 px, but their pitch keeps
+    // increasing. Drive the distant plane from that uncapped pitch so its
+    // perspective never freezes, using slow logarithmic growth to keep it far.
+    const dragonPitch = Math.max(DRAGON_SCALE_START_PX, grid?.spacingPx ?? DRAGON_SCALE_START_PX);
+    const dragonScale = 1
+      + Math.log2(dragonPitch / DRAGON_SCALE_START_PX) * DRAGON_SCALE_PER_OCTAVE;
     let dy = dragonAnchor.y - center.y;
     const period = host.navigation.yPeriod?.period;
     if (period && period > 0) dy -= period * Math.round(dy / period);
@@ -683,7 +678,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     const originY = height / 2 + offsetY;
     mapVoid.setAttribute('viewBox', `0 0 ${width} ${height}`);
     dragonLayer.removeAttribute('transform');
-    const fontPx = Math.min(DRAGON_FONT_MAX_PX, DRAGON_FONT_START_PX * dragonScale);
+    const fontPx = DRAGON_FONT_START_PX * dragonScale;
     let n = 0;
     const row0 = Math.floor(-originY / tileY) - 1;
     const row1 = Math.ceil((height - originY) / tileY) + 1;
@@ -851,7 +846,12 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     else armPinnedGrid();
     startIntro();
     if (!probes) return;
+    simCount += 1;
+    const run = simCount === 1 ? 'first' : (paramsDirty ? 'changed' : 'repeat');
+    host.signals?.set('simulation_count', simCount);
+    host.signals?.set('simulation_run', run);
     host.signals?.emit('simulation-start');
+    paramsDirty = false;
     draw();
   }, () => {
     dropAll();

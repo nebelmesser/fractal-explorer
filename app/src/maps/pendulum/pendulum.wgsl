@@ -28,10 +28,11 @@ fn simulate(@builtin(global_invocation_id) gid: vec3u) {
     return;
   }
   let id = gid.y * width + gid.x;
-  let x_den = max(width, 2u) - 1u;
-  let y_den = max(height, 2u) - 1u;
-  let th1 = u.view.x + (u.view.y - u.view.x) * f32(gid.x) / f32(x_den);
-  let th2 = wrap_th2(u.view.z + (u.view.w - u.view.z) * f32(gid.y) / f32(y_den));
+  // Samples live at cell centers. Power-of-two tile resolutions then form one
+  // nested world grid: a 64x64 CPU child lands exactly on its 256x256 GPU
+  // parent instead of shifting by the old N/(N-1) phase change.
+  let th1 = u.view.x + (u.view.y - u.view.x) * (f32(gid.x) + 0.5) / f32(width);
+  let th2 = wrap_th2(u.view.z + (u.view.w - u.view.z) * (f32(gid.y) + 0.5) / f32(height));
   raw[id] = integrate(th1, th2);
 }
 

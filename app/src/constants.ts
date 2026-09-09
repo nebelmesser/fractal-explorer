@@ -32,6 +32,8 @@ export const UNZOOM_GROW = 2; // each lookahead cover doubles span toward the la
 export const MIN_VIEW_SPAN = 1e-5; // default zoom floor for maps without an f64 CPU kernel
 /** Deepest navigable span when a map supplies an f64 CPU kernel. */
 export const MIN_VIEW_SPAN_F64 = MIN_VIEW_SPAN * 2 ** (F32_MANTISSA_BITS - F64_MANTISSA_BITS);
+/** Same floor in degrees (~1.07e-12°). Narration uses a slightly looser lte. */
+export const MIN_VIEW_SPAN_F64_DEG = MIN_VIEW_SPAN_F64 * (180 / Math.PI);
 export const OVERSCAN_PAD = 0.5; // half a screen on each side of the visible view
 export const OVERSCAN_RELOAD = 0.6; // prefetch a new halo while this much pad remains
 
@@ -58,7 +60,9 @@ export const LOD_CPU_PARALLEL = 8; // fallback if the map does not report worker
 export const LOD_CPU_SLICE_MS = 50; // keep workers busy this long before a compose
 export const LOD_CPU_EXPOSURE_MS = 2500; // histogram readback must not pace CPU refinement
 export const LOD_EXPOSURE_LOW = 0.01;
-export const LOD_EXPOSURE_HIGH = 0.995;
+export const LOD_EXPOSURE_BODY_HIGH = 0.995;
+export const LOD_EXPOSURE_HIGH = 0.9995;
+export const LOD_EXPOSURE_MID_GRAY = 0.38;
 export const LOD_EXPOSURE_TAU_MS = 360;
 
 // Post-process. Median kills single-pixel fireflies after log-normalization.

@@ -3,8 +3,31 @@ map-ready:
     zooming in and examining it more closely
 menu-open:
   text: This is the pendulum settings menu
+param-change:
+  text: By changing the mass or length, we move to another layer of a
+    six-dimensional map. And each layer has its own fractal boundaries.
+params-reset:
+  text: Let us return to the original pendulum. Even a single slice is
+    inexhaustible, while the pendulum must be sought in six dimensions at once.
+pendulum-hang:
+  text: The remaining pendulums reproduce the map's light pattern. The answer is
+    on the map. The futility of prediction lies in trying to locate the real
+    pendulum on it exactly.
 probe-detach:
   text: The pendulum has no friction. If it spins too fast, it breaks off the axis
+simulation-other:
+  text: Change the mass or length, and the whole map changes. The previous
+    prediction no longer applies.
+simulation-others:
+  text: So we need to know not only the angles but also the device itself without
+    error. Any inaccuracy gradually pulls the prediction off course.
+simulation-repeat:
+  text: The same launch means the same trajectories. Chaos is not random. The
+    futility of prediction lies in the impossibility of measuring the start with
+    infinite precision.
+simulation-start:
+  text: Let us launch pendulums from neighboring points. With the same start, the
+    motion will be the same every time.
 ui.attachment_points:
   text: Attachment points
 ui.drop:
@@ -61,5 +84,40 @@ ui.zoom.out:
   text: Zoom out
 ui.zoom.reset:
   text: Reset view
+zoom-8:
+  text: Finding the right point by brute force will not work either. Even at a
+    thousand points per second, this level would take 260 million ages of the
+    Universe.
+zoom-absurd:
+  text: If we printed the entire map with all its detail at photographic quality,
+    it would almost cover Mercury's orbit. And the needed point still would not
+    be found.
+zoom-butterfly:
+  text: A light point and a dark point can lie almost side by side. But one
+    pendulum will fail quickly, while the other will last much longer. The
+    slightest difference at the start changed the outcome. This is the butterfly
+    effect.
+zoom-error:
+  text: To predict a particular pendulum, we need to find that exact one on the
+    map. But measurements give us not a point, but a blur of possible positions.
+    Inside it are different lifetimes.
+zoom-forecast:
+  text: "This is a double pendulum: a second pendulum is suspended from the first
+    on a joint. Its motion is described by exact formulas. Does that mean its
+    future is known too?"
+zoom-horizon:
+  text: This is the futility of precise forecasts. An almost correct point
+    initially produces similar motion. Then the butterfly effect turns it into
+    an incorrect prediction.
+zoom-laws:
+  text: We zoom in on this blur, hoping to find the right point—but inside there
+    are light and dark areas again. New details appear at every scale. This is a
+    fractal.
 zoom-limit:
   text: You have reached the limit of the simulation, but the map does not end here
+zoom-neighbors:
+  text: Here is a map of possible launches. Each point represents two initial
+    angles. The lighter it is, the longer the pendulum lasts.
+zoom-society:
+  text: And these are only two angles of a single pendulum. In weather, economics,
+    or society, there are incomparably more variables and measurement errors.

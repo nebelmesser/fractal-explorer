@@ -8,7 +8,8 @@ import {
   LOD_CPU_SLICE_MS, LOD_CPU_SPARSE_MAX_PX, LOD_CPU_SPARSE_START_PX,
   LOD_CPU_STEP, LOD_CPU_TILE_PX, LOD_CPU_VOID_FADE_START_PX,
   LOD_CPU_VOID_MAP_OPACITY,
-  LOD_EXPOSURE_HIGH, LOD_EXPOSURE_LOW,
+  LOD_EXPOSURE_BODY_HIGH, LOD_EXPOSURE_HIGH, LOD_EXPOSURE_LOW,
+  LOD_EXPOSURE_MID_GRAY,
   LOD_EXPOSURE_TAU_MS, LOD_MAX_LEVEL, LOD_MAX_LEVEL_F64, LOD_PREFETCH_PAD, LOD_TILE_PX,
 } from '../constants';
 import { f32Ulp, f64Ulp } from './precision';
@@ -216,7 +217,7 @@ export class GpuMapRenderer {
     floor: boolean; voidMix: number; mapOpacity: number;
   } | null {
     if (!this.viewUsesCpu(view, width, height)) return null;
-    const spacing = this.tileSpan(this.cpuLevelCap) / Math.max(1, LOD_CPU_TILE_PX - 1);
+    const spacing = this.tileSpan(this.cpuLevelCap) / LOD_CPU_TILE_PX;
     const pixelX = spacing / Math.max(Number.MIN_VALUE, viewSpanX(view) / Math.max(width, 1));
     const pixelY = spacing / Math.max(Number.MIN_VALUE, viewSpanY(view) / Math.max(height, 1));
     const cssScaleX = (this.target.canvas.clientWidth || width) / Math.max(width, 1);
@@ -227,8 +228,8 @@ export class GpuMapRenderer {
     const tile = this.tileAt((view.xMin + view.xMax) / 2, (view.yMin + view.yMax) / 2);
     const sampleSpacing = tile
       ? Math.min(
-        viewSpanX(tile.view) / Math.max(tile.width - 1, 1),
-        viewSpanY(tile.view) / Math.max(tile.height - 1, 1),
+        viewSpanX(tile.view) / tile.width,
+        viewSpanY(tile.view) / tile.height,
       )
       : spacing;
     const samplePixelX = sampleSpacing / Math.max(Number.MIN_VALUE, viewSpanX(view) / Math.max(width, 1));
@@ -262,26 +263,26 @@ export class GpuMapRenderer {
     const tile = this.tileAt(point.x, point.y);
     if (!tile) return this.atPrecisionFloor() ? this.snapPrecision(point) : point;
     const cy = this.canonicalY(point.y);
-    const ix = clampSample(Math.round(((point.x - tile.view.xMin) / viewSpanX(tile.view)) * (tile.width - 1)), tile.width);
-    const iy = clampSample(Math.round(((cy - tile.view.yMin) / viewSpanY(tile.view)) * (tile.height - 1)), tile.height);
+    const ix = clampSample(Math.floor(((point.x - tile.view.xMin) / viewSpanX(tile.view)) * tile.width), tile.width);
+    const iy = clampSample(Math.floor(((cy - tile.view.yMin) / viewSpanY(tile.view)) * tile.height), tile.height);
     return {
-      x: tile.view.xMin + (ix / Math.max(tile.width - 1, 1)) * viewSpanX(tile.view),
-      y: point.y + tile.view.yMin + (iy / Math.max(tile.height - 1, 1)) * viewSpanY(tile.view) - cy,
+      x: tile.view.xMin + ((ix + 0.5) / tile.width) * viewSpanX(tile.view),
+      y: point.y + tile.view.yMin + ((iy + 0.5) / tile.height) * viewSpanY(tile.view) - cy,
     };
   }
 
   /** Nearest sample on the deepest distinct f64 grid, independent of loaded tiles. */
   snapPrecision(point: { x: number; y: number }): { x: number; y: number } {
     const span = this.tileSpan(this.cpuLevelCap);
-    const samples = Math.max(1, LOD_CPU_TILE_PX - 1);
+    const samples = LOD_CPU_TILE_PX;
     const cy = this.canonicalY(point.y);
     const xMin = this.xOrigin() + Math.floor((point.x - this.xOrigin()) / span) * span;
     const yMin = this.yOrigin() + Math.floor((cy - this.yOrigin()) / span) * span;
-    const ix = clampSample(Math.round(((point.x - xMin) / span) * samples), LOD_CPU_TILE_PX);
-    const iy = clampSample(Math.round(((cy - yMin) / span) * samples), LOD_CPU_TILE_PX);
+    const ix = clampSample(Math.floor(((point.x - xMin) / span) * samples), LOD_CPU_TILE_PX);
+    const iy = clampSample(Math.floor(((cy - yMin) / span) * samples), LOD_CPU_TILE_PX);
     return {
-      x: xMin + (ix / samples) * span,
-      y: point.y + yMin + (iy / samples) * span - cy,
+      x: xMin + ((ix + 0.5) / samples) * span,
+      y: point.y + yMin + ((iy + 0.5) / samples) * span - cy,
     };
   }
 
@@ -330,7 +331,7 @@ export class GpuMapRenderer {
         out.push({ x, y });
       };
       if (!draws.length) {
-        const spacing = this.tileSpan(this.cpuLevelCap) / Math.max(1, LOD_CPU_TILE_PX - 1);
+        const spacing = this.tileSpan(this.cpuLevelCap) / LOD_CPU_TILE_PX;
         const origin = this.snapPrecision({ x: cx, y: cy });
         const step = stride * spacing;
         const x0 = origin.x - Math.floor((origin.x - view.xMin) / step) * step;
@@ -341,17 +342,17 @@ export class GpuMapRenderer {
         return out;
       }
       for (const { tile, drawView } of draws) {
-        const nx = Math.max(1, tile.width - 1);
-        const ny = Math.max(1, tile.height - 1);
-        const icx = Math.round(((cx - drawView.xMin) / Math.max(viewSpanX(drawView), Number.MIN_VALUE)) * nx);
-        const icy = Math.round(((cy - drawView.yMin) / Math.max(viewSpanY(drawView), Number.MIN_VALUE)) * ny);
+        const nx = tile.width;
+        const ny = tile.height;
+        const icx = Math.floor(((cx - drawView.xMin) / Math.max(viewSpanX(drawView), Number.MIN_VALUE)) * nx);
+        const icy = Math.floor(((cy - drawView.yMin) / Math.max(viewSpanY(drawView), Number.MIN_VALUE)) * ny);
         const x0 = ((icx % stride) + stride) % stride;
         const y0 = ((icy % stride) + stride) % stride;
         for (let iy = y0; iy < tile.height; iy += stride) {
           for (let ix = x0; ix < tile.width; ix += stride) {
             push(
-              drawView.xMin + (ix / nx) * viewSpanX(drawView),
-              drawView.yMin + (iy / ny) * viewSpanY(drawView),
+              drawView.xMin + ((ix + 0.5) / nx) * viewSpanX(drawView),
+              drawView.yMin + ((iy + 0.5) / ny) * viewSpanY(drawView),
             );
           }
         }
@@ -363,12 +364,12 @@ export class GpuMapRenderer {
       if (draws.length) {
         const { tile, drawView } = draws[draws.length - 1];
         const pitchPx = Math.min(
-          (viewSpanX(drawView) / Math.max(tile.width - 1, 1)) / (sx / cssW),
-          (viewSpanY(drawView) / Math.max(tile.height - 1, 1)) / (sy / cssH),
+          (viewSpanX(drawView) / tile.width) / (sx / cssW),
+          (viewSpanY(drawView) / tile.height) / (sy / cssH),
         );
         stride = Math.max(1, Math.round(targetCellPx / Math.max(pitchPx, 1e-9)));
       } else {
-        const spacing = this.tileSpan(this.cpuLevelCap) / Math.max(1, LOD_CPU_TILE_PX - 1);
+        const spacing = this.tileSpan(this.cpuLevelCap) / LOD_CPU_TILE_PX;
         const pitchPx = Math.min(spacing / (sx / cssW), spacing / (sy / cssH));
         stride = Math.max(1, Math.round(targetCellPx / Math.max(pitchPx, 1e-9)));
       }
@@ -389,7 +390,7 @@ export class GpuMapRenderer {
   mapTexel(nx: number, ny: number): { ix: number; iy: number; width: number; height: number } | null {
     if (!this.latest) return null;
     const width = Math.max(2, this.latest.width); const height = Math.max(2, this.latest.height);
-    return { ix: Math.round(nx * (width - 1)), iy: Math.round(ny * (height - 1)), width, height };
+    return { ix: clampSample(Math.floor(nx * width), width), iy: clampSample(Math.floor(ny * height), height), width, height };
   }
 
   mapSteps(nx: number, ny: number): number | null {
@@ -477,7 +478,7 @@ export class GpuMapRenderer {
     // Freeze the deepest tile grid while all 64 sample coordinates are still
     // distinct throughout the navigable domain. Further zoom flies through
     // this fixed grid instead of manufacturing duplicate f64 coordinates.
-    const minTileSpan = f64Ulp(coordinateLimit) * 2 * (LOD_CPU_TILE_PX - 1);
+    const minTileSpan = f64Ulp(coordinateLimit) * 2 * LOD_CPU_TILE_PX;
     const exact = Math.floor(Math.log2(this.baseSpan() / Math.max(Number.MIN_VALUE, minTileSpan)));
     return Math.max(LOD_MAX_LEVEL, Math.min(LOD_MAX_LEVEL_F64, exact));
   }
@@ -513,8 +514,8 @@ export class GpuMapRenderer {
   private gpuPixelCoarse(view: ViewRect, width: number, height: number): boolean {
     if (!this.map.cpu) return false;
     const pixel = Math.max(
-      viewSpanX(view) / Math.max(width - 1, 1),
-      viewSpanY(view) / Math.max(height - 1, 1),
+      viewSpanX(view) / Math.max(width, 1),
+      viewSpanY(view) / Math.max(height, 1),
     );
     const ulp = Math.max(f32Ulp(view.xMin), f32Ulp(view.xMax), f32Ulp(view.yMin), f32Ulp(view.yMax));
     return ulp > LOD_CPU_GPU_PX * pixel;
@@ -912,8 +913,8 @@ export class GpuMapRenderer {
       drawU32[4] = tile.width; drawU32[5] = tile.height;
       const screenW = Math.abs(viewSpanX(draw) / sx * request.width);
       const screenH = Math.abs(viewSpanY(draw) / sy * request.height);
-      const sampleW = tile.width > 1 ? screenW / (tile.width - 1) : screenW;
-      const sampleH = tile.height > 1 ? screenH / (tile.height - 1) : screenH;
+      const sampleW = screenW / tile.width;
+      const sampleH = screenH / tile.height;
       drawF32[8] = sparse ? Math.min(1, sparseW / Math.max(sampleW, 1e-9)) : 1;
       drawF32[9] = sparse ? Math.min(1, sparseH / Math.max(sampleH, 1e-9)) : 1;
       drawF32[10] = sparse ? 1 : 0;
@@ -954,6 +955,7 @@ export class GpuMapRenderer {
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
       }));
     }
+    const histogramArea = Math.max(...visible.map(({ tile }) => tile.width * tile.height));
     for (let i = 0; i < visible.length; i++) {
       const { tile, drawView } = visible[i];
       const clipped = {
@@ -969,7 +971,12 @@ export class GpuMapRenderer {
       };
       device.queue.writeBuffer(this.histogramUniforms[i], 0, this.map.gpu.packUniforms(
         tile.view, tile.width, tile.height, request.params,
-        { invert: false, median: 1, normView },
+        {
+          invert: false,
+          median: 1,
+          normView,
+          histogramWeight: Math.max(1, Math.round(histogramArea / (tile.width * tile.height))),
+        },
       ));
       const pass = encoder.beginComputePass(); pass.setPipeline(this.histogramPipeline);
       pass.setBindGroup(0, this.bind(this.histogramLayout, [
@@ -984,10 +991,26 @@ export class GpuMapRenderer {
     const bins = new Uint32Array(this.histogramRead.getMappedRange().slice(0)); this.histogramRead.unmap();
     let total = 0; for (const count of bins) total += count; if (!total) return;
     const lowBin = percentileBin(bins, total * LOD_EXPOSURE_LOW);
+    const midBin = percentileBin(bins, total * 0.5);
+    const bodyHighBin = percentileBin(bins, total * LOD_EXPOSURE_BODY_HIGH);
     const highBin = percentileBin(bins, total * LOD_EXPOSURE_HIGH);
     const maxIterations = Math.max(1, request.params[this.map.workBudget.param] ?? this.map.workBudget.min);
     const maxLog = Math.log1p(maxIterations);
-    const measured = { lo: lowBin / 256 * maxLog, hi: (highBin + 1) / 256 * maxLog };
+    const low = lowBin / 256 * maxLog;
+    const mid = (midBin + 0.5) / 256 * maxLog;
+    const bodyHigh = (bodyHighBin + 1) / 256 * maxLog;
+    const hi = (highBin + 1) / 256 * maxLog;
+    // When a nearly uniform region has a very long, sparse bright tail, using
+    // its 99.5th percentile as white produces the harsh gray/white clipping
+    // visible at some deep zooms. Preserve the median tone while extending the
+    // highlight range; broad, ordinary distributions keep their black point.
+    const tailShare = (hi - bodyHigh) / Math.max(maxLog / 256, hi - low);
+    const tailMix = smoothstep(0.12, 0.42, tailShare);
+    const balancedLow = (mid - LOD_EXPOSURE_MID_GRAY * hi) / (1 - LOD_EXPOSURE_MID_GRAY);
+    const measured = {
+      lo: low + (Math.min(low, balancedLow) - low) * tailMix,
+      hi,
+    };
     if (measured.hi <= measured.lo) measured.hi = measured.lo + maxLog / 256;
     // Adapt only when the selected region still contains enough of the global
     // tonal range. A uniformly dark region stays dark instead of being expanded
@@ -1131,8 +1154,8 @@ export class GpuMapRenderer {
 
   private stepsAt(x: number, y: number): number | null {
     const tile = this.tileAt(x, y); if (!tile) return null; const cy = this.canonicalY(y);
-    const ix = clampSample(Math.round(((x - tile.view.xMin) / viewSpanX(tile.view)) * (tile.width - 1)), tile.width);
-    const iy = clampSample(Math.round(((cy - tile.view.yMin) / viewSpanY(tile.view)) * (tile.height - 1)), tile.height);
+    const ix = clampSample(Math.floor(((x - tile.view.xMin) / viewSpanX(tile.view)) * tile.width), tile.width);
+    const iy = clampSample(Math.floor(((cy - tile.view.yMin) / viewSpanY(tile.view)) * tile.height), tile.height);
     const value = tile.counts[iy * tile.width + ix]; return Number.isFinite(value) ? value : null;
   }
 

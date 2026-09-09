@@ -3,8 +3,8 @@ locales:
   ru: Русский
   en: English
 openrouter:
-  translate_model: openai/gpt-5.6-luna
+  translate_model: openai/gpt-5.6-terra
   tts_model: x-ai/grok-voice-tts-1.0
   voices:
-    ru: eve
-    en: eve
+    ru: orion
+    en: orion

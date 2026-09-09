@@ -55,7 +55,7 @@ export function packPendulumUniforms(
   // extra.yz: 16-bit pairs (x0,y0) and (x1,y1). Sides stay well below 65535.
   u32[17] = (norm.y0 << 16) | norm.x0;
   u32[18] = (norm.y1 << 16) | norm.x1;
-  u32[19] = 0;
+  u32[19] = Math.max(1, Math.round(post.histogramWeight ?? 1));
   return buf;
 }
 

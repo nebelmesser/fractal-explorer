@@ -154,8 +154,8 @@ pub fn fill_map_tile(
     if out.len() < width * rows {
         return;
     }
-    let x_den = (width.max(2) - 1) as f64;
-    let y_den = (height.max(2) - 1) as f64;
+    let x_den = width as f64;
+    let y_den = height as f64;
     let span_x = x_max - x_min;
     let span_y = y_max - y_min;
     let phys = PhysF64 {
@@ -170,15 +170,15 @@ pub fn fill_map_tile(
         two_m1_plus_m2: 2.0 * m1 + m2,
     };
     for (local_y, y) in (y0..y1).enumerate() {
-        let th2_row = wrap_th2(y_min + span_y * (y as f64) / y_den);
+        let th2_row = wrap_th2(y_min + span_y * (y as f64 + 0.5) / y_den);
         let row = local_y * width;
         let mut x = 0;
         while x + 3 < width {
             let th1 = [
-                x_min + span_x * (x as f64) / x_den,
-                x_min + span_x * ((x + 1) as f64) / x_den,
-                x_min + span_x * ((x + 2) as f64) / x_den,
-                x_min + span_x * ((x + 3) as f64) / x_den,
+                x_min + span_x * (x as f64 + 0.5) / x_den,
+                x_min + span_x * (x as f64 + 1.5) / x_den,
+                x_min + span_x * (x as f64 + 2.5) / x_den,
+                x_min + span_x * (x as f64 + 3.5) / x_den,
             ];
             let cycles = integrate_lanes(th1, th2_row, &phys, max_iter);
             out[row + x] = cycles[0] as f32;
@@ -188,7 +188,7 @@ pub fn fill_map_tile(
             x += 4;
         }
         while x < width {
-            let th1 = x_min + span_x * (x as f64) / x_den;
+            let th1 = x_min + span_x * (x as f64 + 0.5) / x_den;
             out[row + x] = integrate_one(th1, th2_row, &phys, max_iter) as f32;
             x += 1;
         }

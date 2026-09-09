@@ -108,16 +108,23 @@ the scenario again: `map-ready`, then the current `zoom_deg`,
 `page_sec`, and `simulation_sec` store values so `when:` cues can play
 in the new language.
 
-Degrees and seconds are store variables, not emit names. The longest screen
-side is `zoom_deg` (integer degrees); running physics is `simulation_sec`;
-time on the page since the narrator mounted is `page_sec`.
-The app walks every integer it crosses, so a cue like this still fires if
-the camera skips past the threshold:
+`once:` / `on:` are cue ids (i18n, mp3, heard-once), not a second naming
+scheme. If the id equals an app emit in `events.yaml`, the cue also
+subscribes to that event. Ids must be unique: two cues named `zoom-in`
+share one heard flag and one mp3.
+
+Degrees and seconds are store variables. The short axis of the view is
+`zoom_deg` (float degrees; f64 floor ≈ 1.07e-12°); running physics is
+`simulation_sec`; time on the page since the narrator mounted is `page_sec`.
+Each Start press writes `simulation_count` and `simulation_run`
+(`first` / `repeat` / `changed`). A numeric `when` is exact equality.
+For zoom beats use a compare object so a jump past the threshold still fires:
 
 ```yaml
-- once: close-up
+- once: zoom-error
   when:
-    zoom_deg: 45
+    zoom_deg:
+      lte: 0.1
   text: …
 ```
 

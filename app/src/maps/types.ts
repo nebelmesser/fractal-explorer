@@ -49,6 +49,8 @@ export type PostUniforms = {
   median: number;
   /** Stretch grayscale over this view; defaults to the computed `view` (whole buffer). */
   normView?: ViewRect;
+  /** Integer contribution of each sample to the shared exposure histogram. */
+  histogramWeight?: number;
 };
 
 export type GpuKernel = {
@@ -180,8 +182,8 @@ export function unpadView(view: ViewRect, pad: number): ViewRect {
 }
 
 /**
- * Pixel half-open rect inside a `width×height` buffer whose samples lie in `region`.
- * Matches the shader: sample i maps to xMin + span * i / (size-1).
+ * Pixel half-open rect inside a `width×height` buffer whose sample centers lie in `region`.
+ * Matches the shader: sample i maps to xMin + span * (i + 0.5) / size.
  */
 export function normPixelRect(
   render: ViewRect,
@@ -194,12 +196,10 @@ export function normPixelRect(
   if (!(sx > 0) || !(sy > 0) || width < 1 || height < 1) {
     return { x0: 0, y0: 0, x1: Math.max(1, width), y1: Math.max(1, height) };
   }
-  const xDen = Math.max(width, 2) - 1;
-  const yDen = Math.max(height, 2) - 1;
-  const x0 = Math.min(width, Math.max(0, Math.round(((region.xMin - render.xMin) / sx) * xDen)));
-  const x1 = Math.min(width, Math.max(x0 + 1, Math.round(((region.xMax - render.xMin) / sx) * xDen) + 1));
-  const y0 = Math.min(height, Math.max(0, Math.round(((region.yMin - render.yMin) / sy) * yDen)));
-  const y1 = Math.min(height, Math.max(y0 + 1, Math.round(((region.yMax - render.yMin) / sy) * yDen) + 1));
+  const x0 = Math.min(width, Math.max(0, Math.ceil(((region.xMin - render.xMin) / sx) * width - 0.5)));
+  const x1 = Math.min(width, Math.max(x0 + 1, Math.ceil(((region.xMax - render.xMin) / sx) * width - 0.5)));
+  const y0 = Math.min(height, Math.max(0, Math.ceil(((region.yMin - render.yMin) / sy) * height - 0.5)));
+  const y1 = Math.min(height, Math.max(y0 + 1, Math.ceil(((region.yMax - render.yMin) / sy) * height - 0.5)));
   return { x0, y0, x1, y1 };
 }
 

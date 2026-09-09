@@ -66,10 +66,10 @@ export const PROBE_MAX_STEPS = 40000;
 
 // "HIC SUNT DRACONES" sits in the black precision void behind sparse samples.
 export const DRAGON_FONT_START_PX = 28;
-export const DRAGON_FONT_MAX_PX = 64;
 export const DRAGON_OPACITY = 0.2;
 export const DRAGON_TILE_X_PX = 340;
 export const DRAGON_TILE_Y_PX = 230;
 export const DRAGON_PARALLAX = 0.14;
 export const DRAGON_SCALE_START_PX = 4;
-export const DRAGON_SCALE_MAX = 2;
+/** Slow perspective growth per doubling of the distance between map samples. */
+export const DRAGON_SCALE_PER_OCTAVE = 0.16;

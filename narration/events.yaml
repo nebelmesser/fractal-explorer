@@ -2,15 +2,21 @@
 # Store keys the app writes. Cues can wait on them with `when` / `unless`
 # (exact match). A missing key is not false.
 #
-#   zoom_deg            integer degrees on the longest screen side
+#   zoom_deg            short-axis view span in degrees (float)
 #   simulation_sec      wall-clock seconds since physics started
 #   simulation_running  true while pendulums are integrating
+#   simulation_count    how many times Start was pressed
+#   simulation_run      "first" | "repeat" | "changed"
 #   page_sec            wall-clock seconds since the narrator mounted
 #   map_ready           true after the first settled frame
 #   menu                "open" | "closed"
 #   param               slider key (L1, M1, …)
 #   param_value         that slider's number
 #   budget_ms           frame budget
+#
+# when/unless: exact match, or a compare object { lt, lte, gt, gte } for numbers.
+# Zoom beats use zoom_deg: { lte: 0.1 } so a jump past the threshold still fires.
+# f64 zoom floor is ~1.07e-12°; zoom-limit uses lte: 3e-12.
 
 events:
   map-ready: First settled map frame is on screen.

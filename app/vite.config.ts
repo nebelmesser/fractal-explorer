@@ -42,8 +42,8 @@ export default defineConfig({
       transformIndexHtml(html) {
         return html
           .replace(/ crossorigin(?:="[^"]*")?/g, '')
-          .replace('src="./assets/explorer.js"', 'src="./assets/explorer.js?v=when"')
-          .replace('href="./assets/explorer.css"', 'href="./assets/explorer.css?v=when"');
+          .replace('src="./assets/explorer.js"', 'src="./assets/explorer.js?v=sim-run"')
+          .replace('href="./assets/explorer.css"', 'href="./assets/explorer.css?v=sim-run"');
       },
     },
     {
