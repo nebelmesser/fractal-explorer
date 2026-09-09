@@ -3,6 +3,8 @@ import {
   BUTTON_ZOOM_FACTOR,
   MEDIAN_DEFAULT,
   MIN_COMPUTE_PX,
+  MIN_VIEW_SPAN,
+  MIN_VIEW_SPAN_F64,
   MAX_OVERSCAN_PX,
   OVERSCAN_PAD,
   OVERSCAN_RELOAD,
@@ -64,10 +66,16 @@ function waitForPresent(): Promise<void> {
   });
 }
 
+export type BootViewerOptions = {
+  /** Unlock f64 CPU tiles past the f32 zoom floor. Test with `?maxres=1`. */
+  maxres?: boolean;
+};
+
 export async function bootViewer(
   mapDef: MapDefinition,
   presentationFactory?: MapPresentationFactory,
   signals?: ViewerSignals,
+  options?: BootViewerOptions,
 ): Promise<void> {
   const gpuMissing = document.getElementById('gpu-missing');
   const mapCanvas = document.getElementById('map') as HTMLCanvasElement;
@@ -94,6 +102,8 @@ export async function bootViewer(
     return;
   }
   const gpuOk = gpu;
+  const maxres = options?.maxres === true && Boolean(mapDef.cpu);
+  const minSpan = maxres ? MIN_VIEW_SPAN_F64 : MIN_VIEW_SPAN;
 
   await presentationFactory?.init?.();
 
@@ -153,7 +163,7 @@ export async function bootViewer(
   });
   let renderer: GpuMapRenderer;
   try {
-    renderer = await GpuMapRenderer.create(gpuOk, backCanvas, mapDef);
+    renderer = await GpuMapRenderer.create(gpuOk, backCanvas, mapDef, { maxres });
   } catch (error) {
     if (gpuMissing) {
       gpuMissing.hidden = false;
@@ -181,6 +191,11 @@ export async function bootViewer(
     getView: () => view,
     clientToWorld,
     snapToRenderedPixel: snapWorld,
+    samplesF64: () => renderer.samplesF64(
+      view,
+      Math.max(1, frontCanvas.width),
+      Math.max(1, frontCanvas.height),
+    ),
     signals,
   }) ?? emptyPresentation;
   bindPrefs(preferencesKey, () => {
@@ -198,7 +213,7 @@ export async function bootViewer(
   let viewTimer = 0;
 
   function syncZoomBar(): void {
-    zoomIn.disabled = !canZoomIn(view);
+    zoomIn.disabled = !canZoomIn(view, minSpan);
     zoomOut.disabled = !canZoomOut(view, world);
     zoomReset.disabled = !canZoomOut(view, world) && atDefaultView(view, world, navigation);
   }
@@ -211,7 +226,7 @@ export async function bootViewer(
     if (after < before * 0.99) signals?.emit('zoom-in');
     else if (after > before * 1.01) signals?.emit('zoom-out');
     else signals?.emit('pan');
-    if (canZoomIn(prev) && !canZoomIn(next)) signals?.emit('zoom-limit');
+    if (canZoomIn(prev, minSpan) && !canZoomIn(next, minSpan)) signals?.emit('zoom-limit');
   }
 
   let mapReadySent = false;
@@ -646,6 +661,7 @@ export async function bootViewer(
     getView: () => view,
     getWorld: () => world,
     getNavigation: () => navigation,
+    getMinSpan: () => minSpan,
     setView(next, opts) {
       applyView(next, opts);
     },
@@ -683,7 +699,7 @@ export async function bootViewer(
 
   function buttonZoom(factor: number): void {
     const c = viewCenter(view);
-    applyView(zoomAbout(view, c.x, c.y, factor, world, navigation), { pushHistory: true, animate: true });
+    applyView(zoomAbout(view, c.x, c.y, factor, world, navigation, minSpan), { pushHistory: true, animate: true });
   }
 
   zoomOut.addEventListener('click', () => buttonZoom(1 / BUTTON_ZOOM_FACTOR));

@@ -66,6 +66,18 @@ export type GpuKernel = {
   ): ArrayBuffer;
 };
 
+/** Optional CPU/WASM kernel for tiles finer than f32 can sample. */
+export type CpuKernel = {
+  fillTile(
+    view: ViewRect,
+    width: number,
+    height: number,
+    params: MapParams,
+  ): Promise<Float32Array>;
+  /** Independent tiles the engine may fill at once. Each tile may also split internally. */
+  concurrency?: number;
+};
+
 export type MapDefinition = {
   id: string;
   title: string;
@@ -76,6 +88,8 @@ export type MapDefinition = {
   workBudget: WorkBudget;
   params: MapParam[];
   gpu: GpuKernel;
+  /** Used past the f32 zoom floor when the viewer is in `maxres` mode. */
+  cpu?: CpuKernel;
 };
 
 export function viewSpanX(view: ViewRect): number {
@@ -107,11 +121,19 @@ export function lerpView(a: ViewRect, b: ViewRect, t: number): ViewRect {
 }
 
 export function viewsEqual(a: ViewRect, b: ViewRect, eps = 1e-12): boolean {
+  const span = Math.max(viewSpanX(a), viewSpanY(a), viewSpanX(b), viewSpanY(b));
+  const mag = Math.max(
+    Math.abs(a.xMin), Math.abs(a.xMax), Math.abs(b.xMin), Math.abs(b.xMax),
+    Math.abs(a.yMin), Math.abs(a.yMax), Math.abs(b.yMin), Math.abs(b.yMax),
+    span,
+    1e-30,
+  );
+  const tol = Math.max(eps * Math.max(span, 0), mag * Number.EPSILON * 4);
   return (
-    Math.abs(a.xMin - b.xMin) < eps
-    && Math.abs(a.xMax - b.xMax) < eps
-    && Math.abs(a.yMin - b.yMin) < eps
-    && Math.abs(a.yMax - b.yMax) < eps
+    Math.abs(a.xMin - b.xMin) < tol
+    && Math.abs(a.xMax - b.xMax) < tol
+    && Math.abs(a.yMin - b.yMin) < tol
+    && Math.abs(a.yMax - b.yMax) < tol
   );
 }
 

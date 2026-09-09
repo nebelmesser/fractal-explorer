@@ -10,6 +10,25 @@ declare module './pkg/map_core.js' {
     readonly w1: number;
     readonly w2: number;
   }
+  export function fill_map_tile(
+    out: Float32Array,
+    width: number,
+    height: number,
+    row0: number,
+    row1: number,
+    xMin: number,
+    xMax: number,
+    yMin: number,
+    yMax: number,
+    l1: number,
+    l2: number,
+    m1: number,
+    m2: number,
+    g: number,
+    dt: number,
+    f: number,
+    maxIter: number,
+  ): void;
 }
 
 declare module './pkg/map_core_bg.wasm?url' {

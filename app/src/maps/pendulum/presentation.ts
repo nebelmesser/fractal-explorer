@@ -207,6 +207,10 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     return { origins: nextOrigins, worlds: nextWorlds };
   }
 
+  function overlayPrecise(): boolean {
+    return host.samplesF64?.() === true;
+  }
+
   function reset(): void {
     probes = null;
     flies = [];
@@ -235,7 +239,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     reset();
     const next = sampleFrame().worlds;
     if (!next.length) return false;
-    probes = next.map((point) => createTrajectory(point.x, point.y));
+    probes = next.map((point) => createTrajectory(point.x, point.y, overlayPrecise()));
     flies = next.map(() => null);
     probeView = copyView(host.getView());
     playAcc = 0;
@@ -262,7 +266,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     pinnedWorlds = points.map((origin) => host.snapToRenderedPixel(
       host.clientToWorld(box.left + origin.x, box.top + origin.y),
     ));
-    probes = pinnedWorlds.map((point) => createTrajectory(point.x, point.y));
+    probes = pinnedWorlds.map((point) => createTrajectory(point.x, point.y, overlayPrecise()));
     flies = pinnedWorlds.map(() => null);
     playing = false;
     playAcc = 0;

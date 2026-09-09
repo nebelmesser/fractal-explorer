@@ -35,6 +35,8 @@ export type PresentationHost = {
   getView(): ViewRect;
   clientToWorld(clientX: number, clientY: number): MapPoint;
   snapToRenderedPixel(point: MapPoint): MapPoint;
+  /** True when the live view is past the f32 sample floor (`?maxres=1` CPU tiles). */
+  samplesF64?(): boolean;
   signals?: ViewerSignals;
 };
 

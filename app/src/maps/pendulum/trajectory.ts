@@ -21,50 +21,61 @@ function afterKernelStep(traj: Trajectory, params: MapParams): void {
 }
 
 type WasmPendulum = {
-  new(th1: number, th2: number): {
-    step(l1: number, l2: number, m1: number, m2: number, g: number, f: number, dt: number): void;
-    readonly th1: number;
-    readonly th2: number;
-    readonly w1: number;
-    readonly w2: number;
-  };
+  new(th1: number, th2: number): WasmBody;
+};
+
+type WasmBody = {
+  step(l1: number, l2: number, m1: number, m2: number, g: number, f: number, dt: number): void;
+  readonly th1: number;
+  readonly th2: number;
+  readonly w1: number;
+  readonly w2: number;
 };
 
 let WasmCtor: WasmPendulum | null = null;
+let WasmCtorF64: WasmPendulum | null = null;
 
-/** Load the WASM crate that steps one pendulum. The map never goes through here. */
+/** Load the WASM crate that steps one pendulum and fills f64 map tiles. */
 export async function initMapCore(): Promise<void> {
   try {
     const mod = await import('./pkg/map_core.js');
     const wasmUrl = (await import('./pkg/map_core_bg.wasm?url')).default;
     await mod.default({ module_or_path: wasmUrl });
     WasmCtor = mod.Pendulum as unknown as WasmPendulum;
+    WasmCtorF64 = mod.PendulumF64 as unknown as WasmPendulum;
   } catch (error) {
     console.warn('map_core WASM failed to load; preview uses the TS integrator', error);
     WasmCtor = null;
+    WasmCtorF64 = null;
   }
 }
 
-export function createTrajectory(th1: number, th2: number): Trajectory {
-  if (WasmCtor) {
-    const inner = new WasmCtor(th1, th2);
-    const traj: Trajectory = {
-      startTh1: th1,
-      startTh2: th2,
-      steps: 0,
-      done: false,
-      get th1() { return inner.th1; },
-      get th2() { return inner.th2; },
-      get w1() { return inner.w1; },
-      get w2() { return inner.w2; },
-      step(params, dt) {
-        if (traj.done) return;
-        inner.step(params.L1, params.L2, params.M1, params.M2, params.G, params.F ?? 0, dt);
-        afterKernelStep(traj, params);
-      },
-    };
-    return traj;
+function wrapWasm(inner: WasmBody, th1: number, th2: number): Trajectory {
+  const traj: Trajectory = {
+    startTh1: th1,
+    startTh2: th2,
+    steps: 0,
+    done: false,
+    get th1() { return inner.th1; },
+    get th2() { return inner.th2; },
+    get w1() { return inner.w1; },
+    get w2() { return inner.w2; },
+    step(params, dt) {
+      if (traj.done) return;
+      inner.step(params.L1, params.L2, params.M1, params.M2, params.G, params.F ?? 0, dt);
+      afterKernelStep(traj, params);
+    },
+  };
+  return traj;
+}
+
+/** `precise` keeps f64 state so overlay starts do not collapse with the GPU's f32 tiles. */
+export function createTrajectory(th1: number, th2: number, precise = false): Trajectory {
+  if (precise) {
+    if (WasmCtorF64) return wrapWasm(new WasmCtorF64(th1, th2), th1, th2);
+    return new TsPendulum(th1, th2);
   }
+  if (WasmCtor) return wrapWasm(new WasmCtor(th1, th2), th1, th2);
   return new TsPendulum(th1, th2);
 }
 

@@ -20,6 +20,7 @@ import {
   type ViewRect,
 } from '../types';
 import computeWgsl from './pendulum.wgsl?raw';
+import { fillPendulumTile, pendulumCpuConcurrency } from './cpu';
 
 /** Pack the 80-byte uniform block shared by the compute and postprocess shaders. */
 export function packPendulumUniforms(
@@ -95,4 +96,5 @@ export const pendulumMap: MapDefinition = {
     { key: 'DT', label: 'param.DT', kind: 'float', min: 0.01, max: 0.5, step: 0.01, default: PENDULUM_DT, invert: true },
   ],
   gpu,
+  cpu: { fillTile: fillPendulumTile, concurrency: pendulumCpuConcurrency() },
 };

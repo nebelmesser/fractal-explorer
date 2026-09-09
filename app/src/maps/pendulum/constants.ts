@@ -14,6 +14,8 @@ export const PENDULUM_DT = 0.2;
 export const PENDULUM_FRICTION = 0;
 export const PENDULUM_MIN_ITER = 1000;
 export const PENDULUM_MAX_ITER = 8000;
+/** WASM workers for f64 tiles; leave one core for the UI thread. */
+export const PENDULUM_CPU_WORKERS = 16;
 
 // On-map pendulum presentation.
 export const PROBE_SEP_PX = 168;

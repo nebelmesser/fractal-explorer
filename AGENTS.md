@@ -27,7 +27,9 @@ It owns:
 
 The engine must not import a concrete map module or refer to pendulum concepts,
 parameter names, angle units, DOM IDs for map-specific UI, or overlay state.
-There is no CPU fallback for computing a map. Use `f32` on the GPU.
+The map is computed in f32 on the GPU. With `?maxres=1`, tiles finer than f32
+can sample are filled by the map's optional CPU/WASM kernel; the f32 zoom floor
+and "here be dragons" stay where they are. Default visitors never take that path.
 
 Keep the last complete texture visible during asynchronous work. Normalize
 brightness against the visible view, never against overscan or prefetched
@@ -64,6 +66,10 @@ For the double-pendulum map, `app/src/maps/pendulum/` owns:
 - overlay layout, drawing, animation, and trajectory simulation;
 - pendulum controls, HUD binding, and map-specific CSS/theme;
 - Rust/WASM trajectory integration.
+
+Overlay trajectories match the GPU in f32. When `host.samplesF64()` is true
+(the live view is on CPU/f64 tiles), they step with the f64 WASM kernel so
+neighboring probes stay distinct.
 
 The generic runtime may call presentation lifecycle hooks, but it must not
 inspect or mutate presentation state. A map may provide a completely different
@@ -185,7 +191,8 @@ from the playground root:
 ```
 
 Open `https://127.0.0.1:4000/fractal/double-pendulum.html`. Add `?narration=1`
-to show the narrator overlay and play cues. Do not start another Jekyll, Python,
+to show the narrator overlay and play cues. Add `?maxres=1` to zoom past the f32
+floor with CPU/WASM tiles. Do not start another Jekyll, Python,
 Vite preview, or static-file server.
 
 After engine changes, verify cold load, desktop and mobile gestures, inertia,

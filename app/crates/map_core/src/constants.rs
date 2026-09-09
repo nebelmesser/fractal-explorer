@@ -1,5 +1,4 @@
-//! Physics defaults shared with `app/src/constants.ts`.
-//! The map itself never runs here — only one pendulum trajectory for the preview.
+//! Physics defaults shared with the TypeScript / WGSL kernels.
 
 #![allow(dead_code)] // kept as the TS/WGSL numeric contract
 

@@ -76,8 +76,9 @@ export function zoomAbout(
   factor: number,
   world: ViewRect,
   navigation: NavigationPolicy,
+  minSpan = MIN_VIEW_SPAN,
 ): ViewRect {
-  const nextShort = clampSpan(shortSpan(view) * factor, shortSpan(world));
+  const nextShort = clampSpan(shortSpan(view) * factor, shortSpan(world), minSpan);
   const { spanX, spanY } = spansForShort(nextShort, world);
   const fx = (x - view.xMin) / viewSpanX(view);
   const fy = (y - view.yMin) / viewSpanY(view);
@@ -123,8 +124,8 @@ export function panView(
   }, navigation);
 }
 
-function clampSpan(span: number, cap: number): number {
-  return Math.min(Math.max(span, MIN_VIEW_SPAN), cap);
+function clampSpan(span: number, cap: number, floor: number): number {
+  return Math.min(Math.max(span, floor), cap);
 }
 
 function yPeriod(navigation: NavigationPolicy): number | null {
@@ -234,11 +235,12 @@ export function coastStopView(
   width: number,
   height: number,
   navigation: NavigationPolicy,
+  minSpan = MIN_VIEW_SPAN,
 ): ViewRect {
   const k = COAST_FRICTION;
   let next = view;
   if (anchor && Math.abs(velLog) >= COAST_MIN_ZOOM) {
-    next = zoomAbout(next, anchor.x, anchor.y, Math.exp(velLog / k), world, navigation);
+    next = zoomAbout(next, anchor.x, anchor.y, Math.exp(velLog / k), world, navigation, minSpan);
   }
   if (Math.hypot(velX, velY) >= COAST_MIN_PX) {
     next = panView(next, velX / k, velY / k, width, height, navigation);
@@ -246,8 +248,8 @@ export function coastStopView(
   return clampViewX(next, navigation);
 }
 
-export function canZoomIn(view: ViewRect): boolean {
-  return shortSpan(view) > MIN_VIEW_SPAN * 1.01;
+export function canZoomIn(view: ViewRect, minSpan = MIN_VIEW_SPAN): boolean {
+  return shortSpan(view) > minSpan * 1.01;
 }
 
 export function canZoomOut(view: ViewRect, world: ViewRect): boolean {

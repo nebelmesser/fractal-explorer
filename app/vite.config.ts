@@ -1,4 +1,4 @@
-import { rmSync } from 'node:fs';
+import { readdirSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
@@ -28,8 +28,12 @@ export default defineConfig({
       },
     },
   },
-    server: {
+  server: {
     open: '/double-pendulum.html',
+  },
+  worker: {
+    format: 'es',
+    plugins: () => [wasm()],
   },
   plugins: [
     wasm(),
@@ -48,8 +52,19 @@ export default defineConfig({
         const assets = resolve(outDir, 'assets');
         rmSync(resolve(outDir, 'explorer.html'), { force: true });
         rmSync(resolve(outDir, 'viewer.html'), { force: true });
-        rmSync(resolve(assets, 'explorer.js'), { force: true });
-        rmSync(resolve(assets, 'explorer.css'), { force: true });
+        try {
+          for (const name of readdirSync(assets)) {
+            if (
+              name === 'explorer.js' || name === 'explorer.css'
+              || name.startsWith('explorer-') || name.startsWith('tile-worker-')
+              || name.startsWith('map_core_bg')
+            ) {
+              rmSync(resolve(assets, name), { force: true });
+            }
+          }
+        } catch {
+          // assets/ may not exist on a fresh clone
+        }
       },
     },
     {

@@ -2,9 +2,12 @@ import type { GpuContext } from './device';
 import type { MapDefinition, MapParams, ViewRect } from '../maps/types';
 import { viewSpanX, viewSpanY } from '../maps/types';
 import {
-  LOD_CACHE_TILES, LOD_COARSE_GAP, LOD_EXPOSURE_HIGH, LOD_EXPOSURE_LOW,
-  LOD_EXPOSURE_TAU_MS, LOD_MAX_LEVEL, LOD_PREFETCH_PAD, LOD_TILE_PX,
+  LOD_CACHE_TILES, LOD_COARSE_GAP, LOD_CPU_GPU_PX, LOD_CPU_MIN_PX,
+  LOD_CPU_PARALLEL, LOD_CPU_RINGS, LOD_CPU_SLICE_MS, LOD_CPU_STEP, LOD_CPU_TILE_PX,
+  LOD_EXPOSURE_HIGH, LOD_EXPOSURE_LOW,
+  LOD_EXPOSURE_TAU_MS, LOD_MAX_LEVEL, LOD_MAX_LEVEL_F64, LOD_PREFETCH_PAD, LOD_TILE_PX,
 } from '../constants';
+import { f32Ulp } from './precision';
 import reduceWgsl from './reduce.wgsl?raw';
 import histogramWgsl from './histogram.wgsl?raw';
 import tileBlitWgsl from './tile_blit.wgsl?raw';
@@ -14,7 +17,7 @@ type Exposure = { lo: number; hi: number };
 type Tile = {
   key: string; generation: number; level: number; ix: number; iy: number; view: ViewRect;
   uniform: GPUBuffer; raw: GPUBuffer; minmax: GPUBuffer; counts: Float32Array;
-  lo: number; hi: number; used: number;
+  lo: number; hi: number; used: number; cpuRes?: number;
 };
 type Cell = {
   key: string; level: number; ix: number; iy: number; canonicalIy: number;
@@ -40,6 +43,7 @@ export class GpuMapRenderer {
   private latest: PresentRequest | null = null;
   private refining = false;
   private gpuTail: Promise<void> = Promise.resolve();
+  private cpuTail: Promise<void> = Promise.resolve();
   private exposure: Exposure | null = null;
   private exposureTarget: Exposure | null = null;
   private exposureAnchor: Exposure | null = null;
@@ -63,6 +67,9 @@ export class GpuMapRenderer {
   private readonly exposureBuffer: GPUBuffer;
   private readonly histogramBuffer: GPUBuffer;
   private readonly histogramRead: GPUBuffer;
+  private readonly maxres: boolean;
+  private cpuWave = 0;
+  private cpuWaveView: ViewRect | null = null;
 
   private constructor(
     private readonly gpu: GpuContext,
@@ -73,6 +80,7 @@ export class GpuMapRenderer {
       histogramLayout: GPUBindGroupLayout; composeLayout: GPUBindGroupLayout;
       compute: GPUComputePipeline; reduce: GPUComputePipeline;
       histogram: GPUComputePipeline; compose: GPURenderPipeline;
+      maxres: boolean;
     },
   ) {
     const context = canvas.getContext('webgpu');
@@ -82,13 +90,19 @@ export class GpuMapRenderer {
     this.histogramLayout = p.histogramLayout; this.composeLayout = p.composeLayout;
     this.computePipeline = p.compute; this.reducePipeline = p.reduce;
     this.histogramPipeline = p.histogram; this.composePipeline = p.compose;
+    this.maxres = p.maxres && Boolean(map.cpu);
     const device = gpu.device;
     this.exposureBuffer = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.histogramBuffer = device.createBuffer({ size: 1024, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST });
     this.histogramRead = device.createBuffer({ size: 1024, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
   }
 
-  static async create(gpu: GpuContext, canvas: HTMLCanvasElement, map: MapDefinition): Promise<GpuMapRenderer> {
+  static async create(
+    gpu: GpuContext,
+    canvas: HTMLCanvasElement,
+    map: MapDefinition,
+    opts?: { maxres?: boolean },
+  ): Promise<GpuMapRenderer> {
     const device = gpu.device;
     const computeLayout = device.createBindGroupLayout({ entries: [
       { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
@@ -136,19 +150,20 @@ export class GpuMapRenderer {
     });
     return new GpuMapRenderer(gpu, map, canvas, {
       computeLayout, reduceLayout, histogramLayout, composeLayout, compute, reduce, histogram, compose,
+      maxres: opts?.maxres === true,
     });
   }
 
   async render(view: ViewRect, params: MapParams, width: number, height: number, invert: boolean, median: number, _normView: ViewRect = view): Promise<number> {
     const t0 = performance.now();
     const request = this.makeRequest(view, params, width, height, invert, median, false);
-    const coarse = Math.max(0, request.level - LOD_COARSE_GAP);
+    const coarse = Math.max(0, request.level - this.levelStep(request));
     await this.enqueue(async () => {
       if (request.generation !== this.generation) return;
       await this.ensureCells(request, [0, coarse], 0);
       await this.updateExposure(request);
       this.compose(request);
-      await this.ensureCells(request, [request.level], LOD_PREFETCH_PAD);
+      await this.ensureCells(request, [request.level], this.cpuView(request) ? 0 : LOD_PREFETCH_PAD);
       await this.updateExposure(request);
       this.compose(request);
     });
@@ -162,11 +177,12 @@ export class GpuMapRenderer {
     this.scheduleDynamicExposure(request);
     // Long simulation dispatches can starve the compositor on integrated GPUs.
     // Cached LODs move at display rate; refinement resumes on the settled frame.
-    if (!moving) this.scheduleRefine();
+    if (!moving || this.cpuView(request)) this.scheduleRefine();
   }
 
   prefetch(view: ViewRect, params: MapParams, width: number, height: number): Promise<void> {
     const request = this.makeRequest(view, params, width, height, false, 1, true, false);
+    if (this.cpuView(request)) return Promise.resolve();
     const coarse = Math.max(0, request.level - LOD_COARSE_GAP);
     return this.enqueue(async () => {
       if (request.generation === this.generation) {
@@ -175,6 +191,11 @@ export class GpuMapRenderer {
         await this.ensureCells(request, [0, coarse], LOD_PREFETCH_PAD, 1);
       }
     });
+  }
+
+  /** True when this view is filled by the map's f64 CPU kernel. */
+  samplesF64(view: ViewRect, width: number, height: number): boolean {
+    return this.viewUsesCpu(view, width, height);
   }
 
   snapWorld(point: { x: number; y: number }): { x: number; y: number } {
@@ -233,6 +254,13 @@ export class GpuMapRenderer {
     return run;
   }
 
+  /** CPU tiles must not wait on histogram mapAsync / GPU compute. */
+  private enqueueCpu(fn: () => Promise<void>): Promise<void> {
+    const run = this.cpuTail.then(fn, fn);
+    this.cpuTail = run.catch(() => undefined);
+    return run;
+  }
+
   private makeRequest(view: ViewRect, params: MapParams, width: number, height: number, invert: boolean, median: number, moving: boolean, display = true): PresentRequest {
     this.ensureParams(params);
     const w = Math.max(1, Math.round(width)); const h = Math.max(1, Math.round(height));
@@ -253,6 +281,8 @@ export class GpuMapRenderer {
     this.exposureTarget = null;
     this.exposureAnchor = null;
     this.awaitingFirstFrame = true;
+    this.cpuWave = 0;
+    this.cpuWaveView = null;
     this.lastExposureSignature = '';
     void this.gpuTail.then(async () => {
       await this.gpu.device.queue.onSubmittedWorkDone();
@@ -261,11 +291,99 @@ export class GpuMapRenderer {
   }
 
   private baseSpan(): number { return Math.min(viewSpanX(this.map.defaultView), viewSpanY(this.map.defaultView)); }
+  private maxLevel(): number { return this.maxres ? LOD_MAX_LEVEL_F64 : LOD_MAX_LEVEL; }
   private tileSpan(level: number): number { return this.baseSpan() / (2 ** level); }
   private levelFor(view: ViewRect, width: number, height: number): number {
     const worldPerPixel = Math.max(viewSpanX(view) / width, viewSpanY(view) / height);
-    const exact = Math.log2(this.baseSpan() / Math.max(1e-12, LOD_TILE_PX * worldPerPixel));
-    return Math.max(0, Math.min(LOD_MAX_LEVEL, Math.round(exact)));
+    const gpuExact = Math.log2(this.baseSpan() / Math.max(Number.MIN_VALUE, LOD_TILE_PX * worldPerPixel));
+    const gpuLevel = Math.max(0, Math.min(LOD_MAX_LEVEL, Math.round(gpuExact)));
+    if (!this.viewUsesCpu(view, width, height)) return gpuLevel;
+    const cpuExact = Math.log2(this.baseSpan() / Math.max(Number.MIN_VALUE, LOD_CPU_MIN_PX * worldPerPixel));
+    const stepped = Math.floor(cpuExact / LOD_CPU_STEP) * LOD_CPU_STEP;
+    return Math.max(0, Math.min(this.maxLevel(), stepped));
+  }
+  private levelStep(request: PresentRequest): number {
+    return this.cpuView(request) ? LOD_CPU_STEP : LOD_COARSE_GAP;
+  }
+  private cpuView(request: PresentRequest): boolean {
+    return this.viewUsesCpu(request.view, request.width, request.height);
+  }
+  /** True when one f32 sample already covers more than `LOD_CPU_GPU_PX` map pixels. */
+  private viewUsesCpu(view: ViewRect, width: number, height: number): boolean {
+    return this.gpuPixelCoarse(view, width, height);
+  }
+  private tileUsesCpu(view: ViewRect): boolean {
+    return this.gpuPixelCoarse(view, LOD_TILE_PX, LOD_TILE_PX);
+  }
+  private gpuPixelCoarse(view: ViewRect, width: number, height: number): boolean {
+    if (!this.maxres || !this.map.cpu) return false;
+    const pixel = Math.max(
+      viewSpanX(view) / Math.max(width - 1, 1),
+      viewSpanY(view) / Math.max(height - 1, 1),
+    );
+    const ulp = Math.max(f32Ulp(view.xMin), f32Ulp(view.xMax), f32Ulp(view.yMin), f32Ulp(view.yMax));
+    return ulp > LOD_CPU_GPU_PX * pixel;
+  }
+  private cellScreenPx(cell: Cell, request: PresentRequest): number {
+    const sx = viewSpanX(request.view) / Math.max(request.width, 1);
+    const sy = viewSpanY(request.view) / Math.max(request.height, 1);
+    return Math.min(viewSpanX(cell.drawView) / sx, viewSpanY(cell.drawView) / sy);
+  }
+  private cellOnScreen(cell: Cell, view: ViewRect): boolean {
+    return cell.drawView.xMin < view.xMax && cell.drawView.xMax > view.xMin
+      && cell.drawView.yMin < view.yMax && cell.drawView.yMax > view.yMin;
+  }
+  private cpuCellWanted(cell: Cell, request: PresentRequest): boolean {
+    return this.cellOnScreen(cell, request.view) && this.cellScreenPx(cell, request) >= LOD_CPU_MIN_PX;
+  }
+  private cpuParallel(): number {
+    return Math.max(1, this.map.cpu?.concurrency ?? LOD_CPU_PARALLEL);
+  }
+  private cpuWaveMax(): number {
+    return Math.round(Math.log2(LOD_CPU_TILE_PX)) + LOD_CPU_RINGS - 1;
+  }
+  private cpuLevels(request: PresentRequest): number[] {
+    const step = this.levelStep(request);
+    return [...new Set([0, Math.max(0, request.level - step), request.level])];
+  }
+  /** Screen-space distance from the live view center to the cell center. */
+  private cpuScreenDist(cell: Cell, request: PresentRequest): number {
+    const vx = viewSpanX(request.view); const vy = viewSpanY(request.view);
+    const cx = (request.view.xMin + request.view.xMax) / 2;
+    const cy = (request.view.yMin + request.view.yMax) / 2;
+    const px = ((cell.drawView.xMin + cell.drawView.xMax) / 2 - cx) / Math.max(vx, 1e-30) * request.width;
+    const py = ((cell.drawView.yMin + cell.drawView.yMax) / 2 - cy) / Math.max(vy, 1e-30) * request.height;
+    return Math.hypot(px, py);
+  }
+  /** Reset fovea only when the camera actually moved; float jitter must not stall the pool. */
+  private syncCpuFovea(request: PresentRequest): void {
+    const prev = this.cpuWaveView;
+    if (prev) {
+      const vx = Math.max(viewSpanX(request.view), 1e-30);
+      const vy = Math.max(viewSpanY(request.view), 1e-30);
+      const dx = (((request.view.xMin + request.view.xMax) - (prev.xMin + prev.xMax)) / 2) / vx * request.width;
+      const dy = (((request.view.yMin + request.view.yMax) - (prev.yMin + prev.yMax)) / 2) / vy * request.height;
+      const span = Math.abs(vx - viewSpanX(prev)) / vx;
+      if (Math.hypot(dx, dy) < 8 && span < 0.03) return;
+    }
+    this.cpuWave = 0;
+    this.cpuWaveView = { ...request.view };
+  }
+  private cpuRing(cell: Cell, request: PresentRequest): number {
+    const radius = Math.min(request.width, request.height) / 2;
+    const t = Math.min(1, this.cpuScreenDist(cell, request) / Math.max(radius, 1));
+    return Math.min(LOD_CPU_RINGS - 1, Math.floor(t * LOD_CPU_RINGS));
+  }
+  private cpuCap(cell: Cell, request: PresentRequest, wave = this.cpuWave): number {
+    // Wave 0: every on-screen cell may take one sample so the worker pool fills.
+    // Later waves double from the center outward.
+    const steps = Math.max(0, wave - this.cpuRing(cell, request));
+    return 2 ** Math.min(Math.round(Math.log2(LOD_CPU_TILE_PX)), steps);
+  }
+  private cpuNeedsWork(cell: Cell, request: PresentRequest): boolean {
+    const cap = this.cpuCap(cell, request);
+    if (cap <= 0) return false;
+    return (this.tiles.get(cell.key)?.cpuRes ?? 0) < cap;
   }
   private xOrigin(): number { return this.map.defaultView.xMin; }
   private yOrigin(): number {
@@ -311,7 +429,11 @@ export class GpuMapRenderer {
   private async ensureCells(request: PresentRequest, levels: number[], pad: number, limit = Number.POSITIVE_INFINITY): Promise<void> {
     const unique = new Map<string, Cell>();
     for (const level of [...new Set(levels)].sort((a, b) => a - b)) {
-      for (const cell of this.cells(request.view, level, pad)) if (!this.tiles.has(cell.key)) unique.set(cell.key, cell);
+      for (const cell of this.cells(request.view, level, pad)) {
+        if (this.tiles.has(cell.key)) continue;
+        if (this.tileUsesCpu(cell.sourceView)) continue;
+        unique.set(cell.key, cell);
+      }
     }
     const cx = (request.view.xMin + request.view.xMax) / 2; const cy = (request.view.yMin + request.view.yMax) / 2;
     const cells = [...unique.values()]
@@ -319,14 +441,9 @@ export class GpuMapRenderer {
       .slice(0, limit);
     for (let i = 0; i < cells.length; i += 6) {
       if (request.generation !== this.generation) return;
-      await this.computeBatch(cells.slice(i, i + 6), request);
+      await this.computeGpu(cells.slice(i, i + 6).filter((cell) => !this.tiles.has(cell.key)), request);
       if (this.latest?.generation === request.generation) {
-        // Parameter changes replace the old canvas only after the complete
-        // coarse cover is ready. Ordinary LOD refinement stays progressive.
         if (this.awaitingFirstFrame) continue;
-        // A new parameter generation has no valid exposure yet. Compute it
-        // before presenting any of its tiles; otherwise log values above 1 are
-        // briefly clamped to white.
         if (!this.exposure || performance.now() - this.lastExposureUpdate >= 120) {
           await this.updateExposure(this.latest);
         }
@@ -336,15 +453,100 @@ export class GpuMapRenderer {
     this.evict();
   }
 
-  private async computeBatch(cells: Cell[], request: PresentRequest): Promise<void> {
+  /** Keep workers busy for a slice, then return so the compositor can paint. */
+  private async refineCpu(): Promise<boolean> {
+    const t0 = performance.now();
+    let any = false;
+    while (performance.now() - t0 < LOD_CPU_SLICE_MS) {
+      const live = this.latest;
+      if (!live || live.generation !== this.generation || !this.cpuView(live)) break;
+      this.syncCpuFovea(live);
+      const parallel = this.cpuParallel();
+      let jobs = this.nextCpuJobs(live, parallel);
+      while (!jobs.length && this.cpuWave < this.cpuWaveMax() && this.cpuHasFoveaSlack(live)) {
+        this.cpuWave += 1;
+        jobs = this.nextCpuJobs(live, parallel);
+      }
+      if (!jobs.length) break;
+      await Promise.all(jobs.map((job) => this.computeCpu(job.cell, live, job.nextRes)));
+      any = true;
+    }
+    return any;
+  }
+
+  private nextCpuJobs(request: PresentRequest, limit: number): { cell: Cell; nextRes: number }[] {
+    const jobs: { cell: Cell; nextRes: number; dist: number }[] = [];
+    for (const level of this.cpuLevels(request)) {
+      for (const cell of this.cells(request.view, level, 0)) {
+        if (!this.tileUsesCpu(cell.sourceView) || !this.cpuCellWanted(cell, request)) continue;
+        const cap = this.cpuCap(cell, request);
+        const have = this.tiles.get(cell.key)?.cpuRes ?? 0;
+        if (cap <= 0 || have >= cap) continue;
+        jobs.push({
+          cell,
+          nextRes: have > 0 ? Math.min(cap, have * 2) : 1,
+          dist: this.cpuScreenDist(cell, request),
+        });
+      }
+    }
+    jobs.sort((a, b) => a.dist - b.dist);
+    return jobs.slice(0, Math.max(1, limit)).map(({ cell, nextRes }) => ({ cell, nextRes }));
+  }
+
+  private cpuHasFoveaSlack(request: PresentRequest): boolean {
+    for (const level of this.cpuLevels(request)) {
+      for (const cell of this.cells(request.view, level, 0)) {
+        if (!this.tileUsesCpu(cell.sourceView) || !this.cpuCellWanted(cell, request)) continue;
+        if (this.cpuCap(cell, request, this.cpuWave + 1) > this.cpuCap(cell, request)) return true;
+      }
+    }
+    return false;
+  }
+
+  private allocTileBuffers(cell: Cell, request: PresentRequest): {
+    cell: Cell; uniform: GPUBuffer; raw: GPUBuffer; minmax: GPUBuffer;
+  } {
     const { device } = this.gpu;
-    const fresh = cells.filter((cell) => !this.tiles.has(cell.key)).map((cell) => {
-      const uniform = device.createBuffer({ size: this.map.gpu.uniformBytes, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-      const raw = device.createBuffer({ size: LOD_TILE_PX * LOD_TILE_PX * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
-      const minmax = device.createBuffer({ size: 8, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+    const uniform = device.createBuffer({ size: this.map.gpu.uniformBytes, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    const raw = device.createBuffer({
+      size: LOD_TILE_PX * LOD_TILE_PX * 4,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+    });
+    const minmax = device.createBuffer({ size: 8, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+    device.queue.writeBuffer(uniform, 0, this.map.gpu.packUniforms(
+      cell.sourceView, LOD_TILE_PX, LOD_TILE_PX, request.params,
+      { invert: false, median: 1, normView: cell.sourceView },
+    ));
+    return { cell, uniform, raw, minmax };
+  }
+
+  private commitTile(
+    cell: Cell,
+    request: PresentRequest,
+    buffers: { uniform: GPUBuffer; raw: GPUBuffer; minmax: GPUBuffer },
+    counts: Float32Array,
+    lo: number,
+    hi: number,
+    cpuRes?: number,
+  ): void {
+    if (request.generation !== this.generation) {
+      buffers.uniform.destroy(); buffers.raw.destroy(); buffers.minmax.destroy();
+      return;
+    }
+    this.tiles.set(cell.key, {
+      key: cell.key, generation: request.generation, level: cell.level,
+      ix: cell.ix, iy: cell.canonicalIy, view: cell.sourceView,
+      uniform: buffers.uniform, raw: buffers.raw, minmax: buffers.minmax, counts, lo, hi, used: ++this.useCounter,
+      cpuRes,
+    });
+  }
+
+  private async computeGpu(cells: Cell[], request: PresentRequest): Promise<void> {
+    const { device } = this.gpu;
+    const fresh = cells.map((cell) => {
+      const buffers = this.allocTileBuffers(cell, request);
       const read = device.createBuffer({ size: 256 + LOD_TILE_PX * LOD_TILE_PX * 4, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
-      device.queue.writeBuffer(uniform, 0, this.map.gpu.packUniforms(cell.sourceView, LOD_TILE_PX, LOD_TILE_PX, request.params, { invert: false, median: 1, normView: cell.sourceView }));
-      return { cell, uniform, raw, minmax, read };
+      return { ...buffers, read };
     });
     if (!fresh.length) return;
     const encoder = device.createCommandEncoder();
@@ -375,15 +577,56 @@ export class GpuMapRenderer {
       const counts = new Float32Array(LOD_TILE_PX * LOD_TILE_PX);
       counts.set(new Float32Array(bytes, 256, counts.length));
       item.read.unmap(); item.read.destroy();
-      if (request.generation !== this.generation) {
-        item.uniform.destroy(); item.raw.destroy(); item.minmax.destroy(); return;
-      }
-      this.tiles.set(item.cell.key, {
-        key: item.cell.key, generation: request.generation, level: item.cell.level,
-        ix: item.cell.ix, iy: item.cell.canonicalIy, view: item.cell.sourceView,
-        uniform: item.uniform, raw: item.raw, minmax: item.minmax, counts, lo, hi, used: ++this.useCounter,
-      });
+      this.commitTile(item.cell, request, item, counts, lo, hi);
     }));
+  }
+
+  private async computeCpu(cell: Cell, request: PresentRequest, nextRes: number): Promise<void> {
+    const cpu = this.map.cpu;
+    if (!cpu) return;
+    const live = this.latest;
+    if (!live || live.generation !== request.generation) return;
+    if (!this.cpuCellWanted(cell, live)) return;
+    const existing = this.tiles.get(cell.key);
+    if (existing && (existing.cpuRes ?? 0) >= nextRes) return;
+    const buffers = existing
+      ? { uniform: existing.uniform, raw: existing.raw, minmax: existing.minmax }
+      : this.allocTileBuffers(cell, request);
+    let samples: Float32Array;
+    try {
+      samples = await cpu.fillTile(
+        nextRes <= 1 ? {
+          xMin: (cell.sourceView.xMin + cell.sourceView.xMax) / 2,
+          xMax: (cell.sourceView.xMin + cell.sourceView.xMax) / 2,
+          yMin: (cell.sourceView.yMin + cell.sourceView.yMax) / 2,
+          yMax: (cell.sourceView.yMin + cell.sourceView.yMax) / 2,
+        } : cell.sourceView,
+        nextRes,
+        nextRes,
+        request.params,
+      );
+    } catch (error) {
+      if (!existing) { buffers.uniform.destroy(); buffers.raw.destroy(); buffers.minmax.destroy(); }
+      throw error;
+    }
+    const latest = this.latest;
+    if (!latest || latest.generation !== request.generation || !this.cellOnScreen(cell, latest.view)) {
+      if (!existing) { buffers.uniform.destroy(); buffers.raw.destroy(); buffers.minmax.destroy(); }
+      return;
+    }
+    const counts = expandTile(samples, nextRes, LOD_TILE_PX);
+    let lo = Number.POSITIVE_INFINITY;
+    let hi = Number.NEGATIVE_INFINITY;
+    for (let i = 0; i < samples.length; i++) {
+      const value = samples[i];
+      if (value < lo) lo = value;
+      if (value > hi) hi = value;
+    }
+    if (!(lo <= hi)) { lo = 0; hi = 1; }
+    this.gpu.device.queue.writeBuffer(
+      buffers.raw, 0, counts.buffer, counts.byteOffset, counts.byteLength,
+    );
+    this.commitTile(cell, request, buffers, counts, lo, hi, nextRes);
   }
 
   private visibleTiles(request: PresentRequest): Array<{ tile: Tile; drawView: ViewRect }> {
@@ -560,23 +803,49 @@ export class GpuMapRenderer {
 
   private scheduleRefine(): void {
     if (this.refining) return; this.refining = true;
-    void this.enqueue(async () => {
+    const run = async (): Promise<void> => {
       try {
         while (this.latest) {
-          const request = this.latest; if (request.generation !== this.generation) continue;
-          const levels = [0, Math.max(0, request.level - LOD_COARSE_GAP), request.level];
-          const missing = levels.some((level) => this.cells(request.view, level, LOD_PREFETCH_PAD).some((cell) => !this.tiles.has(cell.key)));
-          if (!missing) break;
-          await this.ensureCells(request, levels, LOD_PREFETCH_PAD); await this.updateExposure(request);
+          const request = this.latest; if (request.generation !== this.generation) break;
+          const pad = this.cpuView(request) ? 0 : LOD_PREFETCH_PAD;
+          const levels = [0, Math.max(0, request.level - this.levelStep(request)), request.level];
+          if (!this.hasMissingWanted(request, levels, pad)) break;
+          if (this.cpuView(request)) {
+            const progressed = await this.refineCpu();
+            if (this.latest?.generation === this.generation) this.compose(this.latest);
+            if (!progressed) break;
+            continue;
+          }
+          await this.ensureCells(request, levels, pad);
+          await this.updateExposure(request);
           if (this.latest === request) this.compose(request);
         }
       } catch (error) {
         this.lastError = error instanceof Error ? error.message : String(error); console.error(error);
       } finally {
         this.refining = false;
-        if (this.latest && this.cells(this.latest.view, this.latest.level, LOD_PREFETCH_PAD).some((cell) => !this.tiles.has(cell.key))) this.scheduleRefine();
+        const latest = this.latest;
+        if (latest) {
+          const pad = this.cpuView(latest) ? 0 : LOD_PREFETCH_PAD;
+          if (this.hasMissingWanted(latest, [latest.level], pad)) this.scheduleRefine();
+        }
       }
-    });
+    };
+    if (this.latest && this.cpuView(this.latest)) void this.enqueueCpu(run);
+    else void this.enqueue(run);
+  }
+
+  private hasMissingWanted(request: PresentRequest, levels: number[], pad: number): boolean {
+    for (const level of [...new Set(levels)]) {
+      for (const cell of this.cells(request.view, level, pad)) {
+        if (this.tileUsesCpu(cell.sourceView)) {
+          if (this.cpuCellWanted(cell, request) && this.cpuNeedsWork(cell, request)) return true;
+          continue;
+        }
+        if (!this.tiles.has(cell.key)) return true;
+      }
+    }
+    return this.cpuView(request) && this.cpuHasFoveaSlack(request);
   }
 
   private tileAt(x: number, y: number): Tile | null {
@@ -620,6 +889,19 @@ export class GpuMapRenderer {
 
 function clampIndex(value: number): number { return Math.max(0, Math.min(LOD_TILE_PX - 1, value)); }
 function distance(view: ViewRect, x: number, y: number): number { return Math.hypot((view.xMin + view.xMax) / 2 - x, (view.yMin + view.yMax) / 2 - y); }
+function expandTile(src: Float32Array, srcPx: number, dstPx: number): Float32Array {
+  if (srcPx === dstPx) return src;
+  const dst = new Float32Array(dstPx * dstPx);
+  const scale = dstPx / srcPx;
+  for (let y = 0; y < dstPx; y++) {
+    const srcRow = Math.min(srcPx - 1, Math.floor(y / scale)) * srcPx;
+    const dstRow = y * dstPx;
+    for (let x = 0; x < dstPx; x++) {
+      dst[dstRow + x] = src[srcRow + Math.min(srcPx - 1, Math.floor(x / scale))];
+    }
+  }
+  return dst;
+}
 function percentileBin(bins: Uint32Array, target: number): number {
   let sum = 0; for (let i = 0; i < bins.length; i++) { sum += bins[i]; if (sum >= target) return i; } return bins.length - 1;
 }
