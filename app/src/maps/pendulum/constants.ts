@@ -53,6 +53,8 @@ export const PROBE_PX_PER_LEN = 38;
 export const PROBE_CROSS_PX = 7;
 export const PROBE_PIVOT_R = 2;
 export const PROBE_LARGE_BOB_R = 8;
+export const PROBE_LARGE_BOB_PER_LEN = 8 / 52;
+export const PROBE_LARGE_ROD_PER_LEN = 4 / 52;
 export const PROBE_GRID_BOB_R = 4;
 export const PROBE_GRID_ROD_PX = 2;
 export const PROBE_OUTLINE_PX = 1;
@@ -63,6 +65,27 @@ export const PROBE_FLY_TIME = 0.55;
 export const PROBE_ALPHA = 0.5;
 export const PROBE_PLAY_FPS = 24;
 export const PROBE_MAX_STEPS = 40000;
+
+// Full-screen teaching pendulum.
+/** Maximum integration step; faster displays use their native frame interval. */
+export const LESSON_DT = 0.05;
+export const LESSON_FRICTION = 0.1;
+export const LESSON_MAX_FRAME_SEC = 0.15;
+export const LESSON_AUTOSTART_MS = 3000;
+export const LESSON_MAGNET_MS = 180;
+export const LESSON_BOB_HIT_PAD_PX = 6;
+export const LESSON_NEIGHBOR_DEG = 0.1;
+export const LESSON_NEIGHBOR_ALPHA = 0.52;
+export const LESSON_POINTER_SLOP_PX = 2;
+export const LESSON_MIN_SCALE_PX = 30;
+export const LESSON_MAX_SCALE_PX = 220;
+export const LESSON_VIEW_FILL = 0.72;
+
+/** Segment L/M pad: hang the rod from the top; bob diameter matches the old mass thumbs. */
+export const SEGMENT_PAD_INSET_PX = 20;
+export const SEGMENT_PAD_BAR_PX = 5;
+export const SEGMENT_PAD_LABEL_PX = 11;
+export const SEGMENT_PAD_LABEL_GAP_PX = 8;
 
 // "HIC SUNT DRACONES" sits in the black precision void behind sparse samples.
 export const DRAGON_FONT_START_PX = 28;

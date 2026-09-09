@@ -9,16 +9,30 @@ import type { MapDefinition, MapParam, MapParams } from '../maps/types';
 import type { ResetTransition, ViewerControls, ViewerSignals } from './presentation';
 import { markPrefsDirty } from './prefs';
 
-function formatValue(kind: 'float' | 'int', value: number): string {
-  return kind === 'int' ? String(Math.round(value)) : Number(value).toFixed(2);
+function formatValue(spec: MapParam, value: number): string {
+  return spec.kind === 'int'
+    ? String(Math.round(value))
+    : Number(value).toFixed(spec.digits ?? 2);
 }
 
 function toSlider(spec: MapParam, actual: number): number {
+  if (spec.scale === 'log') {
+    const lo = Math.log(spec.min);
+    const hi = Math.log(spec.max);
+    const unit = (Math.log(Math.min(spec.max, Math.max(spec.min, actual))) - lo) / (hi - lo);
+    return spec.invert ? 1 - unit : unit;
+  }
   const v = spec.invert ? spec.min + spec.max - actual : actual;
   return spec.kind === 'int' ? Math.round(v) : v;
 }
 
 function fromSlider(spec: MapParam, slider: number): number {
+  if (spec.scale === 'log') {
+    const unit = spec.invert ? 1 - slider : slider;
+    const value = Math.exp(Math.log(spec.min) + unit * Math.log(spec.max / spec.min));
+    const quantized = spec.min + Math.round((value - spec.min) / spec.step) * spec.step;
+    return Math.min(spec.max, Math.max(spec.min, quantized));
+  }
   const v = spec.invert ? spec.min + spec.max - slider : slider;
   return spec.kind === 'int' ? Math.round(v) : v;
 }
@@ -43,6 +57,11 @@ export function closeMenu(): void {
   hideMenu?.();
 }
 
+export type MenuBinding = {
+  syncParams(): void;
+  setOpen(open: boolean): void;
+};
+
 export function syncBudgetReadout(ms: number, iters: number): void {
   const el = document.getElementById('targetValue');
   if (!el) return;
@@ -56,7 +75,9 @@ export function bindMenu(
   onParamsChange: (phase: 'live' | 'reset' | 'settle') => void,
   onResetHome: ResetTransition,
   signals?: ViewerSignals,
-): void {
+  getDefault: (spec: MapParam) => number = (spec) => spec.default,
+  keepOpenOnOutside: () => boolean = () => false,
+): MenuBinding {
   const menuToggle = document.getElementById('menu-toggle') as HTMLButtonElement;
   const uiContainer = document.getElementById('ui-container') as HTMLElement;
   const paramRoot = document.getElementById('map-params');
@@ -84,9 +105,11 @@ export function bindMenu(
   paramRoot.replaceChildren();
   if (extraRoot !== paramRoot) extraRoot.replaceChildren();
   for (const spec of map.params) {
+    if (spec.bind === false) continue;
     const host = spec.section === 'primary' ? paramRoot : extraRoot;
     const label = document.createElement('label');
     label.className = 'slider-label';
+    if (spec.lessonOnly) label.classList.add('lesson-only-setting');
     if (spec.tone) label.dataset.tone = spec.tone;
     if (spec.thumbArea) label.dataset.scaledThumb = spec.key;
     const raw = controls.params[spec.key] ?? spec.default;
@@ -99,13 +122,13 @@ export function bindMenu(
     name.textContent = t(spec.label);
     const readout = document.createElement('span');
     readout.dataset.paramValue = spec.key;
-    readout.textContent = formatValue(spec.kind, controls.params[spec.key]);
+    readout.textContent = formatValue(spec, controls.params[spec.key]);
     row.append(name, readout);
     const input = document.createElement('input');
     input.type = 'range';
-    input.min = String(spec.min);
-    input.max = String(spec.max);
-    input.step = String(spec.step);
+    input.min = spec.scale === 'log' ? '0' : String(spec.min);
+    input.max = spec.scale === 'log' ? '1' : String(spec.max);
+    input.step = spec.scale === 'log' ? '0.001' : String(spec.step);
     input.value = String(toSlider(spec, controls.params[spec.key]));
     paintParam(spec, input);
     input.addEventListener('pointerdown', () => {
@@ -117,7 +140,7 @@ export function bindMenu(
       snapHomeForParams();
       const next = fromSlider(spec, Number(input.value));
       controls.params[spec.key] = next;
-      readout.textContent = formatValue(spec.kind, next);
+      readout.textContent = formatValue(spec, next);
       paintParam(spec, input);
       markPrefsDirty();
       signals?.set('param', spec.key);
@@ -141,7 +164,7 @@ export function bindMenu(
       if (!row) continue;
       const value = controls.params[spec.key] ?? spec.default;
       row.input.value = String(toSlider(spec, value));
-      row.readout.textContent = formatValue(spec.kind, value);
+      row.readout.textContent = formatValue(spec, value);
       paintParam(spec, row.input);
     }
   }
@@ -168,14 +191,15 @@ export function bindMenu(
   reset?.addEventListener('click', () => {
     let paramsDirty = false;
     for (const spec of map.params) {
-      const value = controls.params[spec.key] ?? spec.default;
-      if (Math.abs(value - spec.default) > spec.step * 0.25) paramsDirty = true;
+      const defaultValue = getDefault(spec);
+      const value = controls.params[spec.key] ?? defaultValue;
+      if (Math.abs(value - defaultValue) > spec.step * 0.25) paramsDirty = true;
     }
     const viewAway = onResetHome.isAway();
     if (!paramsDirty && !viewAway) return;
 
     cancelResetAnim();
-    for (const spec of map.params) controls.params[spec.key] = spec.default;
+    for (const spec of map.params) controls.params[spec.key] = getDefault(spec);
     syncParams();
     syncExtras();
     onResetHome.instant();
@@ -210,11 +234,13 @@ export function bindMenu(
   // No overlay: map gestures must reach the clip. Close on any outside gesture.
   document.addEventListener('pointerdown', (event) => {
     if (!uiContainer.classList.contains('is-open')) return;
+    if (keepOpenOnOutside()) return;
     if (isMenuChrome(event.target)) return;
     setMenuOpen(false);
   }, true);
   document.addEventListener('wheel', (event) => {
     if (!uiContainer.classList.contains('is-open')) return;
+    if (keepOpenOnOutside()) return;
     if (isMenuChrome(event.target)) return;
     setMenuOpen(false);
   }, { capture: true, passive: true });
@@ -222,4 +248,5 @@ export function bindMenu(
   syncExtras();
   // Stay closed so the map can be hovered; the toggle is always visible.
   setMenuOpen(false);
+  return { syncParams, setOpen: setMenuOpen };
 }

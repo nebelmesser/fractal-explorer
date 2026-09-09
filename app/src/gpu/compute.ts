@@ -3,18 +3,16 @@ import type { MapDefinition, MapParams, ViewRect } from '../maps/types';
 import { viewSpanX, viewSpanY } from '../maps/types';
 import {
   LOD_CACHE_TILES, LOD_COARSE_GAP, LOD_CPU_GPU_PX, LOD_CPU_MIN_PX,
-  LOD_CPU_EXPOSURE_MS, LOD_CPU_INITIAL_RES, LOD_CPU_PARALLEL,
+  LOD_CPU_EXPOSURE_FRAME_MS, LOD_CPU_INITIAL_RES, LOD_CPU_PARALLEL,
   LOD_CPU_REFINE_FACTOR, LOD_CPU_RINGS,
   LOD_CPU_SLICE_MS, LOD_CPU_SPARSE_MAX_PX, LOD_CPU_SPARSE_START_PX,
   LOD_CPU_STEP, LOD_CPU_TILE_PX, LOD_CPU_VOID_FADE_START_PX,
   LOD_CPU_VOID_MAP_OPACITY,
-  LOD_EXPOSURE_BODY_HIGH, LOD_EXPOSURE_HIGH, LOD_EXPOSURE_LOW,
-  LOD_EXPOSURE_MID_GRAY,
+  LOD_EXPOSURE_HIGH, LOD_EXPOSURE_LOW,
   LOD_EXPOSURE_TAU_MS, LOD_MAX_LEVEL, LOD_MAX_LEVEL_F64, LOD_PREFETCH_PAD, LOD_TILE_PX,
 } from '../constants';
 import { f32Ulp, f64Ulp } from './precision';
 import reduceWgsl from './reduce.wgsl?raw';
-import histogramWgsl from './histogram.wgsl?raw';
 import tileBlitWgsl from './tile_blit.wgsl?raw';
 
 type Targets = { canvas: HTMLCanvasElement; context: GPUCanvasContext; configuredW: number; configuredH: number };
@@ -51,27 +49,19 @@ export class GpuMapRenderer {
   private cpuTail: Promise<void> = Promise.resolve();
   private exposure: Exposure | null = null;
   private exposureTarget: Exposure | null = null;
-  private exposureAnchor: Exposure | null = null;
   private exposureAt = performance.now();
   private exposureRaf = 0;
-  private exposureQueued = false;
-  private lastExposureUpdate = 0;
-  private lastExposureSignature = '';
+  private exposureFrameAt = 0;
   private awaitingFirstFrame = true;
   private readonly canvasPx = new WeakMap<HTMLCanvasElement, { w: number; h: number }>();
   private readonly drawBuffers: GPUBuffer[] = [];
-  private readonly histogramUniforms: GPUBuffer[] = [];
   private readonly computeLayout: GPUBindGroupLayout;
   private readonly reduceLayout: GPUBindGroupLayout;
-  private readonly histogramLayout: GPUBindGroupLayout;
   private readonly composeLayout: GPUBindGroupLayout;
   private readonly computePipeline: GPUComputePipeline;
   private readonly reducePipeline: GPUComputePipeline;
-  private readonly histogramPipeline: GPUComputePipeline;
   private readonly composePipeline: GPURenderPipeline;
   private readonly exposureBuffer: GPUBuffer;
-  private readonly histogramBuffer: GPUBuffer;
-  private readonly histogramRead: GPUBuffer;
   private readonly cpuLevelCap: number;
   private cpuWave = 0;
   private cpuWaveView: ViewRect | null = null;
@@ -82,23 +72,21 @@ export class GpuMapRenderer {
     canvas: HTMLCanvasElement,
     p: {
       computeLayout: GPUBindGroupLayout; reduceLayout: GPUBindGroupLayout;
-      histogramLayout: GPUBindGroupLayout; composeLayout: GPUBindGroupLayout;
+      composeLayout: GPUBindGroupLayout;
       compute: GPUComputePipeline; reduce: GPUComputePipeline;
-      histogram: GPUComputePipeline; compose: GPURenderPipeline;
+      compose: GPURenderPipeline;
     },
   ) {
     const context = canvas.getContext('webgpu');
     if (!context) throw new Error('Canvas has no WebGPU context');
     this.target = { canvas, context, configuredW: 0, configuredH: 0 };
     this.computeLayout = p.computeLayout; this.reduceLayout = p.reduceLayout;
-    this.histogramLayout = p.histogramLayout; this.composeLayout = p.composeLayout;
+    this.composeLayout = p.composeLayout;
     this.computePipeline = p.compute; this.reducePipeline = p.reduce;
-    this.histogramPipeline = p.histogram; this.composePipeline = p.compose;
+    this.composePipeline = p.compose;
     this.cpuLevelCap = this.preciseCpuLevelCap();
     const device = gpu.device;
     this.exposureBuffer = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    this.histogramBuffer = device.createBuffer({ size: 1024, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST });
-    this.histogramRead = device.createBuffer({ size: 1024, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
   }
 
   static async create(
@@ -116,11 +104,6 @@ export class GpuMapRenderer {
       { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
       { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
     ] });
-    const histogramLayout = device.createBindGroupLayout({ entries: [
-      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
-      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
-      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-    ] });
     const composeLayout = device.createBindGroupLayout({ entries: [
       { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
       { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
@@ -128,11 +111,10 @@ export class GpuMapRenderer {
     ] });
     const computeMod = device.createShaderModule({ code: map.gpu.computeWgsl });
     const reduceMod = device.createShaderModule({ code: reduceWgsl });
-    const histogramMod = device.createShaderModule({ code: histogramWgsl });
     const composeMod = device.createShaderModule({ code: tileBlitWgsl });
     await Promise.all([
       assertShader(computeMod, 'compute'), assertShader(reduceMod, 'reduce'),
-      assertShader(histogramMod, 'histogram'), assertShader(composeMod, 'tile compositor'),
+      assertShader(composeMod, 'tile compositor'),
     ]);
     const compute = device.createComputePipeline({
       layout: device.createPipelineLayout({ bindGroupLayouts: [computeLayout] }),
@@ -142,17 +124,13 @@ export class GpuMapRenderer {
       layout: device.createPipelineLayout({ bindGroupLayouts: [reduceLayout] }),
       compute: { module: reduceMod, entryPoint: 'reduce_minmax' },
     });
-    const histogram = device.createComputePipeline({
-      layout: device.createPipelineLayout({ bindGroupLayouts: [histogramLayout] }),
-      compute: { module: histogramMod, entryPoint: 'histogram' },
-    });
     const compose = device.createRenderPipeline({
       layout: device.createPipelineLayout({ bindGroupLayouts: [composeLayout] }),
       vertex: { module: composeMod, entryPoint: 'tile_vs' },
       fragment: { module: composeMod, entryPoint: 'tile_fs', targets: [{ format: gpu.format }] },
     });
     return new GpuMapRenderer(gpu, map, canvas, {
-      computeLayout, reduceLayout, histogramLayout, composeLayout, compute, reduce, histogram, compose,
+      computeLayout, reduceLayout, composeLayout, compute, reduce, compose,
     });
   }
 
@@ -161,11 +139,10 @@ export class GpuMapRenderer {
     const request = this.makeRequest(view, params, width, height, invert, median, false);
     const progressiveCpu = this.cpuView(request);
     if (progressiveCpu) {
-      // The last moving presentation already has this exact camera view. Keep
-      // its cached tiles and exposure unchanged when the gesture settles;
-      // recomputing the histogram here made the release frame flash before CPU
-      // refinement even started. Infinity also keeps the outer synchronous
-      // frame-budget controller from invalidating progressive work.
+      if (!this.exposure) await this.primeCpuExposure(request);
+      this.updateExposure(request);
+      // Infinity keeps the outer synchronous frame-budget controller from
+      // invalidating progressive CPU work.
       this.compose(request);
       this.scheduleRefine();
       return Number.POSITIVE_INFINITY;
@@ -186,8 +163,8 @@ export class GpuMapRenderer {
 
   present(view: ViewRect, params: MapParams, width: number, height: number, invert: boolean, median: number, moving = true): void {
     const request = this.makeRequest(view, params, width, height, invert, median, moving);
+    this.updateExposure(request);
     this.compose(request);
-    this.scheduleDynamicExposure(request);
     // Long simulation dispatches can starve the compositor on integrated GPUs.
     // Cached LODs move at display rate; refinement resumes on the settled frame.
     if (!moving) this.scheduleRefine();
@@ -452,11 +429,9 @@ export class GpuMapRenderer {
     // No tonal interpolation is carried across incompatible simulations.
     this.exposure = null;
     this.exposureTarget = null;
-    this.exposureAnchor = null;
     this.awaitingFirstFrame = true;
     this.cpuWave = 0;
     this.cpuWaveView = null;
-    this.lastExposureSignature = '';
     void this.gpuTail.then(async () => {
       await this.gpu.device.queue.onSubmittedWorkDone();
       for (const tile of retired) this.destroyTile(tile);
@@ -670,9 +645,7 @@ export class GpuMapRenderer {
       await this.computeGpu(cells.slice(i, i + 6).filter((cell) => !this.tiles.has(cell.key)), request);
       if (this.latest?.generation === request.generation) {
         if (this.awaitingFirstFrame) continue;
-        if (!this.exposure || performance.now() - this.lastExposureUpdate >= 120) {
-          await this.updateExposure(this.latest);
-        }
+        this.updateExposure(this.latest);
         this.compose(this.latest);
       }
     }
@@ -942,128 +915,75 @@ export class GpuMapRenderer {
     this.lastError = null;
   }
 
-  private async updateExposure(request: PresentRequest): Promise<void> {
+  private updateExposure(request: PresentRequest): void {
     if (request.generation !== this.generation) return;
-    const candidates = this.visibleTiles(request);
-    if (!candidates.length) return;
-    const exposureLevel = Math.max(...candidates.map((item) => item.tile.level));
-    const visible = candidates.filter((item) => item.tile.level === exposureLevel);
-    const { device } = this.gpu; const encoder = device.createCommandEncoder(); encoder.clearBuffer(this.histogramBuffer);
-    while (this.histogramUniforms.length < visible.length) {
-      this.histogramUniforms.push(device.createBuffer({
-        size: this.map.gpu.uniformBytes,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-      }));
-    }
-    const histogramArea = Math.max(...visible.map(({ tile }) => tile.width * tile.height));
-    for (let i = 0; i < visible.length; i++) {
-      const { tile, drawView } = visible[i];
-      const clipped = {
-        xMin: Math.max(request.view.xMin, drawView.xMin),
-        xMax: Math.min(request.view.xMax, drawView.xMax),
-        yMin: Math.max(request.view.yMin, drawView.yMin),
-        yMax: Math.min(request.view.yMax, drawView.yMax),
-      };
-      const dy = tile.view.yMin - drawView.yMin;
-      const normView = {
-        xMin: clipped.xMin, xMax: clipped.xMax,
-        yMin: clipped.yMin + dy, yMax: clipped.yMax + dy,
-      };
-      device.queue.writeBuffer(this.histogramUniforms[i], 0, this.map.gpu.packUniforms(
-        tile.view, tile.width, tile.height, request.params,
-        {
-          invert: false,
-          median: 1,
-          normView,
-          histogramWeight: Math.max(1, Math.round(histogramArea / (tile.width * tile.height))),
-        },
-      ));
-      const pass = encoder.beginComputePass(); pass.setPipeline(this.histogramPipeline);
-      pass.setBindGroup(0, this.bind(this.histogramLayout, [
-        { binding: 0, resource: { buffer: this.histogramUniforms[i] } }, { binding: 1, resource: { buffer: tile.raw } },
-        { binding: 2, resource: { buffer: this.histogramBuffer } },
-      ]));
-      pass.dispatchWorkgroups(Math.ceil(tile.width * tile.height / 256)); pass.end();
-    }
-    encoder.copyBufferToBuffer(this.histogramBuffer, 0, this.histogramRead, 0, 1024);
-    device.queue.submit([encoder.finish()]); await device.queue.onSubmittedWorkDone();
-    await this.histogramRead.mapAsync(GPUMapMode.READ);
-    const bins = new Uint32Array(this.histogramRead.getMappedRange().slice(0)); this.histogramRead.unmap();
-    let total = 0; for (const count of bins) total += count; if (!total) return;
-    const lowBin = percentileBin(bins, total * LOD_EXPOSURE_LOW);
-    const midBin = percentileBin(bins, total * 0.5);
-    const bodyHighBin = percentileBin(bins, total * LOD_EXPOSURE_BODY_HIGH);
-    const highBin = percentileBin(bins, total * LOD_EXPOSURE_HIGH);
+    const draws = this.visibleTiles(request);
+    if (!draws.length) return;
+    const bins = new Uint32Array(256);
     const maxIterations = Math.max(1, request.params[this.map.workBudget.param] ?? this.map.workBudget.min);
     const maxLog = Math.log1p(maxIterations);
-    const low = lowBin / 256 * maxLog;
-    const mid = (midBin + 0.5) / 256 * maxLog;
-    const bodyHigh = (bodyHighBin + 1) / 256 * maxLog;
-    const hi = (highBin + 1) / 256 * maxLog;
-    // When a nearly uniform region has a very long, sparse bright tail, using
-    // its 99.5th percentile as white produces the harsh gray/white clipping
-    // visible at some deep zooms. Preserve the median tone while extending the
-    // highlight range; broad, ordinary distributions keep their black point.
-    const tailShare = (hi - bodyHigh) / Math.max(maxLog / 256, hi - low);
-    const tailMix = smoothstep(0.12, 0.42, tailShare);
-    const balancedLow = (mid - LOD_EXPOSURE_MID_GRAY * hi) / (1 - LOD_EXPOSURE_MID_GRAY);
-    const measured = {
-      lo: low + (Math.min(low, balancedLow) - low) * tailMix,
-      hi,
-    };
-    if (measured.hi <= measured.lo) measured.hi = measured.lo + maxLog / 256;
-    // Adapt only when the selected region still contains enough of the global
-    // tonal range. A uniformly dark region stays dark instead of being expanded
-    // into a misleading full-brightness image.
-    if (!this.exposureAnchor) this.exposureAnchor = { ...measured };
-    const anchor = this.exposureAnchor;
-    const span = Math.max(1e-6, anchor.hi - anchor.lo);
-    const localTop = (measured.hi - anchor.lo) / span;
-    const adapt = smoothstep(0.42, 0.78, localTop) * 0.72;
-    this.exposureTarget = {
-      lo: anchor.lo + (measured.lo - anchor.lo) * adapt,
-      hi: anchor.hi + (measured.hi - anchor.hi) * adapt,
-    };
-    if (!this.exposure) this.exposure = { ...this.exposureTarget };
-    this.exposureAt = performance.now(); this.lastExposureUpdate = this.exposureAt;
-    if (this.cpuView(request)) {
-      // CPU refinement already composes after each completed worker batch. A
-      // 60 fps exposure tween would multiply draw calls while workers are busy.
-      this.exposure = { ...this.exposureTarget };
-    } else {
-      this.scheduleExposureFrames();
+    const sampleW = Math.max(1, Math.min(LOD_CPU_TILE_PX, request.width));
+    const sampleH = Math.max(1, Math.min(LOD_CPU_TILE_PX, request.height));
+    const spanX = viewSpanX(request.view);
+    const spanY = viewSpanY(request.view);
+    let total = 0;
+    for (let sy = 0; sy < sampleH; sy++) {
+      const worldY = request.view.yMin + (sy + 0.5) / sampleH * spanY;
+      for (let sx = 0; sx < sampleW; sx++) {
+        const worldX = request.view.xMin + (sx + 0.5) / sampleW * spanX;
+        const draw = topDrawAt(draws, worldX, worldY);
+        if (!draw) continue;
+        const ix = clampSample(Math.floor((worldX - draw.drawView.xMin) / viewSpanX(draw.drawView) * draw.tile.width), draw.tile.width);
+        const iy = clampSample(Math.floor((worldY - draw.drawView.yMin) / viewSpanY(draw.drawView) * draw.tile.height), draw.tile.height);
+        const value = Math.max(0, draw.tile.counts[iy * draw.tile.width + ix]);
+        const bin = Math.min(255, Math.floor(Math.log1p(value) / maxLog * 256));
+        bins[bin] += 1;
+        total += 1;
+      }
     }
+    if (!total) return;
+    this.advanceExposure();
+    this.exposureTarget = exposureFromBins(bins, total, maxLog);
+    if (!this.exposure) {
+      this.exposure = { ...this.exposureTarget };
+      this.exposureAt = performance.now();
+    }
+    this.scheduleExposureFrames();
   }
 
-  /** Re-estimate exposure while the camera moves, without re-running the map. */
-  private scheduleDynamicExposure(request: PresentRequest): void {
-    const interval = this.cpuView(request) ? LOD_CPU_EXPOSURE_MS : 120;
-    if (this.exposureQueued || performance.now() - this.lastExposureUpdate < interval) return;
-    const candidates = this.visibleTiles(request);
-    const exposureLevel = candidates.length
-      ? Math.max(...candidates.map((item) => item.tile.level))
-      : -1;
-    const signature = candidates
-      .filter((item) => item.tile.level === exposureLevel)
-      .map((item) => item.tile.key)
-      .sort()
-      .join('|') + `@${[
-        request.view.xMin, request.view.xMax, request.view.yMin, request.view.yMax,
-      ].map((value) => value.toPrecision(5)).join(':')}`;
-    if (!signature || signature === this.lastExposureSignature) return;
-    this.lastExposureSignature = signature;
-    this.exposureQueued = true;
-    void this.enqueue(async () => {
-      try {
-        const latest = this.latest;
-        if (latest?.generation === this.generation) {
-          await this.updateExposure(latest);
-          this.compose(latest);
-        }
-      } finally {
-        this.exposureQueued = false;
+  /** Estimate the initial deep-link exposure from the whole FOV, not its first center tiles. */
+  private async primeCpuExposure(request: PresentRequest): Promise<void> {
+    const cpu = this.map.cpu;
+    if (!cpu || request.generation !== this.generation) return;
+    const size = LOD_CPU_TILE_PX;
+    const stripCount = Math.max(1, Math.min(size, cpu.concurrency ?? 1));
+    const spanY = viewSpanY(request.view);
+    const strips = await Promise.all(Array.from({ length: stripCount }, (_, strip) => {
+      const row0 = Math.floor(strip * size / stripCount);
+      const row1 = Math.floor((strip + 1) * size / stripCount);
+      return cpu.fillTile({
+        xMin: request.view.xMin,
+        xMax: request.view.xMax,
+        yMin: request.view.yMin + row0 / size * spanY,
+        yMax: request.view.yMin + row1 / size * spanY,
+      }, size, row1 - row0, request.params);
+    }));
+    if (request.generation !== this.generation || this.latest?.generation !== request.generation) return;
+    const bins = new Uint32Array(256);
+    const maxIterations = Math.max(1, request.params[this.map.workBudget.param] ?? this.map.workBudget.min);
+    const maxLog = Math.log1p(maxIterations);
+    let total = 0;
+    for (const counts of strips) {
+      total += counts.length;
+      for (const count of counts) {
+        const bin = Math.min(255, Math.floor(Math.log1p(Math.max(0, count)) / maxLog * 256));
+        bins[bin] += 1;
       }
-    });
+    }
+    const measured = exposureFromBins(bins, total, maxLog);
+    this.exposureTarget = { ...measured };
+    this.exposure = { ...measured };
+    this.exposureAt = performance.now();
   }
 
   private advanceExposure(): void {
@@ -1076,9 +996,18 @@ export class GpuMapRenderer {
 
   private scheduleExposureFrames(): void {
     if (this.exposureRaf) return;
-    const step = (): void => {
+    const step = (now: number): void => {
       this.exposureRaf = 0;
       if (!this.latest || !this.exposure || !this.exposureTarget) return;
+      if (this.latest.moving) {
+        this.exposureRaf = requestAnimationFrame(step);
+        return;
+      }
+      if (this.cpuView(this.latest) && now - this.exposureFrameAt < LOD_CPU_EXPOSURE_FRAME_MS) {
+        this.exposureRaf = requestAnimationFrame(step);
+        return;
+      }
+      this.exposureFrameAt = now;
       const delta = Math.max(Math.abs(this.exposure.lo - this.exposureTarget.lo), Math.abs(this.exposure.hi - this.exposureTarget.hi));
       if (delta < 1e-3) { this.exposure = { ...this.exposureTarget }; this.compose(this.latest); return; }
       this.compose(this.latest); this.exposureRaf = requestAnimationFrame(step);
@@ -1100,9 +1029,7 @@ export class GpuMapRenderer {
           if (this.cpuView(request)) {
             const progressed = await this.refineCpu();
             if (this.latest?.generation === this.generation) {
-              if (!this.exposure || performance.now() - this.lastExposureUpdate >= LOD_CPU_EXPOSURE_MS) {
-                await this.updateExposure(this.latest);
-              }
+              this.updateExposure(this.latest);
               this.compose(this.latest);
               this.evict();
             }
@@ -1182,8 +1109,26 @@ export class GpuMapRenderer {
 
 function clampSample(value: number, size: number): number { return Math.max(0, Math.min(size - 1, value)); }
 function distance(view: ViewRect, x: number, y: number): number { return Math.hypot((view.xMin + view.xMax) / 2 - x, (view.yMin + view.yMax) / 2 - y); }
+function topDrawAt(draws: Array<{ tile: Tile; drawView: ViewRect }>, x: number, y: number): { tile: Tile; drawView: ViewRect } | null {
+  for (let i = draws.length - 1; i >= 0; i--) {
+    const draw = draws[i];
+    if (x >= draw.drawView.xMin && x < draw.drawView.xMax
+      && y >= draw.drawView.yMin && y < draw.drawView.yMax) return draw;
+  }
+  return null;
+}
 function percentileBin(bins: Uint32Array, target: number): number {
   let sum = 0; for (let i = 0; i < bins.length; i++) { sum += bins[i]; if (sum >= target) return i; } return bins.length - 1;
+}
+function exposureFromBins(bins: Uint32Array, total: number, maxLog: number): Exposure {
+  const lowBin = percentileBin(bins, total * LOD_EXPOSURE_LOW);
+  const highBin = percentileBin(bins, total * LOD_EXPOSURE_HIGH);
+  const low = lowBin / 256 * maxLog;
+  const hi = (highBin + 1) / 256 * maxLog;
+  return {
+    lo: low,
+    hi: Math.max(hi, low + maxLog / 256),
+  };
 }
 function smoothstep(edge0: number, edge1: number, value: number): number {
   const t = Math.max(0, Math.min(1, (value - edge0) / Math.max(1e-9, edge1 - edge0)));

@@ -1,6 +1,11 @@
-import type { MapParams, ViewRect } from '../types';
-import type { MapPresentation, MapPresentationFactory, PresentationHost } from '../../viewer/presentation';
-import { bindMenu, closeMenu, syncBudgetReadout } from '../../viewer/menu';
+import type { MapParam, MapParams, ViewRect } from '../types';
+import type {
+  MapPresentation,
+  MapPresentationFactory,
+  PresentationHost,
+  ResetTransition,
+} from '../../viewer/presentation';
+import { bindMenu, syncBudgetReadout, type MenuBinding } from '../../viewer/menu';
 import { viewsEqual, copyView, viewSpanX, viewSpanY } from '../types';
 import { drawMapAxes } from './axes';
 import {
@@ -27,6 +32,8 @@ import {
   stepFly,
   type FlyState,
 } from './preview';
+import { bindSegmentPads } from './pads';
+import { PendulumLesson } from './lesson';
 import { createRestPose, createTrajectory, initMapCore, type Trajectory } from './trajectory';
 import {
   PROBE_ALPHA,
@@ -58,6 +65,8 @@ import {
   DRAGON_SCALE_START_PX,
   DRAGON_TILE_X_PX,
   DRAGON_TILE_Y_PX,
+  LESSON_DT,
+  LESSON_FRICTION,
 } from './constants';
 
 function requireElement<T extends Element>(id: string): T {
@@ -90,6 +99,35 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
   const xScale = requireElement<HTMLElement>('map-scale-x');
   const yScale = requireElement<HTMLElement>('map-scale-y');
   const params = host.params;
+  const lessonStorageKey = `${host.map.preferencesKey ?? `fractal-explorer:${host.map.id}`}:pendulum`;
+  const lessonParams: MapParams = { ...params };
+  for (const spec of host.map.params) {
+    lessonParams[spec.key] = spec.key === 'F'
+      ? LESSON_FRICTION
+      : spec.key === 'DT' ? LESSON_DT : spec.default;
+  }
+  try {
+    const raw = localStorage.getItem(lessonStorageKey);
+    const stored = raw ? JSON.parse(raw) as { params?: Record<string, unknown> } : null;
+    for (const spec of host.map.params) {
+      const value = stored?.params?.[spec.key];
+      if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+      const clamped = Math.min(spec.max, Math.max(spec.min, value));
+      lessonParams[spec.key] = spec.kind === 'int' ? Math.round(clamped) : clamped;
+    }
+  } catch {
+    /* private mode or invalid old profile */
+  }
+  const saveLessonParams = (): void => {
+    try {
+      const stored: MapParams = {};
+      for (const spec of host.map.params) stored[spec.key] = lessonParams[spec.key];
+      localStorage.setItem(lessonStorageKey, JSON.stringify({ params: stored }));
+    } catch {
+      /* private mode */
+    }
+  };
+  window.addEventListener('pagehide', saveLessonParams);
   const dragonStamps: SVGGElement[] = [];
   let dragonAnchor: { x: number; y: number; spanX: number; spanY: number } | null = null;
   const probeHud = defaultProbeHud();
@@ -120,6 +158,8 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
   let revealStride = 1;
   let gridCols = 1;
   let hudUi: ReturnType<typeof bindProbeHud> | null = null;
+  let pads: ReturnType<typeof bindSegmentPads> | null = null;
+  let menuUi: MenuBinding | null = null;
   const RAD2DEG = 180 / Math.PI;
   let lastZoomDeg: number | null = null;
   let simOrigin = 0;
@@ -131,7 +171,12 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     const emit = host.signals.emit;
     host.signals.emit = (name) => {
       if (name === 'param-change') paramsDirty = true;
-      else if (name === 'params-reset') paramsDirty = false;
+      else if (name === 'params-reset') {
+        paramsDirty = false;
+        pads?.sync();
+      } else if (name === 'menu-open') {
+        pads?.sync();
+      }
       emit(name);
     };
   }
@@ -230,7 +275,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     if (probes && (
       (probeView && !viewsEqual(host.getView(), probeView))
       || probes.length !== nextWorlds.length
-    )) reset();
+    )) resetMapSimulation();
     return { origins: nextOrigins, worlds: nextWorlds };
   }
 
@@ -251,7 +296,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
       sparseGrid ? 0 : PROBE_GRID_MAX,
     ) ?? [];
     if (!worlds.length) return false;
-    reset();
+    resetMapSimulation();
     pinToMap = true;
     pixelGrid = sparseGrid;
     const xs = new Set(worlds.map((point) => point.x.toPrecision(12)));
@@ -282,7 +327,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     return true;
   }
 
-  function reset(): void {
+  function resetMapSimulation(): void {
     probes = null;
     flies = [];
     playing = false;
@@ -311,7 +356,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
   }
 
   function placeOverlayProbes(): boolean {
-    reset();
+    resetMapSimulation();
     const next = sampleFrame().worlds;
     if (!next.length) return false;
     probes = next.map((point) => createTrajectory(point.x, point.y, overlayPrecise()));
@@ -335,7 +380,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     const layout = gridLayout(box.width, box.height, START_GRID_CELL_PX);
     const points = layoutOrigins(box.width, box.height, 'grid', START_GRID_CELL_PX);
     if (!points.length) return;
-    reset();
+    resetMapSimulation();
     pinToMap = true;
     pixelGrid = false;
     gridCols = layout.cols;
@@ -709,6 +754,11 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
 
   function drawNow(): void {
     drawFrame = 0;
+    if (lesson.active) {
+      mapVoid.style.opacity = '0';
+      lesson.draw();
+      return;
+    }
     syncVoid();
     const frame = sampleFrame();
     const { origins: nextOrigins, worlds: nextWorlds } = frame;
@@ -754,7 +804,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
   function step(now: number): boolean {
     if (!playing || !probes) return false;
     if (!pinToMap && probeView && !viewsEqual(host.getView(), probeView)) {
-      reset();
+      resetMapSimulation();
       return true;
     }
     const dt = params.DT;
@@ -816,7 +866,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
         hudUi?.syncPlay(false);
         host.signals?.set('simulation_running', false);
         host.signals?.emit('probe-end');
-        if (singleHud) reset();
+        if (singleHud) resetMapSimulation();
         else syncDrop();
         break;
       }
@@ -825,6 +875,10 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
   }
 
   function tick(now: number): void {
+    if (lesson.active) {
+      lesson.tick(now);
+      return;
+    }
     syncVoid();
     emitSimSecs(now);
     if (intro) {
@@ -838,10 +892,77 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     if (!hangEmitted && hangWatchAt) watchHang(now, false);
   }
 
+  const lesson = new PendulumLesson(host, overlay, draw, (running) => {
+    hudUi?.syncPlay(running);
+  });
+  const profileReset: ResetTransition = {
+    begin: () => { if (!lesson.active) host.resetTransition.begin(); },
+    tick: (eased) => { if (!lesson.active) host.resetTransition.tick(eased); },
+    end: () => { if (!lesson.active) host.resetTransition.end(); },
+    instant: () => { if (!lesson.active) host.resetTransition.instant(); },
+    cancel: () => { if (!lesson.active) host.resetTransition.cancel(); },
+    isAway: () => !lesson.active && host.resetTransition.isAway(),
+  };
+  const profileHost: PresentationHost = {
+    ...host,
+    resetTransition: profileReset,
+    onParamsChange(phase) {
+      if (lesson.active) {
+        saveLessonParams();
+        lesson.paramsChanged(phase);
+        return;
+      }
+      host.onParamsChange(phase);
+    },
+  };
+  const profileDefault = (spec: MapParam): number => {
+    if (!lesson.active) return spec.default;
+    if (spec.key === 'F') return LESSON_FRICTION;
+    if (spec.key === 'DT') return LESSON_DT;
+    return spec.default;
+  };
+
+  const mapMode = requireElement<HTMLButtonElement>('mode-map');
+  const pendulumMode = requireElement<HTMLButtonElement>('mode-pendulum');
+
+  function syncModeButtons(pendulum: boolean): void {
+    mapMode.classList.toggle('is-active', !pendulum);
+    pendulumMode.classList.toggle('is-active', pendulum);
+    mapMode.setAttribute('aria-selected', String(!pendulum));
+    pendulumMode.setAttribute('aria-selected', String(pendulum));
+  }
+
+  function setMode(pendulum: boolean): void {
+    if (lesson.active === pendulum) return;
+    resetMapSimulation();
+    if (pendulum) {
+      host.controls.params = lessonParams;
+      lesson.enter();
+    } else {
+      saveLessonParams();
+      lesson.leave();
+      host.controls.params = params;
+    }
+    menuUi?.syncParams();
+    pads?.sync();
+    menuUi?.setOpen(pendulum);
+    hudUi?.setLessonMode(pendulum);
+    syncModeButtons(pendulum);
+    draw();
+  }
+
+  mapMode.addEventListener('click', () => setMode(false));
+  pendulumMode.addEventListener('click', () => setMode(true));
+  syncModeButtons(false);
+
   hudUi = bindProbeHud(probeHud, () => {
-    reset();
+    resetMapSimulation();
     draw();
   }, () => {
+    if (lesson.active) {
+      lesson.toggle();
+      return;
+    }
     if (singleHud) armSingle();
     else armPinnedGrid();
     startIntro();
@@ -856,18 +977,39 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
   }, () => {
     dropAll();
   });
-  bindMenu(host.map, host.controls, host.onParamsChange, host.resetTransition, host.signals);
+  menuUi = bindMenu(
+    host.map,
+    host.controls,
+    profileHost.onParamsChange,
+    profileReset,
+    host.signals,
+    profileDefault,
+    () => lesson.active,
+  );
+  pads = bindSegmentPads(profileHost);
 
   return {
     draw,
     tick,
-    reset,
+    reset() {
+      if (lesson.active) {
+        lesson.paramsChanged();
+        return;
+      }
+      resetMapSimulation();
+    },
     noteActivity,
     resize() {
+      if (lesson.active) {
+        lesson.resize();
+        return;
+      }
       hudUi?.setSteps(singleHud ? emptyProbeSteps() : buildProbeSteps(host.clip), true);
       draw();
     },
-    dismiss: closeMenu,
+    dismiss: () => {
+      if (!lesson.active) menuUi?.setOpen(false);
+    },
     pickPoint() {
       return false;
     },

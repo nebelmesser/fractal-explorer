@@ -19,6 +19,9 @@ export type Theme = {
   reticleOutline: string;
   reticleCore: string;
   pivotOutline: string;
+  lessonRing1: string;
+  lessonRing2: string;
+  lessonNeighbor: string;
 };
 
 let cachedTheme: Theme | null = null;
@@ -39,6 +42,9 @@ export function theme(): Theme {
     reticleOutline: cssVar('--reticle-outline'),
     reticleCore: cssVar('--reticle-core'),
     pivotOutline: cssVar('--pivot-outline'),
+    lessonRing1: cssVar('--lesson-ring-1'),
+    lessonRing2: cssVar('--lesson-ring-2'),
+    lessonNeighbor: cssVar('--lesson-neighbor'),
   };
   return cachedTheme;
 }

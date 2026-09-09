@@ -25,6 +25,14 @@ export type MapParam = {
   thumbArea?: boolean;
   /** Slider grows right while the stored value falls (min + max − value). */
   invert?: boolean;
+  /** Use geometric spacing so equal slider travel multiplies the value. */
+  scale?: 'linear' | 'log';
+  /** Fixed decimal places in the value readout. */
+  digits?: number;
+  /** Show this control only while the presentation marks lesson mode active. */
+  lessonOnly?: boolean;
+  /** When false, the generic menu skips this slider; the presentation owns the control. */
+  bind?: boolean;
 };
 
 export type MapParams = Record<string, number>;

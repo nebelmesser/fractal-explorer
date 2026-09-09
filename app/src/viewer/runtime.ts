@@ -15,6 +15,7 @@ import {
 } from '../constants';
 import { requestGpu } from '../gpu/device';
 import { GpuMapRenderer } from '../gpu/compute';
+import { CpuMapRenderer } from '../cpu/compute';
 import {
   copyView,
   defaultParams,
@@ -91,11 +92,10 @@ export async function bootViewer(
   const navigation = mapDef.navigation ?? {};
 
   const gpu = await requestGpu();
-  if (!gpu) {
+  if (!gpu && !mapDef.cpu) {
     if (gpuMissing) gpuMissing.hidden = false;
     return;
   }
-  const gpuOk = gpu;
   const minSpan = mapDef.cpu ? MIN_VIEW_SPAN_F64 : MIN_VIEW_SPAN;
 
   await presentationFactory?.init?.();
@@ -154,17 +154,29 @@ export async function bootViewer(
   onUiChange(() => {
     frontCanvas.setAttribute('aria-label', t('map'));
   });
-  let renderer: GpuMapRenderer;
-  try {
-    renderer = await GpuMapRenderer.create(gpuOk, backCanvas, mapDef);
-  } catch (error) {
-    if (gpuMissing) {
-      gpuMissing.hidden = false;
-      gpuMissing.removeAttribute('data-i18n');
-      gpuMissing.textContent = error instanceof Error ? error.message : String(error);
+  let renderer: GpuMapRenderer | CpuMapRenderer;
+  if (gpu) {
+    try {
+      renderer = await GpuMapRenderer.create(gpu, backCanvas, mapDef);
+    } catch (error) {
+      console.error(error);
+      if (!mapDef.cpu) {
+        if (gpuMissing) {
+          gpuMissing.hidden = false;
+          gpuMissing.removeAttribute('data-i18n');
+          gpuMissing.textContent = error instanceof Error ? error.message : String(error);
+        }
+        return;
+      }
+      // A failed WebGPU context locks that canvas to its original context
+      // type. Replace the unused back buffer before switching to Canvas 2D.
+      const replacement = backCanvas.cloneNode(false) as HTMLCanvasElement;
+      backCanvas.replaceWith(replacement);
+      backCanvas = replacement;
+      renderer = CpuMapRenderer.create(frontCanvas, mapDef);
     }
-    console.error(error);
-    return;
+  } else {
+    renderer = CpuMapRenderer.create(backCanvas, mapDef);
   }
   const presentation: MapPresentation = presentationFactory?.mount({
     clip,

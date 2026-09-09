@@ -6,9 +6,12 @@ zoom.in: Приблизить
 zoom.out: Отдалить
 zoom.reset: Сбросить вид
 map: Карта
+mode.pendulum: Маятник
+mode.map: Карта
 attachment_points: Точки крепления
 start_simulation: Запустить симуляцию
 restart_simulation: Перезапустить симуляцию
+stop_simulation: Остановить симуляцию
 drop_pendulums: Сбросить маятники
 drop: Сброс
 frame_budget: Бюджет кадра
@@ -27,3 +30,4 @@ param.M2: Масса 2
 param.G: Гравитация
 param.F: Трение
 param.DT: Плавность (dt)
+param.neighbor_deg: Разница углов, °

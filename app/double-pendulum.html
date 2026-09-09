@@ -42,6 +42,11 @@
         Этому обозревателю нужен WebGPU. Карта не считается на CPU.
     </div>
 
+    <div id="mode-switch" data-viewer-ui role="tablist" aria-label="Режим просмотра">
+        <button type="button" id="mode-pendulum" role="tab" aria-selected="false" data-i18n="mode.pendulum">Маятник</button>
+        <button type="button" id="mode-map" class="is-active" role="tab" aria-selected="true" data-i18n="mode.map">Карта</button>
+    </div>
+
     <div id="stage">
         <aside id="sidebar" data-viewer-ui>
             <div id="zoom-bar">
@@ -79,16 +84,11 @@
             </div>
         </div>
         <button type="button" id="probe-start" aria-label="Запустить симуляцию">
-            <svg class="icon-grid" viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="5" cy="5" r="1.8" fill="currentColor" />
-                <circle cx="12" cy="5" r="1.8" fill="currentColor" />
-                <circle cx="19" cy="5" r="1.8" fill="currentColor" />
-                <circle cx="5" cy="12" r="1.8" fill="currentColor" />
-                <circle cx="12" cy="12" r="1.8" fill="currentColor" />
-                <circle cx="19" cy="12" r="1.8" fill="currentColor" />
-                <circle cx="5" cy="19" r="1.8" fill="currentColor" />
-                <circle cx="12" cy="19" r="1.8" fill="currentColor" />
-                <circle cx="19" cy="19" r="1.8" fill="currentColor" />
+            <svg class="icon-play" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 5.2v13.6L19 12 8 5.2Z" fill="currentColor" />
+            </svg>
+            <svg class="icon-pause" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7 5h4v14H7zM14 5h4v14h-4z" fill="currentColor" />
             </svg>
             <span class="probe-start-label">Запустить симуляцию</span>
         </button>
@@ -101,7 +101,7 @@
         <div id="map-params"></div>
         <div id="map-extras">
             <div id="map-params-more"></div>
-            <label class="slider-label">
+            <label class="slider-label map-only-setting">
                 <span class="row"><span data-i18n="frame_budget">Бюджет кадра</span><span id="targetValue">1000 ms</span></span>
                 <input type="range" id="targetSlider" min="200" max="4000" step="50" value="1000">
             </label>
@@ -113,7 +113,7 @@
                 <span data-i18n="reset_parameters">Сбросить параметры</span>
             </button>
         </div>
-        <div class="hint" data-i18n="hint">Нажмите или дважды коснитесь, чтобы приблизить.
+        <div class="hint map-only-setting" data-i18n="hint">Нажмите или дважды коснитесь, чтобы приблизить.
             Перетаскивайте карту, колесо или щипок меняют масштаб. Правый клик возвращает назад.
             Клавиши + / − тоже меняют масштаб.</div>
         <a class="learn-more" href="/fractal/" data-i18n="learn_more">Узнать больше →</a>

@@ -10,6 +10,7 @@
 #   page_sec            wall-clock seconds since the narrator mounted
 #   map_ready           true after the first settled frame
 #   menu                "open" | "closed"
+#   view_mode           "map" | "pendulum"
 #   param               slider key (L1, M1, …)
 #   param_value         that slider's number
 #   budget_ms           frame budget
@@ -34,4 +35,9 @@ events:
   probe-detach: A pendulum left its pivot.
   probe-end: Simulation finished.
   simulation-start: Start button launched a map-tied pendulum grid.
+  pendulum-simulation-start: The teaching pendulum simulation started.
+  pendulum-simulation-pause: The teaching pendulum simulation was paused.
+  pendulum-mode: Switched from the map to the teaching pendulum.
+  pendulum-drag-running: Dragged a teaching-pendulum bob while simulation was running.
+  pendulum-drag-stopped: Dragged a teaching-pendulum bob while simulation was stopped.
   pendulum-hang: Fewer than half the pendulums stayed hanging with no detach for 5s.

@@ -1,9 +1,9 @@
 import {
   PROBE_GRID_BOB_R,
   PROBE_GRID_ROD_PX,
-  PROBE_LARGE_BOB_R,
+  PROBE_LARGE_BOB_PER_LEN,
+  PROBE_LARGE_ROD_PER_LEN,
   PROBE_OUTLINE_PX,
-  PROBE_PX_PER_LEN,
 } from './constants';
 import { theme } from './theme';
 import { createTrajectory } from './trajectory';
@@ -13,6 +13,7 @@ export type OverlayStyle = {
   large: boolean;
   pxPerLen: number;
   alpha: number;
+  color?: string;
 };
 
 export type OverlaySight = {
@@ -24,13 +25,15 @@ export type OverlaySight = {
 };
 
 function overlayRodWidth(style: OverlayStyle): number {
-  if (style.large) return Math.max(3.2, 2.4 * (style.pxPerLen / PROBE_PX_PER_LEN));
+  if (style.large) return Math.max(3.2, style.pxPerLen * PROBE_LARGE_ROD_PER_LEN);
   return PROBE_GRID_ROD_PX;
 }
 
-function overlayBob(mass: number, style: OverlayStyle): number {
+export function overlayBobRadius(mass: number, style: OverlayStyle): number {
   const k = Math.sqrt(Math.max(mass, 0));
-  if (style.large) return Math.max(5, PROBE_LARGE_BOB_R * k);
+  if (style.large) {
+    return Math.max(5, style.pxPerLen * PROBE_LARGE_BOB_PER_LEN * k);
+  }
   return Math.max(3.2, PROBE_GRID_BOB_R * k);
 }
 
@@ -249,11 +252,11 @@ function overlayParts(
 ): { rods: OverlayRod[]; bobs: OverlayBob[] } {
   const pal = theme();
   const width = overlayRodWidth(style);
-  const r1 = overlayBob(params.M1, style);
-  const r2 = overlayBob(params.M2, style);
+  const r1 = overlayBobRadius(params.M1, style);
+  const r2 = overlayBobRadius(params.M2, style);
   const radii = [r1, r2];
   const rods: OverlayRod[] = [];
-  const colors = [pal.th1, pal.th2];
+  const colors = style.color ? [style.color, style.color] : [pal.th1, pal.th2];
   for (let i = 0; i < rodsIn.length; i++) {
     const rod = rodsIn[i];
     const trim0 = i === 0 ? 0 : radii[i - 1];
@@ -264,8 +267,8 @@ function overlayParts(
   return {
     rods,
     bobs: [
-      { x: bobPts[0].x, y: bobPts[0].y, r: r1, color: pal.th1 },
-      { x: bobPts[1].x, y: bobPts[1].y, r: r2, color: pal.th2 },
+      { x: bobPts[0].x, y: bobPts[0].y, r: r1, color: colors[0] },
+      { x: bobPts[1].x, y: bobPts[1].y, r: r2, color: colors[1] },
     ],
   };
 }
@@ -548,8 +551,8 @@ export function drawOverlayPendulumField(
   }
   ctx.stroke();
   if (last <= 1200) {
-    const r1 = overlayBob(params.M1, style);
-    const r2 = overlayBob(params.M2, style);
+    const r1 = overlayBobRadius(params.M1, style);
+    const r2 = overlayBobRadius(params.M2, style);
     ctx.fillStyle = pal.th1;
     for (let i = 0; i < last; i++) {
       if (!live[i]) continue;

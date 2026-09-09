@@ -58,11 +58,9 @@ export const LOD_CPU_VOID_MAP_OPACITY = 0.82;
 export const LOD_CPU_RINGS = 4; // fovea rings; later waves raise center before the edge
 export const LOD_CPU_PARALLEL = 8; // fallback if the map does not report worker count
 export const LOD_CPU_SLICE_MS = 50; // keep workers busy this long before a compose
-export const LOD_CPU_EXPOSURE_MS = 2500; // histogram readback must not pace CPU refinement
+export const LOD_CPU_EXPOSURE_FRAME_MS = 90; // low-rate exposure tween while CPU tiles are refining
 export const LOD_EXPOSURE_LOW = 0.01;
-export const LOD_EXPOSURE_BODY_HIGH = 0.995;
 export const LOD_EXPOSURE_HIGH = 0.9995;
-export const LOD_EXPOSURE_MID_GRAY = 0.38;
 export const LOD_EXPOSURE_TAU_MS = 360;
 
 // Post-process. Median kills single-pixel fireflies after log-normalization.

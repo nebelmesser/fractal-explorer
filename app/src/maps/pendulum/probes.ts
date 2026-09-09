@@ -234,6 +234,7 @@ export const defaultProbeHud = (): ProbeHud => ({
 export type ProbeHudUi = {
   syncPlay(playing: boolean): void;
   syncDrop(show: boolean): void;
+  setLessonMode(lesson: boolean): void;
   setSteps(steps: ProbeStep[], silent?: boolean): void;
 };
 
@@ -299,6 +300,7 @@ export function bindProbeHud(
   const startEl = start;
   const dropEl = drop;
   let playing = false;
+  let lessonMode = false;
   let dropVisible = false;
 
   function lastIndex(): number {
@@ -342,7 +344,10 @@ export function bindProbeHud(
     rootEl.setAttribute('aria-valuenow', String(step.count));
     startEl.disabled = false;
     startEl.classList.toggle('is-playing', playing);
-    const startKey = playing ? 'restart_simulation' : 'start_simulation';
+    startEl.classList.toggle('is-lesson', lessonMode);
+    const startKey = lessonMode && playing
+      ? 'stop_simulation'
+      : (playing ? 'restart_simulation' : 'start_simulation');
     startEl.setAttribute('aria-label', t(startKey));
     const startLabel = startEl.querySelector('.probe-start-label');
     if (startLabel) startLabel.textContent = t(startKey);
@@ -408,6 +413,11 @@ export function bindProbeHud(
     syncDrop(show) {
       dropVisible = show;
       dropEl.hidden = !show;
+    },
+    setLessonMode(lesson) {
+      lessonMode = lesson;
+      if (lesson) dropVisible = false;
+      sync();
     },
     setSteps(next, silent = false) {
       const prev = currentProbeStep(hud);

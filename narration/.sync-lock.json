@@ -1,10 +1,10 @@
 {
   "cues": {
     "map-ready": {
-      "sourceHash": "aa5eb94ccd7fc6b53cfdf6612c1019e21280d6369423809b3320b39e0aad0735",
+      "sourceHash": "f4b0cc95c4c80e6ac44102bc038b4aae8bdc74579454da6b72374cb152296ab0",
       "locales": {
         "ru": {
-          "textHash": "aa5eb94ccd7fc6b53cfdf6612c1019e21280d6369423809b3320b39e0aad0735"
+          "textHash": "f4b0cc95c4c80e6ac44102bc038b4aae8bdc74579454da6b72374cb152296ab0"
         },
         "en": {
           "textHash": "8d4aaf4a32f609c3af5345921692d9af8372cd927ad4cea3e5a18ddec479949a"
@@ -12,10 +12,10 @@
       }
     },
     "zoom-forecast": {
-      "sourceHash": "e4ae3cfe44d17bd7523e6323e9b118e5c41988d1bf130e9e7a634568c98c5844",
+      "sourceHash": "0f810268deba4dcd5ac9e00129bc73cb19e4346987872992321e70b789149dd9",
       "locales": {
         "ru": {
-          "textHash": "e4ae3cfe44d17bd7523e6323e9b118e5c41988d1bf130e9e7a634568c98c5844"
+          "textHash": "0f810268deba4dcd5ac9e00129bc73cb19e4346987872992321e70b789149dd9"
         },
         "en": {
           "textHash": "f52073beeeae81e83f0924a9b0f682bad2e00ce96a1f936929ccc193859417d9"
@@ -177,10 +177,10 @@
       }
     },
     "pendulum-hang": {
-      "sourceHash": "32e384de48cf50fd7eeec6a03dd83ce43f7f503d5952e126363cd7d1f5213610",
+      "sourceHash": "0f0b54600af7a5de0871d5f2d00214f513f43c0aeb91a1452c6a6bbe36f4e5a9",
       "locales": {
         "ru": {
-          "textHash": "32e384de48cf50fd7eeec6a03dd83ce43f7f503d5952e126363cd7d1f5213610"
+          "textHash": "0f0b54600af7a5de0871d5f2d00214f513f43c0aeb91a1452c6a6bbe36f4e5a9"
         },
         "en": {
           "textHash": "69cbd0d9ad8d778b5a7c5ed13eee0cbbf1382d1868b0ce8748146fec96b972d1"
@@ -308,6 +308,22 @@
         }
       }
     },
+    "ui.mode.pendulum": {
+      "sourceHash": "d8a51f2a9b8aebc31697a66a4f83ac95cbda0c2d9f8625d6bccd0e196446a73b",
+      "locales": {
+        "ru": {
+          "textHash": "d8a51f2a9b8aebc31697a66a4f83ac95cbda0c2d9f8625d6bccd0e196446a73b"
+        }
+      }
+    },
+    "ui.mode.map": {
+      "sourceHash": "2751c910001823941e388ba560173f23db0a173d8651218335af48fd2878daea",
+      "locales": {
+        "ru": {
+          "textHash": "2751c910001823941e388ba560173f23db0a173d8651218335af48fd2878daea"
+        }
+      }
+    },
     "ui.attachment_points": {
       "sourceHash": "f55f664326eedbab16fd16024c7c9ffa593cf603b12e53bc71b00c11bc537af1",
       "locales": {
@@ -338,6 +354,14 @@
         },
         "en": {
           "textHash": "6c5044ae93790dc2503e377b7c7eaecdf1c862e1bfe703702b428da33da1085b"
+        }
+      }
+    },
+    "ui.stop_simulation": {
+      "sourceHash": "147949d8f44806be6a6cc563780ffd3b1a17d8107cda704a4f8f32a51de9e768",
+      "locales": {
+        "ru": {
+          "textHash": "147949d8f44806be6a6cc563780ffd3b1a17d8107cda704a4f8f32a51de9e768"
         }
       }
     },
@@ -503,6 +527,14 @@
         },
         "en": {
           "textHash": "7e1b5685161a7a972b0856e7a00771855feedb7c53eec842221199586b61d387"
+        }
+      }
+    },
+    "ui.param.neighbor_deg": {
+      "sourceHash": "bb9277ea81b539c917e7aec27f48687ef499b92b62e2910e6015904809470571",
+      "locales": {
+        "ru": {
+          "textHash": "bb9277ea81b539c917e7aec27f48687ef499b92b62e2910e6015904809470571"
         }
       }
     }
