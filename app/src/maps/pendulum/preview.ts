@@ -468,6 +468,106 @@ export function drawOverlayPendulum(
   drawOverlayFigure(ctx, rods, bobs, style.alpha, style.large, sight);
 }
 
+let fieldLive = new Uint8Array(0);
+let fieldX1 = new Float64Array(0);
+let fieldY1 = new Float64Array(0);
+let fieldX2 = new Float64Array(0);
+let fieldY2 = new Float64Array(0);
+
+function fieldScratch(n: number): void {
+  if (fieldLive.length >= n) return;
+  const cap = Math.max(n, fieldLive.length * 2);
+  fieldLive = new Uint8Array(cap);
+  fieldX1 = new Float64Array(cap);
+  fieldY1 = new Float64Array(cap);
+  fieldX2 = new Float64Array(cap);
+  fieldY2 = new Float64Array(cap);
+}
+
+/**
+ * Many map-tied probes: two path batches instead of a figure per pendulum.
+ * Skip bobs past a few hundred — the rods already read at Start-grid size.
+ */
+export function drawOverlayPendulumField(
+  ctx: CanvasRenderingContext2D,
+  origins: { x: number; y: number }[],
+  th1: number[],
+  th2: number[],
+  params: MapParams,
+  style: OverlayStyle,
+  last: number,
+  width: number,
+  height: number,
+): void {
+  const pal = theme();
+  const scale = style.pxPerLen;
+  const len1 = params.L1 * scale;
+  const len2 = params.L2 * scale;
+  const pad = 160 + len1 + len2;
+  fieldScratch(last);
+  const live = fieldLive;
+  const x1s = fieldX1;
+  const y1s = fieldY1;
+  const x2s = fieldX2;
+  const y2s = fieldY2;
+  for (let i = 0; i < last; i++) {
+    const origin = origins[i];
+    if (
+      origin.x < -pad || origin.y < -pad || origin.x > width + pad || origin.y > height + pad
+    ) {
+      live[i] = 0;
+      continue;
+    }
+    live[i] = 1;
+    const ax = origin.x + Math.sin(th1[i]) * len1;
+    const ay = origin.y + Math.cos(th1[i]) * len1;
+    x1s[i] = ax;
+    y1s[i] = ay;
+    x2s[i] = ax + Math.sin(th2[i]) * len2;
+    y2s[i] = ay + Math.cos(th2[i]) * len2;
+  }
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, Math.min(1, style.alpha));
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = overlayRodWidth(style);
+  ctx.strokeStyle = pal.th1;
+  ctx.beginPath();
+  for (let i = 0; i < last; i++) {
+    if (!live[i]) continue;
+    ctx.moveTo(origins[i].x, origins[i].y);
+    ctx.lineTo(x1s[i], y1s[i]);
+  }
+  ctx.stroke();
+  ctx.strokeStyle = pal.th2;
+  ctx.beginPath();
+  for (let i = 0; i < last; i++) {
+    if (!live[i]) continue;
+    ctx.moveTo(x1s[i], y1s[i]);
+    ctx.lineTo(x2s[i], y2s[i]);
+  }
+  ctx.stroke();
+  if (last <= 1200) {
+    const r1 = overlayBob(params.M1, style);
+    const r2 = overlayBob(params.M2, style);
+    ctx.fillStyle = pal.th1;
+    for (let i = 0; i < last; i++) {
+      if (!live[i]) continue;
+      ctx.beginPath();
+      ctx.arc(x1s[i], y1s[i], r1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = pal.th2;
+    for (let i = 0; i < last; i++) {
+      if (!live[i]) continue;
+      ctx.beginPath();
+      ctx.arc(x2s[i], y2s[i], r2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
 /** Overlay-only flight after the pin releases. Map kernel stays constrained. */
 export type FlyState = {
   x1: number;

@@ -211,8 +211,9 @@ export class GpuMapRenderer {
   }
 
   precisionGrid(view: ViewRect, width: number, height: number): {
-    spacing: number; spacingPx: number; pixelPx: number; sparse: boolean;
-    voidMix: number; mapOpacity: number;
+    spacing: number; spacingPx: number; sampleSpacing: number; sampleSpacingPx: number;
+    pixelPx: number; sparse: boolean;
+    floor: boolean; voidMix: number; mapOpacity: number;
   } | null {
     if (!this.viewUsesCpu(view, width, height)) return null;
     const spacing = this.tileSpan(this.cpuLevelCap) / Math.max(1, LOD_CPU_TILE_PX - 1);
@@ -221,6 +222,18 @@ export class GpuMapRenderer {
     const cssScaleX = (this.target.canvas.clientWidth || width) / Math.max(width, 1);
     const cssScaleY = (this.target.canvas.clientHeight || height) / Math.max(height, 1);
     const spacingPx = Math.min(pixelX * cssScaleX, pixelY * cssScaleY);
+    // Overlay probes must sit on the samples the compositor actually draws.
+    // Coarse CPU tiles (16×16) have a 4× wider pitch than the frozen 64-grid.
+    const tile = this.tileAt((view.xMin + view.xMax) / 2, (view.yMin + view.yMax) / 2);
+    const sampleSpacing = tile
+      ? Math.min(
+        viewSpanX(tile.view) / Math.max(tile.width - 1, 1),
+        viewSpanY(tile.view) / Math.max(tile.height - 1, 1),
+      )
+      : spacing;
+    const samplePixelX = sampleSpacing / Math.max(Number.MIN_VALUE, viewSpanX(view) / Math.max(width, 1));
+    const samplePixelY = sampleSpacing / Math.max(Number.MIN_VALUE, viewSpanY(view) / Math.max(height, 1));
+    const sampleSpacingPx = Math.min(samplePixelX * cssScaleX, samplePixelY * cssScaleY);
     const atPrecisionFloor = this.levelFor(view, width, height) === this.cpuLevelCap;
     const sparse = atPrecisionFloor && spacingPx > LOD_CPU_SPARSE_START_PX;
     const voidMix = atPrecisionFloor
@@ -235,8 +248,11 @@ export class GpuMapRenderer {
     return {
       spacing,
       spacingPx,
+      sampleSpacing,
+      sampleSpacingPx,
       pixelPx,
       sparse,
+      floor: atPrecisionFloor,
       voidMix,
       mapOpacity: 1 - (1 - LOD_CPU_VOID_MAP_OPACITY) * voidMix,
     };
@@ -244,7 +260,7 @@ export class GpuMapRenderer {
 
   snapWorld(point: { x: number; y: number }): { x: number; y: number } {
     const tile = this.tileAt(point.x, point.y);
-    if (!tile) return point;
+    if (!tile) return this.atPrecisionFloor() ? this.snapPrecision(point) : point;
     const cy = this.canonicalY(point.y);
     const ix = clampSample(Math.round(((point.x - tile.view.xMin) / viewSpanX(tile.view)) * (tile.width - 1)), tile.width);
     const iy = clampSample(Math.round(((cy - tile.view.yMin) / viewSpanY(tile.view)) * (tile.height - 1)), tile.height);
@@ -252,6 +268,118 @@ export class GpuMapRenderer {
       x: tile.view.xMin + (ix / Math.max(tile.width - 1, 1)) * viewSpanX(tile.view),
       y: point.y + tile.view.yMin + (iy / Math.max(tile.height - 1, 1)) * viewSpanY(tile.view) - cy,
     };
+  }
+
+  /** Nearest sample on the deepest distinct f64 grid, independent of loaded tiles. */
+  snapPrecision(point: { x: number; y: number }): { x: number; y: number } {
+    const span = this.tileSpan(this.cpuLevelCap);
+    const samples = Math.max(1, LOD_CPU_TILE_PX - 1);
+    const cy = this.canonicalY(point.y);
+    const xMin = this.xOrigin() + Math.floor((point.x - this.xOrigin()) / span) * span;
+    const yMin = this.yOrigin() + Math.floor((cy - this.yOrigin()) / span) * span;
+    const ix = clampSample(Math.round(((point.x - xMin) / span) * samples), LOD_CPU_TILE_PX);
+    const iy = clampSample(Math.round(((cy - yMin) / span) * samples), LOD_CPU_TILE_PX);
+    return {
+      x: xMin + (ix / samples) * span,
+      y: point.y + yMin + (iy / samples) * span - cy,
+    };
+  }
+
+  /**
+   * World centers of the sample squares the compositor is drawing.
+   * `targetCellPx <= 0` keeps every sample; otherwise the grid is thinned toward that CSS pitch.
+   * `maxCount <= 0` disables the safety cap.
+   */
+  renderedSampleGrid(
+    view: ViewRect,
+    width: number,
+    height: number,
+    targetCellPx: number,
+    maxCount: number,
+  ): { x: number; y: number }[] {
+    if (!this.latest) return [];
+    const request: PresentRequest = {
+      ...this.latest,
+      view: { ...view },
+      width,
+      height,
+      level: this.levelFor(view, width, height),
+      moving: false,
+    };
+    const visible = this.visibleTiles(request);
+    const finest = visible.filter((draw) => draw.tile.level === request.level);
+    const draws = finest.length ? finest : visible;
+    const cssW = this.target.canvas.clientWidth || width;
+    const cssH = this.target.canvas.clientHeight || height;
+    const sx = Math.max(viewSpanX(view), Number.MIN_VALUE);
+    const sy = Math.max(viewSpanY(view), Number.MIN_VALUE);
+    const cx = (view.xMin + view.xMax) / 2;
+    const cy = (view.yMin + view.yMax) / 2;
+    const collect = (stride: number): { x: number; y: number }[] => {
+      const seen = new Set<string>();
+      const out: { x: number; y: number }[] = [];
+      const push = (x: number, y: number): void => {
+        if (x < view.xMin || x > view.xMax || y < view.yMin || y > view.yMax) return;
+        // Number#toString is a round-trippable representation of the exact
+        // binary64 value. Fixed significant digits merge adjacent deep-zoom
+        // samples whenever the absolute coordinate is much larger than their
+        // spacing.
+        const key = `${x}\t${y}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push({ x, y });
+      };
+      if (!draws.length) {
+        const spacing = this.tileSpan(this.cpuLevelCap) / Math.max(1, LOD_CPU_TILE_PX - 1);
+        const origin = this.snapPrecision({ x: cx, y: cy });
+        const step = stride * spacing;
+        const x0 = origin.x - Math.floor((origin.x - view.xMin) / step) * step;
+        const y0 = origin.y - Math.floor((origin.y - view.yMin) / step) * step;
+        for (let y = y0; y <= view.yMax + step * 1e-9; y += step) {
+          for (let x = x0; x <= view.xMax + step * 1e-9; x += step) push(x, y);
+        }
+        return out;
+      }
+      for (const { tile, drawView } of draws) {
+        const nx = Math.max(1, tile.width - 1);
+        const ny = Math.max(1, tile.height - 1);
+        const icx = Math.round(((cx - drawView.xMin) / Math.max(viewSpanX(drawView), Number.MIN_VALUE)) * nx);
+        const icy = Math.round(((cy - drawView.yMin) / Math.max(viewSpanY(drawView), Number.MIN_VALUE)) * ny);
+        const x0 = ((icx % stride) + stride) % stride;
+        const y0 = ((icy % stride) + stride) % stride;
+        for (let iy = y0; iy < tile.height; iy += stride) {
+          for (let ix = x0; ix < tile.width; ix += stride) {
+            push(
+              drawView.xMin + (ix / nx) * viewSpanX(drawView),
+              drawView.yMin + (iy / ny) * viewSpanY(drawView),
+            );
+          }
+        }
+      }
+      return out;
+    };
+    let stride = 1;
+    if (targetCellPx > 0) {
+      if (draws.length) {
+        const { tile, drawView } = draws[draws.length - 1];
+        const pitchPx = Math.min(
+          (viewSpanX(drawView) / Math.max(tile.width - 1, 1)) / (sx / cssW),
+          (viewSpanY(drawView) / Math.max(tile.height - 1, 1)) / (sy / cssH),
+        );
+        stride = Math.max(1, Math.round(targetCellPx / Math.max(pitchPx, 1e-9)));
+      } else {
+        const spacing = this.tileSpan(this.cpuLevelCap) / Math.max(1, LOD_CPU_TILE_PX - 1);
+        const pitchPx = Math.min(spacing / (sx / cssW), spacing / (sy / cssH));
+        stride = Math.max(1, Math.round(targetCellPx / Math.max(pitchPx, 1e-9)));
+      }
+    }
+    let points = collect(stride);
+    while (maxCount > 0 && points.length > maxCount && stride < 1e6) {
+      stride += 1;
+      points = collect(stride);
+    }
+    points.sort((a, b) => a.y - b.y || a.x - b.x);
+    return points;
   }
 
   mapSize(): { width: number; height: number } | null {
@@ -370,6 +498,10 @@ export class GpuMapRenderer {
   }
   private cpuSparse(request: PresentRequest): boolean {
     return this.precisionGrid(request.view, request.width, request.height)?.sparse === true;
+  }
+  private atPrecisionFloor(): boolean {
+    if (!this.latest) return false;
+    return this.levelFor(this.latest.view, this.latest.width, this.latest.height) === this.cpuLevelCap;
   }
   /** True when one f32 sample already covers more than `LOD_CPU_GPU_PX` map pixels. */
   private viewUsesCpu(view: ViewRect, width: number, height: number): boolean {

@@ -275,28 +275,6 @@
         }
       }
     },
-    "ui.void.here_be": {
-      "sourceHash": "1e77faeb4b0922f9cf1903f978494b0648b41445ebe4976373030225bf5319b0",
-      "locales": {
-        "ru": {
-          "textHash": "1e77faeb4b0922f9cf1903f978494b0648b41445ebe4976373030225bf5319b0"
-        },
-        "en": {
-          "textHash": "e882810a4df3b3516b19487d4b6a69ef9fff9870ae8f99bdcadd7f1e6832b50d"
-        }
-      }
-    },
-    "ui.void.dragons": {
-      "sourceHash": "9cfac1bd10ae441cf7c223298560ecfc4ec01cb9c703986ae7efeb30573742fd",
-      "locales": {
-        "ru": {
-          "textHash": "9cfac1bd10ae441cf7c223298560ecfc4ec01cb9c703986ae7efeb30573742fd"
-        },
-        "en": {
-          "textHash": "888cf02122d68ee98d377bb7cbcf8863a2b8ecfc98af42cad6f3ec494e109fd5"
-        }
-      }
-    },
     "ui.param.L1": {
       "sourceHash": "7356467ca746a6dc3e98e68bf0f27261699a6c323aabdd039959ad26cc6c634a",
       "locales": {

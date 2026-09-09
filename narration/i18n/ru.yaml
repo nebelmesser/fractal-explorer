@@ -83,10 +83,6 @@ ui.settings:
   text: Настройки
 ui.start_simulation:
   text: Запустить симуляцию
-ui.void.dragons:
-  text: ДРАКОНЫ
-ui.void.here_be:
-  text: ЗДЕСЬ ВОДЯТСЯ
 ui.zoom.in:
   text: Приблизить
 ui.zoom.out:

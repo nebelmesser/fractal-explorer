@@ -184,6 +184,14 @@ export async function bootViewer(
     getView: () => view,
     clientToWorld,
     snapToRenderedPixel: snapWorld,
+    snapToPrecisionGrid: (p) => renderer.snapPrecision(p),
+    renderedSampleGrid: (targetCellPx, maxCount) => renderer.renderedSampleGrid(
+      view,
+      Math.max(1, frontCanvas.width),
+      Math.max(1, frontCanvas.height),
+      targetCellPx,
+      maxCount,
+    ),
     samplesF64: () => renderer.samplesF64(
       view,
       Math.max(1, frontCanvas.width),

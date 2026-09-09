@@ -69,6 +69,11 @@ function wrapWasm(inner: WasmBody, th1: number, th2: number): Trajectory {
   return traj;
 }
 
+/** Rest pose only — no WASM. Upgrade with `createTrajectory` before physics. */
+export function createRestPose(th1: number, th2: number): Trajectory {
+  return new TsPendulum(th1, th2);
+}
+
 /** `precise` keeps f64 state so overlay starts do not collapse with the GPU's f32 tiles. */
 export function createTrajectory(th1: number, th2: number, precise = false): Trajectory {
   if (precise) {

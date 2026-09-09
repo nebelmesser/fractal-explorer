@@ -1,4 +1,3 @@
-import { t } from '../../i18n';
 import type { MapParams, ViewRect } from '../types';
 import type { MapPresentation, MapPresentationFactory, PresentationHost } from '../../viewer/presentation';
 import { bindMenu, closeMenu, syncBudgetReadout } from '../../viewer/menu';
@@ -22,12 +21,13 @@ import {
 import {
   drawOverlayFly,
   drawOverlayPendulum,
+  drawOverlayPendulumField,
   flyOnOverlay,
   startFly,
   stepFly,
   type FlyState,
 } from './preview';
-import { createTrajectory, initMapCore, type Trajectory } from './trajectory';
+import { createRestPose, createTrajectory, initMapCore, type Trajectory } from './trajectory';
 import {
   PROBE_ALPHA,
   PROBE_CROSS_PX,
@@ -38,6 +38,7 @@ import {
   PROBE_PX_PER_LEN,
   PROBE_SIGHT_ALPHA,
   PROBE_SNAP_DEG,
+  SPARSE_GRID_CELL_PX,
   START_GRID_CELL_PX,
   START_REVEAL_FAST_ITEM_MS,
   START_REVEAL_FAST_RAD,
@@ -48,6 +49,8 @@ import {
   START_REVEAL_SLOW_RAD,
   START_REVEAL_SLOW_ROW_MS,
   PENDULUM_HANG_MS,
+  PROBE_GRID_MAX,
+  PROBE_KERNEL_CHUNK,
   DRAGON_FONT_MAX_PX,
   DRAGON_FONT_START_PX,
   DRAGON_OPACITY,
@@ -69,12 +72,10 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 function makeDragonStamp(): SVGGElement {
   const stamp = document.createElementNS(SVG_NS, 'g');
   const top = document.createElementNS(SVG_NS, 'text');
-  top.setAttribute('data-i18n', 'void.here_be');
-  top.textContent = t('void.here_be');
+  top.textContent = 'HIC SUNT';
   top.setAttribute('y', '-0.55em');
   const bottom = document.createElementNS(SVG_NS, 'text');
-  bottom.setAttribute('data-i18n', 'void.dragons');
-  bottom.textContent = t('void.dragons');
+  bottom.textContent = 'DRACONES';
   bottom.setAttribute('y', '0.7em');
   stamp.append(top, bottom);
   return stamp;
@@ -99,8 +100,14 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
   let playing = false;
   let probeView: ViewRect | null = null;
   let pinToMap = false;
+  let pixelGrid = false;
   let pinnedWorlds: { x: number; y: number }[] | null = null;
+  let pinnedOrigins: { x: number; y: number }[] | null = null;
   let pinPxPerLen = PROBE_PX_PER_LEN;
+  let kernelFrom = 0;
+  let originView: ViewRect | null = null;
+  let originBoxW = 0;
+  let originBoxH = 0;
   let hangWatchAt = 0;
   let hangEmitted = false;
   let playAcc = 0;
@@ -173,11 +180,13 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
 
   function worldToOverlay(world: { x: number; y: number }, box: DOMRectReadOnly): { x: number; y: number } {
     const view = host.getView();
+    const map = host.clip.querySelector('canvas.map-view.is-front');
+    const layer = map instanceof HTMLCanvasElement ? map.getBoundingClientRect() : box;
     const sx = viewSpanX(view);
     const sy = viewSpanY(view);
     return {
-      x: sx > 0 ? ((world.x - view.xMin) / sx) * box.width : 0,
-      y: sy > 0 ? ((world.y - view.yMin) / sy) * box.height : 0,
+      x: (sx > 0 ? ((world.x - view.xMin) / sx) * layer.width : 0) + (layer.left - box.left),
+      y: (sy > 0 ? ((world.y - view.yMin) / sy) * layer.height : 0) + (layer.top - box.top),
     };
   }
 
@@ -190,17 +199,37 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     return points.filter((origin) => !originHitsChrome(origin, blocked, hitR));
   }
 
+  function overlayOrigins(box: DOMRectReadOnly): { x: number; y: number }[] {
+    if (!pinnedWorlds) return [];
+    const view = host.getView();
+    if (
+      pinnedOrigins
+      && originView
+      && viewsEqual(view, originView)
+      && originBoxW === box.width
+      && originBoxH === box.height
+      && pinnedOrigins.length === pinnedWorlds.length
+    ) {
+      return pinnedOrigins;
+    }
+    pinnedOrigins = pinnedWorlds.map((world) => worldToOverlay(world, box));
+    originView = copyView(view);
+    originBoxW = box.width;
+    originBoxH = box.height;
+    return pinnedOrigins;
+  }
+
   function sampleFrame(): PresentationFrame {
     const box = host.clip.getBoundingClientRect();
     if (pinToMap && pinnedWorlds) {
       return {
-        origins: pinnedWorlds.map((world) => worldToOverlay(world, box)),
+        origins: overlayOrigins(box),
         worlds: pinnedWorlds,
       };
     }
     if (!singleHud) return { origins: [], worlds: [] };
     const nextOrigins = origins(box);
-    const nextWorlds = nextOrigins.map((origin) => host.snapToRenderedPixel(
+    const nextWorlds = nextOrigins.map((origin) => snapProbeWorld(
       host.clientToWorld(box.left + origin.x, box.top + origin.y),
     ));
     if (probes && (
@@ -212,6 +241,50 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
 
   function overlayPrecise(): boolean {
     return host.samplesF64?.() === true;
+  }
+
+  function snapProbeWorld(point: { x: number; y: number }): { x: number; y: number } {
+    return host.snapToRenderedPixel(point);
+  }
+
+  function armPrecisionGrid(box: DOMRectReadOnly): boolean {
+    const grid = host.precisionGrid?.();
+    if (!grid || !(grid.floor || grid.sparse || grid.voidMix > 0)) return false;
+    const sparseGrid = grid.sparse || grid.voidMix > 0;
+    const worlds = host.renderedSampleGrid?.(
+      sparseGrid ? SPARSE_GRID_CELL_PX : START_GRID_CELL_PX,
+      sparseGrid ? 0 : PROBE_GRID_MAX,
+    ) ?? [];
+    if (!worlds.length) return false;
+    reset();
+    pinToMap = true;
+    pixelGrid = sparseGrid;
+    const xs = new Set(worlds.map((point) => point.x.toPrecision(12)));
+    gridCols = Math.max(1, xs.size);
+    const view = host.getView();
+    const pitch = grid.sampleSpacing > 0 ? grid.sampleSpacing : grid.spacing;
+    const pitchPx = grid.sampleSpacingPx > 0 ? grid.sampleSpacingPx : grid.spacingPx;
+    const cellPx = sparseGrid
+      ? START_GRID_CELL_PX
+      : Math.min(
+        (Math.max(1, Math.round(START_GRID_CELL_PX / Math.max(pitchPx, 1e-9))) * pitch
+          / Math.max(viewSpanX(view), Number.MIN_VALUE)) * box.width,
+        (Math.max(1, Math.round(START_GRID_CELL_PX / Math.max(pitchPx, 1e-9))) * pitch
+          / Math.max(viewSpanY(view), Number.MIN_VALUE)) * box.height,
+      );
+    pinPxPerLen = probePxPerLen(cellPx, params);
+    pinnedWorlds = worlds;
+    pinnedOrigins = null;
+    originView = null;
+    probes = pinnedWorlds.map((point) => createRestPose(point.x, point.y));
+    flies = pinnedWorlds.map(() => null);
+    kernelFrom = 0;
+    playing = false;
+    playAcc = 0;
+    hangWatchAt = 0;
+    hangEmitted = false;
+    hudUi?.syncPlay(false);
+    return true;
   }
 
   function reset(): void {
@@ -228,7 +301,11 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     hudUi?.syncDrop(false);
     probeView = null;
     pinToMap = false;
+    pixelGrid = false;
     pinnedWorlds = null;
+    pinnedOrigins = null;
+    originView = null;
+    kernelFrom = 0;
     hangWatchAt = 0;
     hangEmitted = false;
     playAcc = 0;
@@ -259,18 +336,23 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
 
   function armPinnedGrid(): void {
     const box = host.clip.getBoundingClientRect();
+    if (armPrecisionGrid(box)) return;
     const layout = gridLayout(box.width, box.height, START_GRID_CELL_PX);
     const points = layoutOrigins(box.width, box.height, 'grid', START_GRID_CELL_PX);
     if (!points.length) return;
     reset();
     pinToMap = true;
+    pixelGrid = false;
     gridCols = layout.cols;
     pinPxPerLen = probePxPerLen(Math.min(layout.cellW, layout.cellH), params);
-    pinnedWorlds = points.map((origin) => host.snapToRenderedPixel(
+    pinnedWorlds = points.map((origin) => snapProbeWorld(
       host.clientToWorld(box.left + origin.x, box.top + origin.y),
     ));
-    probes = pinnedWorlds.map((point) => createTrajectory(point.x, point.y, overlayPrecise()));
+    pinnedOrigins = null;
+    originView = null;
+    probes = pinnedWorlds.map((point) => createRestPose(point.x, point.y));
     flies = pinnedWorlds.map(() => null);
+    kernelFrom = 0;
     playing = false;
     playAcc = 0;
     hangWatchAt = 0;
@@ -322,16 +404,26 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     if (!probes) return;
     intro = true;
     playing = false;
+    kernelFrom = 0;
+    playAcc = 0;
+    hangWatchAt = 0;
+    hangEmitted = false;
+    hudUi?.syncPlay(false);
+    if (pixelGrid) {
+      revealStep = 0;
+      revealStride = probes.length;
+      revealCount = probes.length;
+      revealNextAt = 0;
+      revealPauseUntil = 0;
+      syncDrop();
+      return;
+    }
     const plan = revealPlan(neighborAngleDelta(), gridCols);
     revealStep = plan.stepMs;
     revealStride = plan.stride;
     revealCount = Math.min(probes.length, revealStride);
     revealNextAt = 0;
     revealPauseUntil = 0;
-    playAcc = 0;
-    hangWatchAt = 0;
-    hangEmitted = false;
-    hudUi?.syncPlay(false);
     syncDrop();
   }
 
@@ -386,8 +478,19 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     draw();
   }
 
+  function bindKernelChunk(count: number): void {
+    if (!probes || !pinnedWorlds) return;
+    const precise = overlayPrecise();
+    const end = Math.min(probes.length, kernelFrom + Math.max(0, count));
+    for (let i = kernelFrom; i < end; i++) {
+      probes[i] = createTrajectory(pinnedWorlds[i].x, pinnedWorlds[i].y, precise);
+    }
+    kernelFrom = end;
+  }
+
   function beginPhysics(now: number): void {
     if (!probes) return;
+    bindKernelChunk(probes.length);
     intro = false;
     revealCount = probes.length;
     playing = true;
@@ -402,6 +505,13 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
 
   function stepReveal(now: number): boolean {
     if (!intro || !probes) return false;
+    if (pixelGrid) {
+      if (kernelFrom < probes.length) bindKernelChunk(PROBE_KERNEL_CHUNK);
+      if (!revealPauseUntil) revealPauseUntil = now + START_REVEAL_PAUSE_MS;
+      if (kernelFrom < probes.length || now < revealPauseUntil) return false;
+      beginPhysics(now);
+      return true;
+    }
     if (revealCount < probes.length) {
       if (!revealNextAt) {
         revealNextAt = now + revealStep;
@@ -419,11 +529,12 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
       syncDrop();
       return true;
     }
+    if (kernelFrom < probes.length) bindKernelChunk(PROBE_KERNEL_CHUNK);
     if (!revealPauseUntil) {
       revealPauseUntil = now + START_REVEAL_PAUSE_MS;
       return false;
     }
-    if (now < revealPauseUntil) return false;
+    if (now < revealPauseUntil || kernelFrom < probes.length) return false;
     beginPhysics(now);
     return true;
   }
@@ -470,9 +581,37 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
         : overlayPxPerLen(mode, width, height, probeSpacing(probeHud), params),
       alpha: large ? PROBE_ALPHA : 1,
     };
+    const last = probes ? shownCount() : nextOrigins.length;
+    if (pinToMap && !large && pixelGrid && last > 0) {
+      const hangingTh1: number[] = [];
+      const hangingTh2: number[] = [];
+      const hangingOrigins: { x: number; y: number }[] = [];
+      for (let i = 0; i < last; i++) {
+        if (flies[i]) continue;
+        hangingOrigins.push(nextOrigins[i]);
+        hangingTh1.push(probes ? probes[i].th1 : nextWorlds[i].x);
+        hangingTh2.push(probes ? probes[i].th2 : nextWorlds[i].y);
+      }
+      drawOverlayPendulumField(
+        ctx,
+        hangingOrigins,
+        hangingTh1,
+        hangingTh2,
+        params,
+        style,
+        hangingOrigins.length,
+        width,
+        height,
+      );
+      for (let i = 0; i < last; i++) {
+        const fly = flies[i];
+        if (!fly || fly === 'gone') continue;
+        drawOverlayFly(ctx, nextOrigins[i], fly, params, style);
+      }
+      return;
+    }
     const crossHalf = PROBE_CROSS_PX * overlaySightScale(mode);
     const drawPad = 160;
-    const last = probes ? shownCount() : nextOrigins.length;
     for (let i = 0; i < last; i++) {
       const origin = nextOrigins[i];
       if (
@@ -580,16 +719,18 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     const { origins: nextOrigins, worlds: nextWorlds } = frame;
     const last = probes ? shownCount() : nextOrigins.length;
     drawMapAxes(axes, host.getView(), xScale, yScale, host.navigation, {
-      points: nextOrigins.slice(0, last).flatMap((origin, i) => (
-        flies[i] === 'gone'
-          ? []
-          : [{
-            x: origin.x,
-            y: origin.y,
-            xRad: nextWorlds[i].x,
-            yRad: nextWorlds[i].y,
-          }]
-      )),
+      points: pixelGrid
+        ? []
+        : nextOrigins.slice(0, last).flatMap((origin, i) => (
+          flies[i] === 'gone'
+            ? []
+            : [{
+              x: origin.x,
+              y: origin.y,
+              xRad: nextWorlds[i].x,
+              yRad: nextWorlds[i].y,
+            }]
+        )),
       probesOnly: pinToMap || (!singleHud && currentProbeStep(probeHud).mode === 'grid'),
     });
     drawPendulums(frame);
@@ -632,7 +773,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     const flyDt = dt * PROBE_FLY_TIME;
     const box = host.clip.getBoundingClientRect();
     const nextOrigins = pinToMap && pinnedWorlds
-      ? pinnedWorlds.map((world) => worldToOverlay(world, box))
+      ? overlayOrigins(box)
       : origins(box);
     const width = overlay.clientWidth;
     const height = overlay.clientHeight;

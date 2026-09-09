@@ -55,10 +55,6 @@ ui.settings:
   text: Settings
 ui.start_simulation:
   text: Start simulation
-ui.void.dragons:
-  text: DRAGONS
-ui.void.here_be:
-  text: HERE BE
 ui.zoom.in:
   text: Zoom in
 ui.zoom.out:

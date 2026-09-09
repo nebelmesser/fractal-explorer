@@ -35,12 +35,21 @@ export type PresentationHost = {
   getView(): ViewRect;
   clientToWorld(clientX: number, clientY: number): MapPoint;
   snapToRenderedPixel(point: MapPoint): MapPoint;
+  /** Nearest sample on the frozen deepest f64 grid. */
+  snapToPrecisionGrid?(point: MapPoint): MapPoint;
+  /**
+   * World centers of the sample squares currently on screen.
+   * Pass `targetCellPx <= 0` for every sample; otherwise thin toward that CSS pitch.
+   * Pass `maxCount <= 0` to keep the complete sample grid.
+   */
+  renderedSampleGrid?(targetCellPx: number, maxCount: number): MapPoint[];
   /** True when the live view is past the f32 sample floor and uses CPU tiles. */
   samplesF64?(): boolean;
   /** Fixed deepest f64 grid and its current pitch/square size in CSS pixels. */
   precisionGrid?(): {
-    spacing: number; spacingPx: number; pixelPx: number; sparse: boolean;
-    voidMix: number; mapOpacity: number;
+    spacing: number; spacingPx: number; sampleSpacing: number; sampleSpacingPx: number;
+    pixelPx: number; sparse: boolean;
+    floor: boolean; voidMix: number; mapOpacity: number;
   } | null;
   signals?: ViewerSignals;
 };

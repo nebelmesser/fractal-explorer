@@ -19,8 +19,15 @@ export const PENDULUM_CPU_WORKERS = 16;
 export const PROBE_SEP_PX = 168;
 export const PROBE_CELL_PX = 96;
 export const PROBE_CELL_MIN_PX = 44;
-/** Start-button grid cell in CSS pixels. Smaller is denser. Midway in the old slider's 96…44 range. */
+/** Start-button grid cell in CSS pixels. Smaller is denser. Midway in the old slider's 96…44 range.
+ *  At the f64 floor before samples separate, overlay probes sit on sample centers
+ *  with a stride that keeps this CSS spacing. Once the pixels fly apart, every
+ *  visible sample gets a pendulum. */
 export const START_GRID_CELL_PX = 70;
+/** Minimum CSS pitch between probes after map samples fly apart.
+ * The renderer rounds this to an integer sample stride, so every pivot remains
+ * exactly on a rendered pixel center. */
+export const SPARSE_GRID_CELL_PX = 48;
 /** Neighbor angle (rad) for the slowest one-by-one reveal. */
 export const START_REVEAL_SLOW_RAD = (12 * Math.PI) / 180;
 /** Below this neighbor angle, reveal whole rows. */
@@ -36,6 +43,8 @@ export const START_REVEAL_PAUSE_MS = 500;
 /** Emit pendulum-hang after this many ms with fewer than half still on the pivot and no new detach. */
 export const PENDULUM_HANG_MS = 5000;
 export const PROBE_GRID_MAX = 720;
+/** WASM constructors per intro frame so Start is not blocked on the kernel. */
+export const PROBE_KERNEL_CHUNK = 512;
 export const PROBE_LEVEL_DEFAULT = 1;
 export const PROBE_AUTOSTART_MS = 2000;
 export const PROBE_SCALE_BAND_X = 52;
@@ -55,7 +64,7 @@ export const PROBE_ALPHA = 0.5;
 export const PROBE_PLAY_FPS = 24;
 export const PROBE_MAX_STEPS = 40000;
 
-// "HERE BE DRAGONS" sits in the black precision void behind sparse samples.
+// "HIC SUNT DRACONES" sits in the black precision void behind sparse samples.
 export const DRAGON_FONT_START_PX = 28;
 export const DRAGON_FONT_MAX_PX = 64;
 export const DRAGON_OPACITY = 0.2;
