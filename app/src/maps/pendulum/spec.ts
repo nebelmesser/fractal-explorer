@@ -10,7 +10,6 @@ import {
   PENDULUM_MAX_ITER,
   PENDULUM_VIEW_CENTER,
   PENDULUM_VIEW_HALF,
-  LESSON_NEIGHBOR_DEG,
 } from './constants';
 import {
   normPixelRect,
@@ -95,20 +94,9 @@ export const pendulumMap: MapDefinition = {
     { key: 'M1', label: 'param.M1', kind: 'float', min: 0.2, max: 5, step: 0.01, default: PENDULUM_M1, tone: 'th1', section: 'primary', bind: false },
     { key: 'L2', label: 'param.L2', kind: 'float', min: 0.2, max: 3, step: 0.01, default: PENDULUM_L2, tone: 'th2', section: 'primary', bind: false },
     { key: 'M2', label: 'param.M2', kind: 'float', min: 0.2, max: 5, step: 0.01, default: PENDULUM_M2, tone: 'th2', section: 'primary', bind: false },
-    { key: 'G', label: 'param.G', kind: 'float', min: 0.5, max: 25, step: 0.01, default: PENDULUM_G },
+    { key: 'G', label: 'param.G', kind: 'float', min: 0.5, max: 25, step: 0.01, default: PENDULUM_G, advanced: true },
     { key: 'F', label: 'param.F', kind: 'float', min: 0, max: 0.5, step: 0.01, default: PENDULUM_FRICTION },
     { key: 'DT', label: 'param.DT', kind: 'float', min: 0.01, max: 0.5, step: 0.01, default: PENDULUM_DT, invert: true },
-    {
-      key: 'NEIGHBOR_DEG',
-      label: 'param.neighbor_deg',
-      kind: 'float',
-      min: 0.001,
-      max: 10,
-      step: 0.001,
-      default: LESSON_NEIGHBOR_DEG,
-      scale: 'log',
-      digits: 3,
-    },
   ],
   gpu,
   cpu: {

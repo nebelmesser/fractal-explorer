@@ -11,6 +11,7 @@ type Pending = {
 
 let pool: Worker[] | null = null;
 let nextId = 1;
+let cancelEpoch = 0;
 const pending = new Map<number, Pending>();
 const idle: Worker[] = [];
 const waiters: Array<(worker: Worker) => void> = [];
@@ -79,6 +80,7 @@ function failWorker(worker: Worker, err: Error): void {
 /** Stop tiles for a camera that is no longer visible and replace their workers. */
 export function cancelPendulumCpu(): void {
   if (!pool) return;
+  cancelEpoch += 1;
   const obsolete = new Set(pool);
   pool = [];
   idle.length = 0;
@@ -132,11 +134,19 @@ export async function fillPendulumTile(
   params: MapParams,
 ): Promise<Float32Array> {
   ensurePool();
+  const epoch = cancelEpoch;
   const w = Math.max(1, Math.round(width));
   const h = Math.max(1, Math.round(height));
   const maxIter = Math.max(PENDULUM_MIN_ITER, Math.round(params.MAX_ITERATIONS ?? PENDULUM_MIN_ITER));
   const worker = await acquire();
   try {
+    // Requests already waiting for a worker when the camera changed are not in
+    // `pending` yet, so terminating active workers alone cannot cancel them.
+    if (epoch !== cancelEpoch) {
+      const error = new Error('CPU tile superseded before dispatch');
+      error.name = 'AbortError';
+      throw error;
+    }
     const id = nextId++;
     const buffer = await runStrip(worker, {
       id,

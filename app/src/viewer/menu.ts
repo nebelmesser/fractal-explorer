@@ -85,6 +85,7 @@ export function bindMenu(
     throw new Error('Menu DOM is incomplete');
   }
   const extraRoot = document.getElementById('map-params-more') ?? paramRoot;
+  const advanced = new URLSearchParams(window.location.search).get('advanced') === '1';
 
   const sliders: { key: string; input: HTMLInputElement; readout: HTMLElement }[] = [];
   function cancelResetAnim(): void {
@@ -105,7 +106,7 @@ export function bindMenu(
   paramRoot.replaceChildren();
   if (extraRoot !== paramRoot) extraRoot.replaceChildren();
   for (const spec of map.params) {
-    if (spec.bind === false) continue;
+    if (spec.bind === false || (spec.advanced && !advanced)) continue;
     const host = spec.section === 'primary' ? paramRoot : extraRoot;
     const label = document.createElement('label');
     label.className = 'slider-label';
@@ -156,6 +157,9 @@ export function bindMenu(
 
   const target = document.getElementById('targetSlider') as HTMLInputElement;
   const reset = document.getElementById('resetParams');
+  const targetSetting = document.getElementById('target-setting')
+    ?? target.closest<HTMLElement>('.slider-label');
+  if (targetSetting) targetSetting.hidden = !advanced;
   controls.invert = INVERT_DEFAULT;
 
   function syncParams(): void {

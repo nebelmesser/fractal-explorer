@@ -67,6 +67,11 @@ function waitForPresent(): Promise<void> {
   });
 }
 
+function sameView(a: ViewRect, b: ViewRect): boolean {
+  return a.xMin === b.xMin && a.xMax === b.xMax
+    && a.yMin === b.yMin && a.yMax === b.yMax;
+}
+
 const VIEW_QUERY_KEYS = ['x', 'y', 'span'] as const;
 
 /** Read an exact map camera from a shareable URL. Values are radians. */
@@ -243,6 +248,7 @@ export async function bootViewer(
     settleView: settleCamera,
     clientToWorld,
     snapToRenderedPixel: snapWorld,
+    renderedPixelNeighbors: (p) => renderer.renderedPixelNeighbors(p),
     snapToPrecisionGrid: (p) => renderer.snapPrecision(p),
     renderedSampleGrid: (targetCellPx, maxCount) => renderer.renderedSampleGrid(
       view,
@@ -816,6 +822,7 @@ export async function bootViewer(
 
   async function renderOnce(): Promise<void> {
     if (rendering || (!wantRefine && !wantHalo)) return;
+    const requestedView = copyView(view);
     const live = paramDragging;
     const parameterFrame = parameterRenderPending;
     parameterRenderPending = false;
@@ -831,7 +838,7 @@ export async function bootViewer(
       const targetCanvas = parameterFrame ? backCanvas : frontCanvas;
       renderer.setCanvas(targetCanvas);
       const ms = await renderer.render(
-        foldViewY(view, navigation),
+        foldViewY(requestedView, navigation),
         params,
         size.width,
         size.height,
@@ -839,10 +846,15 @@ export async function bootViewer(
         controls.median,
       );
       if (gen != renderGen) return;
+      // Motion presentations do not increment renderGen until the gesture
+      // settles. An async frame that began before that motion must not swap a
+      // parked canvas or mark the new camera as already rendered.
+      if (!sameView(view, requestedView)) return;
       if (live) lastParamMapMs = ms;
       else lastRefineMs = ms;
       await waitForPresent();
       if (gen != renderGen) return;
+      if (!sameView(view, requestedView)) return;
       if (parameterFrame) swapMapCanvases();
       computedView = copyView(view);
       lastOverscanPad = 0;

@@ -78,7 +78,6 @@ export const LESSON_ROD_HANDOFF_PX = 10;
 export const LESSON_BOB_HIT_PAD_PX = 6;
 /** Hit radius around the white origin pivot in lesson mode. */
 export const LESSON_PIVOT_HIT_PX = 14;
-export const LESSON_NEIGHBOR_DEG = 0.1;
 export const LESSON_NEIGHBOR_ALPHA = 0.52;
 export const LESSON_POINTER_SLOP_PX = 2;
 export const LESSON_MIN_SCALE_PX = 30;

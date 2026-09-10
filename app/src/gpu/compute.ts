@@ -145,6 +145,7 @@ export class GpuMapRenderer {
     const progressiveCpu = this.cpuView(request);
     if (progressiveCpu) {
       if (!this.exposure) await this.primeCpuExposure(request);
+      if (!this.requestIsLive(request)) return Number.POSITIVE_INFINITY;
       this.updateExposure(request);
       // Infinity keeps the outer synchronous frame-budget controller from
       // invalidating progressive CPU work.
@@ -154,11 +155,13 @@ export class GpuMapRenderer {
     }
     const coarse = Math.max(0, request.level - this.levelStep(request));
     await this.enqueue(async () => {
-      if (request.generation !== this.generation) return;
+      if (!this.requestIsLive(request)) return;
       await this.ensureCells(request, [0, coarse], 0);
+      if (!this.requestIsLive(request)) return;
       await this.updateExposure(request);
       this.compose(request);
       await this.ensureCells(request, [request.level], this.cpuView(request) ? 0 : LOD_PREFETCH_PAD);
+      if (!this.requestIsLive(request)) return;
       await this.updateExposure(request);
       this.compose(request);
     });
@@ -177,7 +180,7 @@ export class GpuMapRenderer {
     passive = false,
   ): void {
     const previous = this.latest;
-    if (moving && !passive && previous && !previous.moving && this.cpuView(previous)) {
+    if (moving && !passive && previous && !previous.moving && this.requestHasCpuCells(previous)) {
       this.map.cpu?.cancelPending?.();
     }
     const request = this.makeRequest(view, params, width, height, invert, median, moving, !passive);
@@ -268,6 +271,37 @@ export class GpuMapRenderer {
       x: point.x + tile.view.xMin + ((ix + 0.5) / tile.width) * viewSpanX(tile.view) - cx,
       y: point.y + tile.view.yMin + ((iy + 0.5) / tile.height) * viewSpanY(tile.view) - cy,
     };
+  }
+
+  renderedPixelNeighbors(point: { x: number; y: number }): {
+    left: { x: number; y: number };
+    right: { x: number; y: number };
+  } {
+    const snapped = this.snapWorld(point);
+    const tile = this.tileAt(point.x, point.y);
+    const step = tile
+      ? viewSpanX(tile.view) / tile.width
+      : this.atPrecisionFloor()
+        ? this.tileSpan(this.cpuLevelCap) / LOD_CPU_TILE_PX
+        : this.latest
+          ? viewSpanX(this.latest.view) / Math.max(1, this.latest.width)
+          : this.baseSpan() / LOD_TILE_PX;
+    const epsilon = Math.max(step * 1e-6, Math.max(1, Math.abs(point.x)) * Number.EPSILON * 2);
+    if (Math.abs(snapped.x - point.x) <= epsilon) {
+      return {
+        left: { x: snapped.x - step, y: snapped.y },
+        right: { x: snapped.x + step, y: snapped.y },
+      };
+    }
+    return snapped.x < point.x
+      ? {
+          left: { x: snapped.x, y: snapped.y },
+          right: { x: snapped.x + step, y: snapped.y },
+        }
+      : {
+          left: { x: snapped.x - step, y: snapped.y },
+          right: { x: snapped.x, y: snapped.y },
+        };
   }
 
   /** Nearest sample on the deepest distinct f64 grid, independent of loaded tiles. */
@@ -440,6 +474,10 @@ export class GpuMapRenderer {
     const request = { view: { ...view }, params: { ...params }, width: w, height: h, invert, median, moving, level: this.levelFor(view, w, h), generation: this.generation };
     if (display) this.latest = request;
     return request;
+  }
+
+  private requestIsLive(request: PresentRequest): boolean {
+    return request.generation === this.generation && this.latest === request;
   }
 
   private ensureParams(params: MapParams): void {
@@ -716,7 +754,7 @@ export class GpuMapRenderer {
     let any = false;
     while (performance.now() - t0 < LOD_CPU_SLICE_MS) {
       const live = this.latest;
-      if (!live || live.moving || live.generation !== this.generation || !this.cpuView(live)) break;
+      if (!live || live.moving || live.generation !== this.generation) break;
       this.syncCpuFovea(live);
       const parallel = this.cpuParallel();
       let jobs = this.nextCpuJobs(live, parallel);
@@ -923,6 +961,11 @@ export class GpuMapRenderer {
 
   private compose(request: PresentRequest): void {
     if (request.generation !== this.generation) return;
+    // Async tile/exposure work may finish after input has installed another
+    // camera request. Never submit that stale view into the canvas currently
+    // owned by the live request. Passive presentation frames deliberately do
+    // not replace `latest`, so they are the sole exception.
+    if (!request.passive && this.latest !== request) return;
     // Keep the previous canvas contents until the new parameter generation has
     // both map values and a matching histogram. This makes replacement atomic.
     if (!this.exposure && !this.exposureTarget) return;
@@ -986,7 +1029,7 @@ export class GpuMapRenderer {
   }
 
   private updateExposure(request: PresentRequest): void {
-    if (request.generation !== this.generation) return;
+    if (!this.requestIsLive(request)) return;
     const draws = this.visibleTiles(request);
     if (!draws.length) return;
     const bins = new Uint32Array(256);
@@ -1041,7 +1084,7 @@ export class GpuMapRenderer {
         yMax: request.view.yMin + row1 / size * spanY,
       }, size, row1 - row0, request.params);
     }));
-    if (request.generation !== this.generation || this.latest?.generation !== request.generation) return;
+    if (!this.requestIsLive(request)) return;
     const bins = new Uint32Array(256);
     const maxIterations = Math.max(1, request.params[this.map.workBudget.param] ?? this.map.workBudget.min);
     const maxLog = Math.log1p(maxIterations);
@@ -1089,29 +1132,41 @@ export class GpuMapRenderer {
   }
 
   private scheduleRefine(): void {
-    if (this.refining) return; this.refining = true;
+    if (this.refining || !this.latest || this.latest.moving) return;
+    const scheduled = this.latest;
+    const scheduledPad = this.cpuView(scheduled) ? 0 : LOD_PREFETCH_PAD;
+    const scheduledLevels = this.cpuView(scheduled)
+      ? [scheduled.level]
+      : [0, Math.max(0, scheduled.level - this.levelStep(scheduled)), scheduled.level];
+    const lane: 'gpu' | 'cpu' = this.hasMissingGpuWanted(
+      scheduled,
+      scheduledLevels,
+      scheduledPad,
+    ) ? 'gpu' : 'cpu';
+    this.refining = true;
     const run = async (): Promise<void> => {
       try {
-        while (this.latest) {
-          const request = this.latest; if (request.generation !== this.generation) break;
-          const pad = this.cpuView(request) ? 0 : LOD_PREFETCH_PAD;
-          const levels = this.cpuView(request)
-            ? [request.level]
-            : [0, Math.max(0, request.level - this.levelStep(request)), request.level];
-          if (!this.hasMissingWanted(request, levels, pad)) break;
-          if (this.cpuView(request)) {
-            const progressed = await this.refineCpu();
-            if (this.latest?.generation === this.generation) {
-              this.updateExposure(this.latest);
-              this.compose(this.latest);
-              this.evict();
-            }
-            if (!progressed) break;
-            continue;
-          }
+        const request = this.latest;
+        if (!request || request.moving || request.generation !== this.generation) return;
+        const pad = this.cpuView(request) ? 0 : LOD_PREFETCH_PAD;
+        const levels = this.cpuView(request)
+          ? [request.level]
+          : [0, Math.max(0, request.level - this.levelStep(request)), request.level];
+        if (!this.hasMissingWanted(request, levels, pad)) return;
+        const needsGpu = this.hasMissingGpuWanted(request, levels, pad);
+        // The camera may have changed while this slice waited in one of the two
+        // queues. Yield and let the next slice enter the correct queue instead
+        // of running GPU work on the CPU tail (or vice versa).
+        if ((lane === 'gpu') !== needsGpu) return;
+        if (needsGpu) {
           await this.ensureCells(request, levels, pad);
-          await this.updateExposure(request);
-          if (this.latest === request) this.compose(request);
+        } else {
+          await this.refineCpu();
+        }
+        if (this.requestIsLive(request)) {
+          this.updateExposure(request);
+          this.compose(request);
+          this.evict();
         }
       } catch (error) {
         this.lastError = error instanceof Error ? error.message : String(error); console.error(error);
@@ -1124,8 +1179,23 @@ export class GpuMapRenderer {
         }
       }
     };
-    if (this.latest && this.cpuView(this.latest)) void this.enqueueCpu(run);
+    if (lane === 'cpu') void this.enqueueCpu(run);
     else void this.enqueue(run);
+  }
+
+  private hasMissingGpuWanted(request: PresentRequest, levels: number[], pad: number): boolean {
+    for (const level of [...new Set(levels)]) {
+      for (const cell of this.cells(request.view, level, pad)) {
+        if (!this.tileUsesCpu(cell.sourceView) && !this.tiles.has(cell.key)) return true;
+      }
+    }
+    return false;
+  }
+
+  private requestHasCpuCells(request: PresentRequest): boolean {
+    return this.cells(request.view, request.level, 0).some((cell) => (
+      this.tileUsesCpu(cell.sourceView) && this.cpuCellWanted(cell, request)
+    ));
   }
 
   private hasMissingWanted(request: PresentRequest, levels: number[], pad: number): boolean {

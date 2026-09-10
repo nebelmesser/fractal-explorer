@@ -31,6 +31,8 @@ export type MapParam = {
   digits?: number;
   /** Show this control only while the presentation marks lesson mode active. */
   lessonOnly?: boolean;
+  /** Hide this control unless the URL contains `advanced=1`. */
+  advanced?: boolean;
   /** When false, the generic menu skips this slider; the presentation owns the control. */
   bind?: boolean;
 };

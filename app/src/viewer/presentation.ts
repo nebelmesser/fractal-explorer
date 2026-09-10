@@ -38,6 +38,8 @@ export type PresentationHost = {
   settleView(): void;
   clientToWorld(clientX: number, clientY: number): MapPoint;
   snapToRenderedPixel(point: MapPoint): MapPoint;
+  /** Centers of the two rendered map samples immediately left and right of a point. */
+  renderedPixelNeighbors(point: MapPoint): { left: MapPoint; right: MapPoint };
   /** Nearest sample on the frozen deepest f64 grid. */
   snapToPrecisionGrid?(point: MapPoint): MapPoint;
   /**

@@ -18,7 +18,6 @@ import {
   LESSON_MAX_FRAME_SEC,
   LESSON_MIN_SCALE_PX,
   LESSON_NEIGHBOR_ALPHA,
-  LESSON_NEIGHBOR_DEG,
   LESSON_POINTER_SLOP_PX,
   LESSON_PIVOT_HIT_PX,
   LESSON_ROD_HANDOFF_PX,
@@ -370,13 +369,11 @@ export class PendulumLesson {
   }
 
   private seedNeighbors(): void {
-    const d = (this.params().NEIGHBOR_DEG ?? LESSON_NEIGHBOR_DEG) * Math.PI / 180;
+    const adjacent = this.host.renderedPixelNeighbors({ x: this.th1, y: this.th2 });
     const base = { w1: this.w1, w2: this.w2 };
     this.neighbors = [
-      { ...base, th1: this.th1 - d, th2: this.th2 },
-      { ...base, th1: this.th1 + d, th2: this.th2 },
-      { ...base, th1: this.th1, th2: this.th2 - d },
-      { ...base, th1: this.th1, th2: this.th2 + d },
+      { ...base, th1: adjacent.left.x, th2: adjacent.left.y },
+      { ...base, th1: adjacent.right.x, th2: adjacent.right.y },
     ];
     this.neighborsVisible = true;
   }

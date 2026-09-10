@@ -7,6 +7,7 @@ const RAD2DEG = 180 / Math.PI;
 const NICE = [1, 2, 5] as const;
 /** Five unlabeled ticks between each pair of labeled majors. */
 const MINOR_DIVS = 6;
+const AXIS_TICK_GUARD = 4;
 const MAJOR_LEN = 6;
 const MINOR_LEN = 4 / 3;
 const PROBE_LEN = 12;
@@ -287,12 +288,28 @@ function axisTicks(
   if (!(span > 0) || !Number.isFinite(span)) return [];
   const maxMajors = Math.max(2, Math.floor(cssPx / minLabelPx));
   let nice = nearestNiceStep(span / maxMajors);
-  while (span / nice.step > maxMajors) nice = bumpNice(nice);
+  // At the f64 zoom floor, dividing an absolute angle (about 200 degrees) by
+  // a tiny minor step can produce an index above Number.MAX_SAFE_INTEGER.
+  // Incrementing such an index may then leave it unchanged forever. Coarsen
+  // the ruler until every minor-tick index is an exact JS integer.
+  const maxAbs = Math.max(Math.abs(min), Math.abs(max));
+  while (
+    span / nice.step > maxMajors
+    || maxAbs / (nice.step / MINOR_DIVS) > Number.MAX_SAFE_INTEGER
+  ) nice = bumpNice(nice);
   const minorStep = nice.step / MINOR_DIVS;
   const m0 = Math.ceil(min / minorStep - 1e-12);
   const m1 = Math.floor(max / minorStep + 1e-12);
   const out: AxisTick[] = [];
-  for (let m = m0; m <= m1; m++) {
+  // Keep the loop bounded even if a future coordinate system violates the
+  // safe-index invariant above. A ruler never needs more than the number of
+  // visible major intervals times its minor subdivisions.
+  const count = Math.min(
+    Math.max(0, Math.floor(m1 - m0) + 1),
+    MINOR_DIVS * (maxMajors + AXIS_TICK_GUARD),
+  );
+  for (let offset = 0; offset < count; offset++) {
+    const m = m0 + offset;
     const major = m % MINOR_DIVS === 0;
     const index = m / MINOR_DIVS;
     out.push({

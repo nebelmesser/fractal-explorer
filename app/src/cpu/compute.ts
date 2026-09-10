@@ -115,13 +115,13 @@ export class CpuMapRenderer {
         this.measureViewExposure(request),
         hasCurrentTiles ? Promise.resolve(false) : this.computeBatch(request),
       ]);
-      if (this.latest?.generation === request.generation) {
+      if (this.requestIsLive(request)) {
         if (measured) this.setExposure(measured, true);
         this.compose(request);
       }
     } else if (!hasCurrentTiles) {
       await this.computeBatch(request);
-      if (this.latest?.generation === request.generation) {
+      if (this.requestIsLive(request)) {
         this.updateExposure(request);
         this.compose(request);
       }
@@ -216,6 +216,37 @@ export class CpuMapRenderer {
       x: point.x + tile.view.xMin + ((ix + 0.5) / tile.width) * viewSpanX(tile.view) - cx,
       y: point.y + tile.view.yMin + ((iy + 0.5) / tile.height) * viewSpanY(tile.view) - cy,
     };
+  }
+
+  renderedPixelNeighbors(point: { x: number; y: number }): {
+    left: { x: number; y: number };
+    right: { x: number; y: number };
+  } {
+    const snapped = this.snapWorld(point);
+    const tile = this.tileAt(point.x, point.y);
+    const step = tile
+      ? viewSpanX(tile.view) / tile.width
+      : this.atPrecisionFloor()
+        ? this.tileSpan(this.cpuLevelCap) / LOD_CPU_TILE_PX
+        : this.latest
+          ? viewSpanX(this.latest.view) / Math.max(1, this.latest.width)
+          : this.baseSpan() / LOD_CPU_TILE_PX;
+    const epsilon = Math.max(step * 1e-6, Math.max(1, Math.abs(point.x)) * Number.EPSILON * 2);
+    if (Math.abs(snapped.x - point.x) <= epsilon) {
+      return {
+        left: { x: snapped.x - step, y: snapped.y },
+        right: { x: snapped.x + step, y: snapped.y },
+      };
+    }
+    return snapped.x < point.x
+      ? {
+          left: { x: snapped.x, y: snapped.y },
+          right: { x: snapped.x + step, y: snapped.y },
+        }
+      : {
+          left: { x: snapped.x - step, y: snapped.y },
+          right: { x: snapped.x, y: snapped.y },
+        };
   }
 
   snapPrecision(point: { x: number; y: number }): { x: number; y: number } {
@@ -345,6 +376,10 @@ export class CpuMapRenderer {
     };
     if (updateLatest) this.latest = request;
     return request;
+  }
+
+  private requestIsLive(request: Request): boolean {
+    return request.generation === this.generation && this.latest === request;
   }
 
   private ensureParams(params: MapParams): void {
@@ -549,6 +584,8 @@ export class CpuMapRenderer {
           height: resolution,
           used: ++this.useCounter,
         });
+      } catch (error) {
+        if (!(error instanceof Error) || error.name !== 'AbortError') throw error;
       } finally {
         if (this.inflight.get(cell.key) === resolution) this.inflight.delete(cell.key);
       }
@@ -774,6 +811,7 @@ export class CpuMapRenderer {
 
   private compose(request: Request): void {
     if (request.generation !== this.generation || !this.exposure) return;
+    if (!request.passive && this.latest !== request) return;
     this.advanceExposure();
     const draws = this.visibleTiles(request);
     const context = this.context;

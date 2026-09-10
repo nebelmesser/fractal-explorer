@@ -213,7 +213,13 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     if (
       pinnedOrigins
       && originView
-      && viewsEqual(view, originView)
+      // At the f64 floor a few ULPs of world-space movement can cover many
+      // screen pixels. The fuzzy state-comparison helper is intentionally too
+      // coarse for caching projected geometry here.
+      && view.xMin === originView.xMin
+      && view.xMax === originView.xMax
+      && view.yMin === originView.yMin
+      && view.yMax === originView.yMax
       && originBoxW === box.width
       && originBoxH === box.height
       && pinnedOrigins.length === pinnedWorlds.length
@@ -267,7 +273,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     resetMapSimulation();
     pinToMap = true;
     pixelGrid = sparseGrid;
-    const xs = new Set(worlds.map((point) => point.x.toPrecision(12)));
+    const xs = new Set(worlds.map((point) => point.x.toPrecision(17)));
     gridCols = Math.max(1, xs.size);
     const view = host.getView();
     const pitch = grid.sampleSpacing > 0 ? grid.sampleSpacing : grid.spacing;
