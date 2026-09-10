@@ -27,6 +27,8 @@ export type ViewOpts = {
   animate?: boolean;
   coasting?: boolean;
   keepPrefetch?: boolean;
+  /** Update the camera without history, narration, or activity hooks. */
+  quiet?: boolean;
 };
 
 export type InputHandlers = {

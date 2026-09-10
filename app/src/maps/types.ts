@@ -40,6 +40,8 @@ export type MapParams = Record<string, number>;
 export type NavigationPolicy = {
   /** Optional horizontal bounds for the camera center. */
   xCenter?: { min: number; max: number };
+  /** Optional horizontal period. Repeated views are rendered from one canonical band. */
+  xPeriod?: { period: number; center: number };
   /** Optional vertical period. Repeated views are rendered from one canonical band. */
   yPeriod?: { period: number; center: number };
 };

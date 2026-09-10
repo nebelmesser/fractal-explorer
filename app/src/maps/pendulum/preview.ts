@@ -24,7 +24,7 @@ export type OverlaySight = {
   pivotR: number;
 };
 
-function overlayRodWidth(style: OverlayStyle): number {
+export function overlayRodWidth(style: OverlayStyle): number {
   if (style.large) return Math.max(3.2, style.pxPerLen * PROBE_LARGE_ROD_PER_LEN);
   return PROBE_GRID_ROD_PX;
 }

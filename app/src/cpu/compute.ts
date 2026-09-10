@@ -15,6 +15,7 @@ import {
   LOD_MAX_LEVEL_F64,
 } from '../constants';
 import { f64Ulp } from '../gpu/precision';
+import { mapToneCss, mapToneRgb } from '../mapTone';
 import type { MapDefinition, MapParams, ViewRect } from '../maps/types';
 import { viewSpanX, viewSpanY } from '../maps/types';
 
@@ -24,6 +25,7 @@ type Cell = {
   level: number;
   ix: number;
   iy: number;
+  canonicalIx: number;
   canonicalIy: number;
   sourceView: ViewRect;
   drawView: ViewRect;
@@ -38,6 +40,7 @@ type Request = {
   moving: boolean;
   level: number;
   generation: number;
+  passive?: boolean;
 };
 type Tile = {
   key: string;
@@ -135,12 +138,13 @@ export class CpuMapRenderer {
     invert: boolean,
     median: number,
     moving = true,
+    passive = false,
   ): void {
-    const request = this.makeRequest(view, params, width, height, invert, median, moving);
+    const request = this.makeRequest(view, params, width, height, invert, median, moving, passive, !passive);
     this.configureCanvas(request.width, request.height);
-    this.updateExposure(request);
+    if (!passive) this.updateExposure(request);
     this.compose(request);
-    if (!moving) this.scheduleRefine();
+    if (!moving && !passive) this.scheduleRefine();
   }
 
   /** CPU fallback never spends work outside the live field of view. */
@@ -200,24 +204,26 @@ export class CpuMapRenderer {
   snapWorld(point: { x: number; y: number }): { x: number; y: number } {
     const tile = this.tileAt(point.x, point.y);
     if (!tile) return this.atPrecisionFloor() ? this.snapPrecision(point) : point;
+    const cx = this.canonicalX(point.x);
     const cy = this.canonicalY(point.y);
-    const ix = clampSample(Math.floor(((point.x - tile.view.xMin) / viewSpanX(tile.view)) * tile.width), tile.width);
+    const ix = clampSample(Math.floor(((cx - tile.view.xMin) / viewSpanX(tile.view)) * tile.width), tile.width);
     const iy = clampSample(Math.floor(((cy - tile.view.yMin) / viewSpanY(tile.view)) * tile.height), tile.height);
     return {
-      x: tile.view.xMin + ((ix + 0.5) / tile.width) * viewSpanX(tile.view),
+      x: point.x + tile.view.xMin + ((ix + 0.5) / tile.width) * viewSpanX(tile.view) - cx,
       y: point.y + tile.view.yMin + ((iy + 0.5) / tile.height) * viewSpanY(tile.view) - cy,
     };
   }
 
   snapPrecision(point: { x: number; y: number }): { x: number; y: number } {
     const span = this.tileSpan(this.cpuLevelCap);
+    const cx = this.canonicalX(point.x);
     const cy = this.canonicalY(point.y);
-    const xMin = this.xOrigin() + Math.floor((point.x - this.xOrigin()) / span) * span;
+    const xMin = this.xOrigin() + Math.floor((cx - this.xOrigin()) / span) * span;
     const yMin = this.yOrigin() + Math.floor((cy - this.yOrigin()) / span) * span;
-    const ix = clampSample(Math.floor(((point.x - xMin) / span) * LOD_CPU_TILE_PX), LOD_CPU_TILE_PX);
+    const ix = clampSample(Math.floor(((cx - xMin) / span) * LOD_CPU_TILE_PX), LOD_CPU_TILE_PX);
     const iy = clampSample(Math.floor(((cy - yMin) / span) * LOD_CPU_TILE_PX), LOD_CPU_TILE_PX);
     return {
-      x: xMin + ((ix + 0.5) / LOD_CPU_TILE_PX) * span,
+      x: point.x + xMin + ((ix + 0.5) / LOD_CPU_TILE_PX) * span - cx,
       y: point.y + yMin + ((iy + 0.5) / LOD_CPU_TILE_PX) * span - cy,
     };
   }
@@ -323,15 +329,17 @@ export class CpuMapRenderer {
     invert: boolean,
     median: number,
     moving: boolean,
+    passive = false,
+    updateLatest = true,
   ): Request {
     this.ensureParams(params);
     const w = Math.max(1, Math.round(width));
     const h = Math.max(1, Math.round(height));
     const request = {
       view: { ...view }, params: { ...params }, width: w, height: h, invert, median, moving,
-      level: this.levelFor(view, w, h), generation: this.generation,
+      level: this.levelFor(view, w, h), generation: this.generation, passive,
     };
-    this.latest = request;
+    if (updateLatest) this.latest = request;
     return request;
   }
 
@@ -362,6 +370,8 @@ export class CpuMapRenderer {
       Math.abs(this.map.defaultView.xMin), Math.abs(this.map.defaultView.xMax),
       Math.abs(this.map.defaultView.yMin), Math.abs(this.map.defaultView.yMax),
       Math.abs(p?.xCenter?.min ?? 0), Math.abs(p?.xCenter?.max ?? 0),
+      Math.abs((p?.xPeriod?.center ?? 0) - (p?.xPeriod?.period ?? 0) / 2),
+      Math.abs((p?.xPeriod?.center ?? 0) + (p?.xPeriod?.period ?? 0) / 2),
       Math.abs((p?.yPeriod?.center ?? 0) - (p?.yPeriod?.period ?? 0) / 2),
       Math.abs((p?.yPeriod?.center ?? 0) + (p?.yPeriod?.period ?? 0) / 2),
     );
@@ -377,7 +387,8 @@ export class CpuMapRenderer {
   }
 
   private xOrigin(): number {
-    return this.map.defaultView.xMin;
+    const period = this.map.navigation?.xPeriod;
+    return period ? period.center - period.period / 2 : this.map.defaultView.xMin;
   }
 
   private yOrigin(): number {
@@ -390,6 +401,20 @@ export class CpuMapRenderer {
     if (!period) return y;
     const origin = this.yOrigin();
     return origin + ((y - origin) % period.period + period.period) % period.period;
+  }
+
+  private canonicalX(x: number): number {
+    const period = this.map.navigation?.xPeriod;
+    if (!period) return x;
+    const origin = this.xOrigin();
+    return origin + ((x - origin) % period.period + period.period) % period.period;
+  }
+
+  private canonicalIx(ix: number, level: number): number {
+    const period = this.map.navigation?.xPeriod;
+    if (!period) return ix;
+    const count = Math.max(1, Math.round(period.period / this.tileSpan(level)));
+    return ((ix % count) + count) % count;
   }
 
   private canonicalIy(iy: number, level: number): number {
@@ -407,26 +432,32 @@ export class CpuMapRenderer {
     const y1 = Math.floor((view.yMax - this.yOrigin() - span * 1e-9) / span);
     const cells: Cell[] = [];
     for (let iy = y0; iy <= y1; iy++) {
+      const rawYMin = this.yOrigin() + iy * span;
+      const rawYMax = rawYMin + span;
       const canonicalIy = this.canonicalIy(iy, level);
       for (let ix = x0; ix <= x1; ix++) {
+        const rawXMin = this.xOrigin() + ix * span;
+        const rawXMax = rawXMin + span;
+        const canonicalIx = this.canonicalIx(ix, level);
         const sourceView = {
-          xMin: this.xOrigin() + ix * span,
-          xMax: this.xOrigin() + (ix + 1) * span,
+          xMin: this.xOrigin() + canonicalIx * span,
+          xMax: this.xOrigin() + (canonicalIx + 1) * span,
           yMin: this.yOrigin() + canonicalIy * span,
           yMax: this.yOrigin() + (canonicalIy + 1) * span,
         };
         cells.push({
-          key: `${this.generation}:${level}:${ix}:${canonicalIy}`,
+          key: `${this.generation}:${level}:${canonicalIx}:${canonicalIy}`,
           level,
           ix,
           iy,
+          canonicalIx,
           canonicalIy,
           sourceView,
           drawView: {
-            xMin: sourceView.xMin,
-            xMax: sourceView.xMax,
-            yMin: this.yOrigin() + iy * span,
-            yMax: this.yOrigin() + (iy + 1) * span,
+            xMin: rawXMin,
+            xMax: rawXMax,
+            yMin: rawYMin,
+            yMax: rawYMax,
           },
         });
       }
@@ -442,10 +473,23 @@ export class CpuMapRenderer {
       && Math.min(viewSpanX(cell.drawView) / sx, viewSpanY(cell.drawView) / sy) >= LOD_CPU_MIN_PX;
   }
 
+  private keyWanted(cell: Cell, request: Request): boolean {
+    return this.cells(request.view, cell.level)
+      .some((visible) => visible.key === cell.key && this.cellWanted(visible, request));
+  }
+
   private nextJobs(request: Request): Array<{ cell: Cell; resolution: number }> {
-    const cells = this.cells(request.view, request.level).filter((cell) => this.cellWanted(cell, request));
     const cx = (request.view.xMin + request.view.xMax) / 2;
     const cy = (request.view.yMin + request.view.yMax) / 2;
+    const unique = new Map<string, Cell>();
+    for (const cell of this.cells(request.view, request.level)) {
+      if (!this.cellWanted(cell, request)) continue;
+      const old = unique.get(cell.key);
+      if (!old || distance(cell.drawView, cx, cy) < distance(old.drawView, cx, cy)) {
+        unique.set(cell.key, cell);
+      }
+    }
+    const cells = [...unique.values()];
     cells.sort((a, b) => distance(a.drawView, cx, cy) - distance(b.drawView, cx, cy));
     const missing = cells.filter((cell) => !this.tiles.has(cell.key));
     if (missing.length) {
@@ -466,7 +510,7 @@ export class CpuMapRenderer {
       const span = this.tileSpan(level);
       const ix = Math.floor((cx - this.xOrigin()) / span);
       const iy = Math.floor((cy - this.yOrigin()) / span);
-      const parent = this.tiles.get(`${this.generation}:${level}:${ix}:${this.canonicalIy(iy, level)}`);
+      const parent = this.tiles.get(`${this.generation}:${level}:${this.canonicalIx(ix, level)}:${this.canonicalIy(iy, level)}`);
       if (!parent) continue;
       const inherited = parent.width / (2 ** (cell.level - level));
       let resolution = LOD_CPU_INITIAL_RES;
@@ -487,12 +531,12 @@ export class CpuMapRenderer {
       try {
         const counts = await cpu.fillTile(cell.sourceView, resolution, resolution, request.params);
         const latest = this.latest;
-        if (!latest || latest.generation !== request.generation || !this.cellWanted(cell, latest)) return;
+        if (!latest || latest.generation !== request.generation || !this.keyWanted(cell, latest)) return;
         this.tiles.set(cell.key, {
           key: cell.key,
           generation: request.generation,
           level: cell.level,
-          ix: cell.ix,
+          ix: cell.canonicalIx,
           iy: cell.canonicalIy,
           view: cell.sourceView,
           counts,
@@ -536,7 +580,8 @@ export class CpuMapRenderer {
     const firstLevel = this.precisionGrid(request.view, request.width, request.height).sparse
       ? request.level
       : 0;
-    for (let level = firstLevel; level <= request.level; level++) {
+    const lastLevel = request.level;
+    for (let level = firstLevel; level <= lastLevel; level++) {
       for (const cell of this.cells(request.view, level)) {
         const tile = this.tiles.get(cell.key);
         if (!tile) continue;
@@ -708,9 +753,10 @@ export class CpuMapRenderer {
         if (request.invert) mapped = 1 - mapped;
         const shade = Math.round(mapped * 255);
         gray[index] = shade;
-        image.data[index * 4] = shade;
-        image.data[index * 4 + 1] = shade;
-        image.data[index * 4 + 2] = shade;
+        const [r, g, b] = mapToneRgb(mapped);
+        image.data[index * 4] = Math.round(r * 255);
+        image.data[index * 4 + 1] = Math.round(g * 255);
+        image.data[index * 4 + 2] = Math.round(b * 255);
         image.data[index * 4 + 3] = 255;
       }
     }
@@ -757,7 +803,7 @@ export class CpuMapRenderer {
       for (let shade = 0; shade < paths.length; shade++) {
         const path = paths[shade];
         if (!path) continue;
-        context.fillStyle = `rgb(${shade} ${shade} ${shade})`;
+        context.fillStyle = mapToneCss(shade / 255);
         context.fill(path);
       }
     } else {
@@ -789,9 +835,9 @@ export class CpuMapRenderer {
     if (!this.latest) return null;
     for (let level = this.latest.level; level >= 0; level--) {
       const span = this.tileSpan(level);
-      const ix = Math.floor((x - this.xOrigin()) / span);
+      const ix = Math.floor((this.canonicalX(x) - this.xOrigin()) / span);
       const iy = Math.floor((this.canonicalY(y) - this.yOrigin()) / span);
-      const tile = this.tiles.get(`${this.generation}:${level}:${ix}:${this.canonicalIy(iy, level)}`);
+      const tile = this.tiles.get(`${this.generation}:${level}:${this.canonicalIx(ix, level)}:${this.canonicalIy(iy, level)}`);
       if (tile) return tile;
     }
     return null;
@@ -805,15 +851,16 @@ export class CpuMapRenderer {
     if (this.tiles.size <= LOD_CACHE_TILES) return;
     const latest = this.latest;
     const candidates = [...this.tiles.values()]
-      .filter((tile) => !latest || !this.cellWanted({
+      .filter((tile) => tile.level !== 0 && (!latest || !this.keyWanted({
         key: tile.key,
         level: tile.level,
         ix: tile.ix,
         iy: tile.iy,
+        canonicalIx: tile.ix,
         canonicalIy: tile.iy,
         sourceView: tile.view,
         drawView: tile.view,
-      }, latest))
+      }, latest)))
       .sort((a, b) => a.used - b.used);
     while (this.tiles.size > LOD_CACHE_TILES && candidates.length) {
       this.tiles.delete(candidates.shift()!.key);

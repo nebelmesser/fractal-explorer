@@ -99,22 +99,22 @@
     </div>
 
     <div id="ui-container" data-viewer-ui>
+        <button type="button" id="resetParams" class="text-button icon-button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    d="M4.6 12a7.4 7.4 0 1 0 2.1-5.2M4.6 4.8v4.2h4.2" />
+            </svg>
+            <span data-i18n="reset_parameters">Сбросить параметры</span>
+        </button>
         <div id="map-params"></div>
         <div id="map-extras">
             <div id="map-params-more"></div>
-            <label class="slider-label map-only-setting">
+            <label class="slider-label">
                 <span class="row"><span data-i18n="frame_budget">Бюджет кадра</span><span id="targetValue">1000 ms</span></span>
                 <input type="range" id="targetSlider" min="200" max="4000" step="50" value="1000">
             </label>
-            <button type="button" id="resetParams" class="text-button icon-button">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                        d="M4.6 12a7.4 7.4 0 1 0 2.1-5.2M4.6 4.8v4.2h4.2" />
-                </svg>
-                <span data-i18n="reset_parameters">Сбросить параметры</span>
-            </button>
         </div>
-        <div class="hint map-only-setting" data-i18n="hint">Нажмите или дважды коснитесь, чтобы приблизить.
+        <div class="hint" data-i18n="hint">Нажмите или дважды коснитесь, чтобы приблизить.
             Перетаскивайте карту, колесо или щипок меняют масштаб. Правый клик возвращает назад.
             Клавиши + / − тоже меняют масштаб.</div>
         <a class="learn-more" href="/fractal/" data-i18n="learn_more">Узнать больше →</a>

@@ -30,7 +30,7 @@ import {
   type MapDefinition,
 } from '../maps/types';
 import { computeSize, cssShortPx, densityPreservingPad, fitMapDisplay, maxBudgetPx, nextWorkBudget, preferredWork, scaleSize, snapComputePx } from './budget';
-import { bindMapInput } from './input';
+import { bindMapInput, type ViewOpts } from './input';
 import { bindPrefs, consumeResetQuery, loadPrefs, markPrefsDirty } from './prefs';
 import {
   emptyPresentation,
@@ -53,7 +53,6 @@ import {
   tiledInset,
   viewCenter,
   worldFromDisplay,
-  wrapPointToCover,
   zoomAbout,
   shortSpan,
 } from './view';
@@ -194,6 +193,8 @@ export async function bootViewer(
       isAway: () => !atDefaultView(view, world, navigation),
     },
     getView: () => view,
+    setView: (next, opts) => applyView(next, opts),
+    settleView: settleCamera,
     clientToWorld,
     snapToRenderedPixel: snapWorld,
     snapToPrecisionGrid: (p) => renderer.snapPrecision(p),
@@ -407,6 +408,7 @@ export async function bootViewer(
 
   function applyShift(moving = animating || gestureActive): void {
     mapShift.style.transform = 'none';
+    delete mapShift.dataset.lockTransform;
     if (frontCanvas.dataset.ready === '1') {
       renderer.setCanvas(frontCanvas);
       renderer.present(
@@ -649,9 +651,15 @@ export async function bootViewer(
     begin();
   }
 
-  function applyView(next: ViewRect, opts?: { pushHistory?: boolean; animate?: boolean; immediate?: boolean; navigating?: boolean; coasting?: boolean; keepPrefetch?: boolean }): void {
-    if (!opts?.coasting) noteCamera(view, next);
-    presentation.noteActivity();
+  function settleCamera(): void {
+    gestureActive = false;
+    unzoomTarget = null;
+    scheduleView({ immediate: true });
+  }
+
+  function applyView(next: ViewRect, opts?: ViewOpts): void {
+    if (!opts?.quiet && !opts?.coasting) noteCamera(view, next);
+    if (!opts?.quiet) presentation.noteActivity();
     if (opts?.navigating || opts?.coasting) gestureActive = true;
     if (!opts?.coasting) stopCoast();
     if (opts?.animate) cancelAnim();
@@ -714,9 +722,7 @@ export async function bootViewer(
       cancelZoomAnim();
     },
     settleView() {
-      gestureActive = false;
-      unzoomTarget = null;
-      scheduleView({ immediate: true });
+      settleCamera();
     },
     dismissUi() {
       presentation.dismiss();
@@ -831,8 +837,8 @@ export async function bootViewer(
   }
 
   function tick(now: number): void {
-    if ((wantRefine || wantHalo) && !rendering) {
-      void renderOnce();
+    if (wantRefine || wantHalo) {
+      if (!rendering) void renderOnce();
     }
     presentation.tick(now);
     requestAnimationFrame(tick);
@@ -841,4 +847,35 @@ export async function bootViewer(
   drawChrome();
   presentation.noteActivity();
   requestAnimationFrame(tick);
+
+  function typingInField(): boolean {
+    const el = document.activeElement;
+    if (!(el instanceof HTMLElement)) return false;
+    return el.tagName === 'INPUT'
+      || el.tagName === 'TEXTAREA'
+      || el.tagName === 'SELECT'
+      || el.isContentEditable;
+  }
+
+  function setChromeHidden(hidden: boolean): void {
+    if (document.body.classList.contains('is-chrome-hidden') === hidden) return;
+    document.body.classList.toggle('is-chrome-hidden', hidden);
+    if (hidden) presentation.dismiss();
+    presentation.resize();
+  }
+
+  window.addEventListener('keydown', (event) => {
+    if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+    const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+    const toggle = key === 'f' || event.code === 'KeyF' || key === 'Escape';
+    if (!toggle) return;
+    if (key === 'Escape' && document.getElementById('ui-container')?.classList.contains('is-open')) {
+      event.preventDefault();
+      presentation.dismiss();
+      return;
+    }
+    if (typingInField() && key !== 'Escape') return;
+    event.preventDefault();
+    setChromeHidden(!document.body.classList.contains('is-chrome-hidden'));
+  });
 }

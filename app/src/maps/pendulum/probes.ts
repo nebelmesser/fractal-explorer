@@ -98,6 +98,7 @@ function labeledIndices(steps: ProbeStep[], trackW: number): Set<number> {
 
 /** Clip-local boxes of HUD / zoom / menu / axis labels so probes stay off them. */
 export function chromeRects(clip: HTMLElement): CssRect[] {
+  if (document.body.classList.contains('is-chrome-hidden')) return [];
   const box = clip.getBoundingClientRect();
   const out: CssRect[] = [];
   for (const id of CHROME_IDS) {

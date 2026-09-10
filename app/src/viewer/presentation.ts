@@ -1,4 +1,5 @@
 import type { MapDefinition, MapParams, NavigationPolicy, ViewRect } from '../maps/types';
+import type { ViewOpts } from './input';
 
 export type MapPoint = { x: number; y: number };
 
@@ -33,6 +34,8 @@ export type PresentationHost = {
   onParamsChange(phase: 'live' | 'reset' | 'settle'): void;
   resetTransition: ResetTransition;
   getView(): ViewRect;
+  setView(next: ViewRect, opts?: ViewOpts): void;
+  settleView(): void;
   clientToWorld(clientX: number, clientY: number): MapPoint;
   snapToRenderedPixel(point: MapPoint): MapPoint;
   /** Nearest sample on the frozen deepest f64 grid. */

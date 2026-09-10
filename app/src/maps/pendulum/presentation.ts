@@ -1,12 +1,11 @@
-import type { MapParam, MapParams, ViewRect } from '../types';
+import type { MapParams, ViewRect } from '../types';
 import type {
   MapPresentation,
   MapPresentationFactory,
   PresentationHost,
-  ResetTransition,
 } from '../../viewer/presentation';
 import { bindMenu, syncBudgetReadout, type MenuBinding } from '../../viewer/menu';
-import { viewsEqual, copyView, viewSpanX, viewSpanY } from '../types';
+import { viewsEqual, copyView, viewCenter, viewSpanX, viewSpanY } from '../types';
 import { drawMapAxes } from './axes';
 import {
   bindProbeHud,
@@ -65,8 +64,6 @@ import {
   DRAGON_SCALE_START_PX,
   DRAGON_TILE_X_PX,
   DRAGON_TILE_Y_PX,
-  LESSON_DT,
-  LESSON_FRICTION,
 } from './constants';
 
 function requireElement<T extends Element>(id: string): T {
@@ -99,35 +96,6 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
   const xScale = requireElement<HTMLElement>('map-scale-x');
   const yScale = requireElement<HTMLElement>('map-scale-y');
   const params = host.params;
-  const lessonStorageKey = `${host.map.preferencesKey ?? `fractal-explorer:${host.map.id}`}:pendulum`;
-  const lessonParams: MapParams = { ...params };
-  for (const spec of host.map.params) {
-    lessonParams[spec.key] = spec.key === 'F'
-      ? LESSON_FRICTION
-      : spec.key === 'DT' ? LESSON_DT : spec.default;
-  }
-  try {
-    const raw = localStorage.getItem(lessonStorageKey);
-    const stored = raw ? JSON.parse(raw) as { params?: Record<string, unknown> } : null;
-    for (const spec of host.map.params) {
-      const value = stored?.params?.[spec.key];
-      if (typeof value !== 'number' || !Number.isFinite(value)) continue;
-      const clamped = Math.min(spec.max, Math.max(spec.min, value));
-      lessonParams[spec.key] = spec.kind === 'int' ? Math.round(clamped) : clamped;
-    }
-  } catch {
-    /* private mode or invalid old profile */
-  }
-  const saveLessonParams = (): void => {
-    try {
-      const stored: MapParams = {};
-      for (const spec of host.map.params) stored[spec.key] = lessonParams[spec.key];
-      localStorage.setItem(lessonStorageKey, JSON.stringify({ params: stored }));
-    } catch {
-      /* private mode */
-    }
-  };
-  window.addEventListener('pagehide', saveLessonParams);
   const dragonStamps: SVGGElement[] = [];
   let dragonAnchor: { x: number; y: number; spanX: number; spanY: number } | null = null;
   const probeHud = defaultProbeHud();
@@ -593,7 +561,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
   }
 
   function noteActivity(): void {
-    // Start is a click: row-wise reveal, then physics. Ignore idle autostart.
+    if (lesson.active) lesson.syncWithView();
   }
 
   function drawPendulums(frame: PresentationFrame): void {
@@ -754,12 +722,13 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
 
   function drawNow(): void {
     drawFrame = 0;
+    syncVoid();
     if (lesson.active) {
-      mapVoid.style.opacity = '0';
+      lesson.syncWithView();
+      drawMapAxes(axes, host.getView(), xScale, yScale, host.navigation, { points: [] });
       lesson.draw();
       return;
     }
-    syncVoid();
     const frame = sampleFrame();
     const { origins: nextOrigins, worlds: nextWorlds } = frame;
     const last = probes ? shownCount() : nextOrigins.length;
@@ -895,32 +864,6 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
   const lesson = new PendulumLesson(host, overlay, draw, (running) => {
     hudUi?.syncPlay(running);
   });
-  const profileReset: ResetTransition = {
-    begin: () => { if (!lesson.active) host.resetTransition.begin(); },
-    tick: (eased) => { if (!lesson.active) host.resetTransition.tick(eased); },
-    end: () => { if (!lesson.active) host.resetTransition.end(); },
-    instant: () => { if (!lesson.active) host.resetTransition.instant(); },
-    cancel: () => { if (!lesson.active) host.resetTransition.cancel(); },
-    isAway: () => !lesson.active && host.resetTransition.isAway(),
-  };
-  const profileHost: PresentationHost = {
-    ...host,
-    resetTransition: profileReset,
-    onParamsChange(phase) {
-      if (lesson.active) {
-        saveLessonParams();
-        lesson.paramsChanged(phase);
-        return;
-      }
-      host.onParamsChange(phase);
-    },
-  };
-  const profileDefault = (spec: MapParam): number => {
-    if (!lesson.active) return spec.default;
-    if (spec.key === 'F') return LESSON_FRICTION;
-    if (spec.key === 'DT') return LESSON_DT;
-    return spec.default;
-  };
 
   const mapMode = requireElement<HTMLButtonElement>('mode-map');
   const pendulumMode = requireElement<HTMLButtonElement>('mode-pendulum');
@@ -936,16 +879,11 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     if (lesson.active === pendulum) return;
     resetMapSimulation();
     if (pendulum) {
-      host.controls.params = lessonParams;
-      lesson.enter();
+      lesson.enter(viewCenter(host.getView()));
     } else {
-      saveLessonParams();
       lesson.leave();
-      host.controls.params = params;
     }
-    menuUi?.syncParams();
     pads?.sync();
-    menuUi?.setOpen(pendulum);
     hudUi?.setLessonMode(pendulum);
     syncModeButtons(pendulum);
     draw();
@@ -980,13 +918,11 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
   menuUi = bindMenu(
     host.map,
     host.controls,
-    profileHost.onParamsChange,
-    profileReset,
+    host.onParamsChange,
+    host.resetTransition,
     host.signals,
-    profileDefault,
-    () => lesson.active,
   );
-  pads = bindSegmentPads(profileHost);
+  pads = bindSegmentPads(host);
 
   return {
     draw,
@@ -1007,9 +943,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
       hudUi?.setSteps(singleHud ? emptyProbeSteps() : buildProbeSteps(host.clip), true);
       draw();
     },
-    dismiss: () => {
-      if (!lesson.active) menuUi?.setOpen(false);
-    },
+    dismiss: () => menuUi?.setOpen(false),
     pickPoint() {
       return false;
     },

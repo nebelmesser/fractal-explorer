@@ -1,6 +1,6 @@
 import { theme } from './theme';
 import { viewSpanX, viewSpanY, type ViewRect } from '../types';
-import { wrapViewY } from '../../viewer/view';
+import { wrapViewX, wrapViewY } from '../../viewer/view';
 import type { NavigationPolicy } from '../types';
 
 const RAD2DEG = 180 / Math.PI;
@@ -114,11 +114,11 @@ export function drawMapAxes(
     strokeTick(ctx, x, h, x, h - len, pal.th1, pal.axisOutline, tick.major ? 1.25 : 1);
     if (!tick.major || x < 40 || x > w - 36) continue;
     const label = document.createElement('span');
-    label.textContent = tick.label;
+    label.textContent = wrapTickLabel(tick, (rad) => wrapViewX(rad, navigation));
     label.style.left = `${x}px`;
     xLabels.push(label);
   }
-  if (probes) xLabels.push(...probeTickLabels(ctx, w, h, view, probes));
+  if (probes) xLabels.push(...probeTickLabels(ctx, w, h, view, navigation, probes));
   ctx.globalAlpha = 1;
   syncLabels(xRoot, xLabels);
 
@@ -139,7 +139,7 @@ export function drawMapAxes(
     ctx.stroke();
     if (!tick.major || y < 16 || y > h - 18) continue;
     const label = document.createElement('span');
-    label.textContent = wrapYTickLabel(tick, navigation);
+    label.textContent = wrapTickLabel(tick, (rad) => wrapViewY(rad, navigation));
     label.style.top = `${y}px`;
     yLabels.push(label);
   }
@@ -179,6 +179,7 @@ function probeTickLabels(
   w: number,
   h: number,
   view: ViewRect,
+  navigation: NavigationPolicy,
   probes: ProbeAxisMarks,
 ): HTMLSpanElement[] {
   const digits = angleDigits(view, w, h);
@@ -203,7 +204,7 @@ function probeTickLabels(
     if (labeled.length === 2) {
       el.className += i === 0 ? ' probe-mark-left' : ' probe-mark-right';
     }
-    el.textContent = formatAngleDeg(mark.rad, digits);
+    el.textContent = formatAngleDeg(wrapViewX(mark.rad, navigation), digits);
     el.style.left = `${mark.px}px`;
     return el;
   });
@@ -254,9 +255,9 @@ function probeYTickLabels(
   });
 }
 
-function wrapYTickLabel(tick: AxisTick, navigation: NavigationPolicy): string {
+function wrapTickLabel(tick: AxisTick, wrap: (rad: number) => number): string {
   if (!tick.major) return '';
-  const wrapped = wrapViewY(tick.deg / RAD2DEG, navigation) * RAD2DEG;
+  const wrapped = wrap(tick.deg / RAD2DEG) * RAD2DEG;
   const dot = tick.label.indexOf('.');
   const degree = tick.label.indexOf('°');
   const places = dot >= 0 && degree > dot ? degree - dot - 1 : 0;

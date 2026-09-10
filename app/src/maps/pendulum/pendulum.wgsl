@@ -1,5 +1,7 @@
 // Double-pendulum escape-time map. Pixel = initial (theta1, theta2), omega = 0.
-// Brightness is how many Euler steps until |theta1| > 2pi.
+// Brightness is how many Euler steps until theta1 turns 360 degrees away from
+// its initial angle. This relative threshold keeps the map periodic in both
+// initial angles.
 
 struct Uniforms {
   view: vec4f,   // x_min, x_max, y_min, y_max
@@ -13,11 +15,10 @@ struct Uniforms {
 @group(0) @binding(1) var<storage, read_write> raw: array<f32>;
 
 const TWO_PI: f32 = 6.283185307179586;
-const FOUR_PI: f32 = 12.566370614359172;
 const SINGULAR: f32 = 1e-9;
 
-fn wrap_th2(th: f32) -> f32 {
-  return th - FOUR_PI * round(th / FOUR_PI);
+fn wrap_angle(th: f32) -> f32 {
+  return th - TWO_PI * round(th / TWO_PI);
 }
 
 @compute @workgroup_size(8, 8)
@@ -31,8 +32,8 @@ fn simulate(@builtin(global_invocation_id) gid: vec3u) {
   // Samples live at cell centers. Power-of-two tile resolutions then form one
   // nested world grid: a 64x64 CPU child lands exactly on its 256x256 GPU
   // parent instead of shifting by the old N/(N-1) phase change.
-  let th1 = u.view.x + (u.view.y - u.view.x) * (f32(gid.x) + 0.5) / f32(width);
-  let th2 = wrap_th2(u.view.z + (u.view.w - u.view.z) * (f32(gid.y) + 0.5) / f32(height));
+  let th1 = wrap_angle(u.view.x + (u.view.y - u.view.x) * (f32(gid.x) + 0.5) / f32(width));
+  let th2 = wrap_angle(u.view.z + (u.view.w - u.view.z) * (f32(gid.y) + 0.5) / f32(height));
   raw[id] = integrate(th1, th2);
 }
 
@@ -85,7 +86,7 @@ fn integrate(start_th1: f32, start_th2: f32) -> f32 {
     th1 += w1 * DT;
     th2 += w2 * DT;
     cycles += 1u;
-    if (abs(th1) > TWO_PI) {
+    if (abs(th1 - start_th1) > TWO_PI) {
       break;
     }
   }

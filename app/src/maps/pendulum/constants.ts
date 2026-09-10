@@ -1,5 +1,7 @@
 // Coordinate domain.
 export const PENDULUM_VIEW_HALF = Math.PI;
+/** Default camera center, in radians (−180°). */
+export const PENDULUM_VIEW_CENTER = -Math.PI;
 export const PENDULUM_TILE_HALF = Math.PI * 2;
 
 // Physics defaults. Keep these synchronized with crates/map_core/src/constants.rs.
@@ -8,7 +10,7 @@ export const PENDULUM_L2 = 1;
 export const PENDULUM_M1 = 1;
 export const PENDULUM_M2 = 1;
 export const PENDULUM_G = 9.81;
-export const PENDULUM_DT = 0.2;
+export const PENDULUM_DT = 0.1;
 export const PENDULUM_FRICTION = 0;
 export const PENDULUM_MIN_ITER = 1000;
 export const PENDULUM_MAX_ITER = 8000;
@@ -67,20 +69,23 @@ export const PROBE_PLAY_FPS = 24;
 export const PROBE_MAX_STEPS = 40000;
 
 // Full-screen teaching pendulum.
-/** Maximum integration step; faster displays use their native frame interval. */
-export const LESSON_DT = 0.05;
-export const LESSON_FRICTION = 0.1;
 export const LESSON_MAX_FRAME_SEC = 0.15;
-export const LESSON_AUTOSTART_MS = 3000;
+/** After the map stops moving, show neighbor poses again. */
+export const LESSON_VIEW_IDLE_MS = 80;
 export const LESSON_MAGNET_MS = 180;
+/** Outward travel past the first bob before control continues onto the second rod. */
+export const LESSON_ROD_HANDOFF_PX = 10;
 export const LESSON_BOB_HIT_PAD_PX = 6;
+/** Hit radius around the white origin pivot in lesson mode. */
+export const LESSON_PIVOT_HIT_PX = 14;
 export const LESSON_NEIGHBOR_DEG = 0.1;
 export const LESSON_NEIGHBOR_ALPHA = 0.52;
 export const LESSON_POINTER_SLOP_PX = 2;
 export const LESSON_MIN_SCALE_PX = 30;
-export const LESSON_MAX_SCALE_PX = 220;
-export const LESSON_VIEW_FILL = 0.72;
-
+/** Reference rod length the lesson is scaled to fit. Actual L1/L2 stay proportional. */
+export const LESSON_UNIT_LENGTH = 1;
+/** Fraction of the inscribed radius around the pivot that L1 = L2 = 1 may occupy. */
+export const LESSON_VIEW_FILL = 0.9;
 /** Segment L/M pad: hang the rod from the top; bob diameter matches the old mass thumbs. */
 export const SEGMENT_PAD_INSET_PX = 20;
 export const SEGMENT_PAD_BAR_PX = 5;

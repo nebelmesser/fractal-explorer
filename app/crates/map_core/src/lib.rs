@@ -9,7 +9,6 @@ mod constants;
 use wasm_bindgen::prelude::*;
 
 const TWO_PI: f64 = std::f64::consts::TAU;
-const FOUR_PI: f64 = TWO_PI * 2.0;
 const SINGULAR_F64: f64 = 1.0e-9;
 
 /// One pendulum in (θ₁, θ₂, ω₁, ω₂). Angles are radians from downward vertical.
@@ -170,7 +169,7 @@ pub fn fill_map_tile(
         two_m1_plus_m2: 2.0 * m1 + m2,
     };
     for (local_y, y) in (y0..y1).enumerate() {
-        let th2_row = wrap_th2(y_min + span_y * (y as f64 + 0.5) / y_den);
+        let th2_row = y_min + span_y * (y as f64 + 0.5) / y_den;
         let row = local_y * width;
         let mut x = 0;
         while x + 3 < width {
@@ -195,8 +194,8 @@ pub fn fill_map_tile(
     }
 }
 
-fn wrap_th2(th: f64) -> f64 {
-    th - FOUR_PI * (th / FOUR_PI).round()
+fn wrap_angle(th: f64) -> f64 {
+    th - TWO_PI * (th / TWO_PI).round()
 }
 
 struct PhysF64 {
@@ -212,6 +211,8 @@ struct PhysF64 {
 }
 
 fn integrate_one(start_th1: f64, start_th2: f64, phys: &PhysF64, max_iter: u32) -> u32 {
+    let start_th1 = wrap_angle(start_th1);
+    let start_th2 = wrap_angle(start_th2);
     let mut th1 = start_th1;
     let mut th2 = start_th2;
     let mut w1 = 0.0;
@@ -226,7 +227,7 @@ fn integrate_one(start_th1: f64, start_th2: f64, phys: &PhysF64, max_iter: u32) 
         th1 += w1 * dt;
         th2 += w2 * dt;
         cycles += 1;
-        if th1.abs() > TWO_PI {
+        if (th1 - start_th1).abs() > TWO_PI {
             break;
         }
     }
@@ -239,6 +240,8 @@ fn integrate_lanes(
     phys: &PhysF64,
     max_iter: u32,
 ) -> [u32; 4] {
+    let start_th1 = start_th1.map(wrap_angle);
+    let start_th2 = wrap_angle(start_th2);
     let mut th1 = start_th1;
     let mut th2 = [start_th2; 4];
     let mut w1 = [0.0; 4];
@@ -253,10 +256,10 @@ fn integrate_lanes(
             break;
         }
         // Unrolled so four independent trig chains stay in flight.
-        step_lane(0, &mut th1, &mut th2, &mut w1, &mut w2, &mut cycles, &mut live, &mut n_live, phys, dt, f);
-        step_lane(1, &mut th1, &mut th2, &mut w1, &mut w2, &mut cycles, &mut live, &mut n_live, phys, dt, f);
-        step_lane(2, &mut th1, &mut th2, &mut w1, &mut w2, &mut cycles, &mut live, &mut n_live, phys, dt, f);
-        step_lane(3, &mut th1, &mut th2, &mut w1, &mut w2, &mut cycles, &mut live, &mut n_live, phys, dt, f);
+        step_lane(0, &start_th1, &mut th1, &mut th2, &mut w1, &mut w2, &mut cycles, &mut live, &mut n_live, phys, dt, f);
+        step_lane(1, &start_th1, &mut th1, &mut th2, &mut w1, &mut w2, &mut cycles, &mut live, &mut n_live, phys, dt, f);
+        step_lane(2, &start_th1, &mut th1, &mut th2, &mut w1, &mut w2, &mut cycles, &mut live, &mut n_live, phys, dt, f);
+        step_lane(3, &start_th1, &mut th1, &mut th2, &mut w1, &mut w2, &mut cycles, &mut live, &mut n_live, phys, dt, f);
     }
     cycles
 }
@@ -264,6 +267,7 @@ fn integrate_lanes(
 #[inline(always)]
 fn step_lane(
     k: usize,
+    start_th1: &[f64; 4],
     th1: &mut [f64; 4],
     th2: &mut [f64; 4],
     w1: &mut [f64; 4],
@@ -284,7 +288,7 @@ fn step_lane(
     th1[k] += w1[k] * dt;
     th2[k] += w2[k] * dt;
     cycles[k] += 1;
-    if th1[k].abs() > TWO_PI {
+    if (th1[k] - start_th1[k]).abs() > TWO_PI {
         live[k] = false;
         *n_live -= 1;
     }
@@ -392,6 +396,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn escape_time_repeats_after_full_turns_in_both_angles() {
+        let phys = lake_phys();
+        let th1 = std::f64::consts::FRAC_PI_2;
+        let th2 = -std::f64::consts::FRAC_PI_4;
+        let base = integrate_one(th1, th2, &phys, 800);
+        assert_eq!(base, integrate_one(th1 + TWO_PI, th2, &phys, 800));
+        assert_eq!(base, integrate_one(th1, th2 - TWO_PI, &phys, 800));
+        assert_eq!(base, integrate_one(th1 + TWO_PI, th2 - TWO_PI, &phys, 800));
+    }
+
+    #[test]
     fn poly_sincos_matches_libm_cycles() {
         let phys = lake_phys();
         let mut worst = 0u32;
@@ -406,6 +421,8 @@ mod tests {
     }
 
     fn integrate_libm(start_th1: f64, start_th2: f64, phys: &PhysF64, max_iter: u32) -> u32 {
+        let start_th1 = wrap_angle(start_th1);
+        let start_th2 = wrap_angle(start_th2);
         let mut th1 = start_th1;
         let mut th2 = start_th2;
         let mut w1 = 0.0;
@@ -442,7 +459,7 @@ mod tests {
             th1 += w1 * phys.dt;
             th2 += w2 * phys.dt;
             cycles += 1;
-            if th1.abs() > TWO_PI {
+            if (th1 - start_th1).abs() > TWO_PI {
                 break;
             }
         }

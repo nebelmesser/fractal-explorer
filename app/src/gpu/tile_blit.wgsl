@@ -100,6 +100,8 @@ fn sparse_sample_visible(uv: vec2f) -> bool {
   return d.x <= draw.sparse.x * 0.5 && d.y <= draw.sparse.y * 0.5;
 }
 
+// Color ramp: map_tone() is prepended from src/mapTone.ts.
+
 @fragment
 fn tile_fs(in: VertexOut) -> @location(0) vec4f {
   if (!sparse_sample_visible(in.uv)) {
@@ -114,5 +116,6 @@ fn tile_fs(in: VertexOut) -> @location(0) vec4f {
     gray = 1.0 - gray;
   }
   let alpha = draw.sparse.w;
-  return vec4f(gray * alpha, gray * alpha, gray * alpha, alpha);
+  let rgb = map_tone(gray) * alpha;
+  return vec4f(rgb, alpha);
 }

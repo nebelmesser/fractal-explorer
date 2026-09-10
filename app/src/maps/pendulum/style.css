@@ -68,6 +68,14 @@ html, body {
     -webkit-tap-highlight-color: transparent;
 }
 
+body.is-chrome-hidden [data-viewer-ui],
+body.is-chrome-hidden #map-scale-x,
+body.is-chrome-hidden #map-scale-y,
+body.is-chrome-hidden #map-axes {
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
 #stage {
     position: absolute;
     inset: 0;
@@ -134,7 +142,7 @@ html, body {
 }
 
 /* Under the sidebar / HUD so rods never paint over those controls. */
-#probe-overlay { z-index: 2; }
+#probe-overlay { z-index: 3; }
 
 #map-scale-x,
 #map-scale-y {
@@ -467,12 +475,6 @@ canvas.map-view.map-pending {
 
 #map-params-more:empty { display: none; }
 
-.map-only-setting {}
-
-body:not(.is-pendulum-mode) .lesson-only-setting {
-    display: none;
-}
-
 .hint {
     font-size: 12px;
     color: var(--muted);
@@ -717,14 +719,7 @@ body:not(.is-pendulum-mode) .lesson-only-setting {
     color: var(--bg);
 }
 
-body.is-pendulum-mode #sidebar,
-body.is-pendulum-mode canvas.map-view,
-body.is-pendulum-mode #map-void,
-body.is-pendulum-mode #map-axes,
-body.is-pendulum-mode #map-scale-x,
-body.is-pendulum-mode #map-scale-y,
-body.is-pendulum-mode #probe-drop,
-body.is-pendulum-mode .map-only-setting {
+body.is-pendulum-mode #probe-drop {
     display: none;
 }
 

@@ -12,6 +12,7 @@ import {
   LOD_EXPOSURE_TAU_MS, LOD_MAX_LEVEL, LOD_MAX_LEVEL_F64, LOD_PREFETCH_PAD, LOD_TILE_PX,
 } from '../constants';
 import { f32Ulp, f64Ulp } from './precision';
+import { mapToneWgsl } from '../mapTone';
 import reduceWgsl from './reduce.wgsl?raw';
 import tileBlitWgsl from './tile_blit.wgsl?raw';
 
@@ -23,12 +24,14 @@ type Tile = {
   width: number; height: number; lo: number; hi: number; used: number; cpuRes?: number;
 };
 type Cell = {
-  key: string; level: number; ix: number; iy: number; canonicalIy: number;
+  key: string; level: number; ix: number; iy: number; canonicalIx: number; canonicalIy: number;
   sourceView: ViewRect; drawView: ViewRect;
 };
 type PresentRequest = {
   view: ViewRect; params: MapParams; width: number; height: number; invert: boolean;
   median: number; moving: boolean; level: number; generation: number;
+  /** Presentation-only camera: preserve the live map request and exposure. */
+  passive?: boolean;
 };
 
 /**
@@ -111,7 +114,7 @@ export class GpuMapRenderer {
     ] });
     const computeMod = device.createShaderModule({ code: map.gpu.computeWgsl });
     const reduceMod = device.createShaderModule({ code: reduceWgsl });
-    const composeMod = device.createShaderModule({ code: tileBlitWgsl });
+    const composeMod = device.createShaderModule({ code: mapToneWgsl() + tileBlitWgsl });
     await Promise.all([
       assertShader(computeMod, 'compute'), assertShader(reduceMod, 'reduce'),
       assertShader(composeMod, 'tile compositor'),
@@ -161,13 +164,25 @@ export class GpuMapRenderer {
     return performance.now() - t0;
   }
 
-  present(view: ViewRect, params: MapParams, width: number, height: number, invert: boolean, median: number, moving = true): void {
-    const request = this.makeRequest(view, params, width, height, invert, median, moving);
-    this.updateExposure(request);
+  present(
+    view: ViewRect,
+    params: MapParams,
+    width: number,
+    height: number,
+    invert: boolean,
+    median: number,
+    moving = true,
+    passive = false,
+  ): void {
+    const request = this.makeRequest(view, params, width, height, invert, median, moving, !passive);
+    request.passive = passive;
+    // Lesson follow pans retain the map-mode exposure so the background does not flicker.
+    if (!passive) this.updateExposure(request);
     this.compose(request);
     // Long simulation dispatches can starve the compositor on integrated GPUs.
     // Cached LODs move at display rate; refinement resumes on the settled frame.
-    if (!moving) this.scheduleRefine();
+    // Presentation-only framing must never schedule tiles outside the live map view.
+    if (!moving && !passive) this.scheduleRefine();
   }
 
   prefetch(view: ViewRect, params: MapParams, width: number, height: number): Promise<void> {
@@ -239,11 +254,12 @@ export class GpuMapRenderer {
   snapWorld(point: { x: number; y: number }): { x: number; y: number } {
     const tile = this.tileAt(point.x, point.y);
     if (!tile) return this.atPrecisionFloor() ? this.snapPrecision(point) : point;
+    const cx = this.canonicalX(point.x);
     const cy = this.canonicalY(point.y);
-    const ix = clampSample(Math.floor(((point.x - tile.view.xMin) / viewSpanX(tile.view)) * tile.width), tile.width);
+    const ix = clampSample(Math.floor(((cx - tile.view.xMin) / viewSpanX(tile.view)) * tile.width), tile.width);
     const iy = clampSample(Math.floor(((cy - tile.view.yMin) / viewSpanY(tile.view)) * tile.height), tile.height);
     return {
-      x: tile.view.xMin + ((ix + 0.5) / tile.width) * viewSpanX(tile.view),
+      x: point.x + tile.view.xMin + ((ix + 0.5) / tile.width) * viewSpanX(tile.view) - cx,
       y: point.y + tile.view.yMin + ((iy + 0.5) / tile.height) * viewSpanY(tile.view) - cy,
     };
   }
@@ -252,13 +268,14 @@ export class GpuMapRenderer {
   snapPrecision(point: { x: number; y: number }): { x: number; y: number } {
     const span = this.tileSpan(this.cpuLevelCap);
     const samples = LOD_CPU_TILE_PX;
+    const cx = this.canonicalX(point.x);
     const cy = this.canonicalY(point.y);
-    const xMin = this.xOrigin() + Math.floor((point.x - this.xOrigin()) / span) * span;
+    const xMin = this.xOrigin() + Math.floor((cx - this.xOrigin()) / span) * span;
     const yMin = this.yOrigin() + Math.floor((cy - this.yOrigin()) / span) * span;
-    const ix = clampSample(Math.floor(((point.x - xMin) / span) * samples), LOD_CPU_TILE_PX);
+    const ix = clampSample(Math.floor(((cx - xMin) / span) * samples), LOD_CPU_TILE_PX);
     const iy = clampSample(Math.floor(((cy - yMin) / span) * samples), LOD_CPU_TILE_PX);
     return {
-      x: xMin + ((ix + 0.5) / samples) * span,
+      x: point.x + xMin + ((ix + 0.5) / samples) * span - cx,
       y: point.y + yMin + ((iy + 0.5) / samples) * span - cy,
     };
   }
@@ -447,6 +464,8 @@ export class GpuMapRenderer {
       Math.abs(this.map.defaultView.xMin), Math.abs(this.map.defaultView.xMax),
       Math.abs(this.map.defaultView.yMin), Math.abs(this.map.defaultView.yMax),
       Math.abs(p?.xCenter?.min ?? 0), Math.abs(p?.xCenter?.max ?? 0),
+      Math.abs((p?.xPeriod?.center ?? 0) - (p?.xPeriod?.period ?? 0) / 2),
+      Math.abs((p?.xPeriod?.center ?? 0) + (p?.xPeriod?.period ?? 0) / 2),
       Math.abs((p?.yPeriod?.center ?? 0) - (p?.yPeriod?.period ?? 0) / 2),
       Math.abs((p?.yPeriod?.center ?? 0) + (p?.yPeriod?.period ?? 0) / 2),
     );
@@ -506,6 +525,14 @@ export class GpuMapRenderer {
   }
   private cpuCellWanted(cell: Cell, request: PresentRequest): boolean {
     return this.cellOnScreen(cell, request.view) && this.cellScreenPx(cell, request) >= LOD_CPU_MIN_PX;
+  }
+  private keyOnScreen(cell: Cell, request: PresentRequest): boolean {
+    return this.cells(request.view, cell.level, 0)
+      .some((visible) => visible.key === cell.key && this.cellOnScreen(visible, request.view));
+  }
+  private cpuKeyWanted(cell: Cell, request: PresentRequest): boolean {
+    return this.cells(request.view, cell.level, 0)
+      .some((visible) => visible.key === cell.key && this.cpuCellWanted(visible, request));
   }
   private cpuParallel(): number {
     return Math.max(1, this.map.cpu?.concurrency ?? LOD_CPU_PARALLEL);
@@ -575,7 +602,7 @@ export class GpuMapRenderer {
       const span = this.tileSpan(level);
       const ix = Math.floor((cx - this.xOrigin()) / span);
       const iy = Math.floor((cy - this.yOrigin()) / span);
-      const parent = this.tiles.get(`${this.generation}:${level}:${ix}:${this.canonicalIy(iy, level)}`);
+      const parent = this.tiles.get(`${this.generation}:${level}:${this.canonicalIx(ix, level)}:${this.canonicalIy(iy, level)}`);
       if (!parent?.cpuRes) continue;
       const inherited = parent.cpuRes / (2 ** (cell.level - level));
       let resolution = LOD_CPU_INITIAL_RES;
@@ -586,7 +613,10 @@ export class GpuMapRenderer {
     }
     return LOD_CPU_INITIAL_RES;
   }
-  private xOrigin(): number { return this.map.defaultView.xMin; }
+  private xOrigin(): number {
+    const p = this.map.navigation?.xPeriod;
+    return p ? p.center - p.period / 2 : this.map.defaultView.xMin;
+  }
   private yOrigin(): number {
     const p = this.map.navigation?.yPeriod;
     return p ? p.center - p.period / 2 : this.map.defaultView.yMin;
@@ -596,6 +626,18 @@ export class GpuMapRenderer {
     if (!p) return y;
     const origin = this.yOrigin();
     return origin + ((y - origin) % p.period + p.period) % p.period;
+  }
+  private canonicalX(x: number): number {
+    const p = this.map.navigation?.xPeriod;
+    if (!p) return x;
+    const origin = this.xOrigin();
+    return origin + ((x - origin) % p.period + p.period) % p.period;
+  }
+  private canonicalIx(ix: number, level: number): number {
+    const p = this.map.navigation?.xPeriod;
+    if (!p) return ix;
+    const count = Math.max(1, Math.round(p.period / this.tileSpan(level)));
+    return ((ix % count) + count) % count;
   }
   private canonicalIy(iy: number, level: number): number {
     const p = this.map.navigation?.yPeriod;
@@ -612,15 +654,24 @@ export class GpuMapRenderer {
     const y0 = Math.floor((yMin - this.yOrigin()) / span); const y1 = Math.floor((yMax - this.yOrigin() - span * 1e-9) / span);
     const out: Cell[] = [];
     for (let iy = y0; iy <= y1; iy++) {
+      const rawYMin = this.yOrigin() + iy * span;
+      const rawYMax = rawYMin + span;
       const canonicalIy = this.canonicalIy(iy, level);
       for (let ix = x0; ix <= x1; ix++) {
+        const rawXMin = this.xOrigin() + ix * span;
+        const rawXMax = rawXMin + span;
+        const canonicalIx = this.canonicalIx(ix, level);
         const sourceView = {
-          xMin: this.xOrigin() + ix * span, xMax: this.xOrigin() + (ix + 1) * span,
+          xMin: this.xOrigin() + canonicalIx * span, xMax: this.xOrigin() + (canonicalIx + 1) * span,
           yMin: this.yOrigin() + canonicalIy * span, yMax: this.yOrigin() + (canonicalIy + 1) * span,
         };
         out.push({
-          key: `${this.generation}:${level}:${ix}:${canonicalIy}`, level, ix, iy, canonicalIy, sourceView,
-          drawView: { xMin: sourceView.xMin, xMax: sourceView.xMax, yMin: this.yOrigin() + iy * span, yMax: this.yOrigin() + (iy + 1) * span },
+          key: `${this.generation}:${level}:${canonicalIx}:${canonicalIy}`,
+          level, ix, iy, canonicalIx, canonicalIy, sourceView,
+          drawView: {
+            xMin: rawXMin, xMax: rawXMax,
+            yMin: rawYMin, yMax: rawYMax,
+          },
         });
       }
     }
@@ -629,14 +680,18 @@ export class GpuMapRenderer {
 
   private async ensureCells(request: PresentRequest, levels: number[], pad: number, limit = Number.POSITIVE_INFINITY): Promise<void> {
     const unique = new Map<string, Cell>();
+    const cx = (request.view.xMin + request.view.xMax) / 2;
+    const cy = (request.view.yMin + request.view.yMax) / 2;
     for (const level of [...new Set(levels)].sort((a, b) => a - b)) {
       for (const cell of this.cells(request.view, level, pad)) {
         if (this.tiles.has(cell.key)) continue;
         if (this.tileUsesCpu(cell.sourceView)) continue;
-        unique.set(cell.key, cell);
+        const old = unique.get(cell.key);
+        if (!old || distance(cell.drawView, cx, cy) < distance(old.drawView, cx, cy)) {
+          unique.set(cell.key, cell);
+        }
       }
     }
-    const cx = (request.view.xMin + request.view.xMax) / 2; const cy = (request.view.yMin + request.view.yMax) / 2;
     const cells = [...unique.values()]
       .sort((a, b) => a.level - b.level || distance(a.drawView, cx, cy) - distance(b.drawView, cx, cy))
       .slice(0, limit);
@@ -674,24 +729,28 @@ export class GpuMapRenderer {
   }
 
   private nextCpuJobs(request: PresentRequest, limit: number): { cell: Cell; nextRes: number }[] {
-    const jobs: { cell: Cell; nextRes: number; dist: number }[] = [];
+    const jobs = new Map<string, { cell: Cell; nextRes: number; dist: number }>();
     for (const level of this.cpuLevels(request)) {
       for (const cell of this.cells(request.view, level, 0)) {
         if (!this.tileUsesCpu(cell.sourceView) || !this.cpuCellWanted(cell, request)) continue;
         const cap = this.cpuCap(cell, request);
         const have = this.tiles.get(cell.key)?.cpuRes ?? 0;
         if (cap <= 0 || have >= cap) continue;
-        jobs.push({
+        const job = {
           cell,
           nextRes: have > 0
             ? Math.min(cap, have * LOD_CPU_REFINE_FACTOR)
             : Math.max(LOD_CPU_INITIAL_RES, this.cpuInheritedRes(cell)),
           dist: this.cpuScreenDist(cell, request),
-        });
+        };
+        const old = jobs.get(cell.key);
+        if (!old || job.dist < old.dist) jobs.set(cell.key, job);
       }
     }
-    jobs.sort((a, b) => a.dist - b.dist);
-    return jobs.slice(0, Math.max(1, limit)).map(({ cell, nextRes }) => ({ cell, nextRes }));
+    return [...jobs.values()]
+      .sort((a, b) => a.dist - b.dist)
+      .slice(0, Math.max(1, limit))
+      .map(({ cell, nextRes }) => ({ cell, nextRes }));
   }
 
   private cpuHasFoveaSlack(request: PresentRequest): boolean {
@@ -743,7 +802,7 @@ export class GpuMapRenderer {
     const previous = this.tiles.get(cell.key);
     this.tiles.set(cell.key, {
       key: cell.key, generation: request.generation, level: cell.level,
-      ix: cell.ix, iy: cell.canonicalIy, view: cell.sourceView,
+      ix: cell.canonicalIx, iy: cell.canonicalIy, view: cell.sourceView,
       uniform: buffers.uniform, raw: buffers.raw, minmax: buffers.minmax, counts,
       width: buffers.width, height: buffers.height, lo, hi, used: ++this.useCounter,
       cpuRes,
@@ -796,7 +855,7 @@ export class GpuMapRenderer {
     if (!cpu) return;
     const live = this.latest;
     if (!live || live.generation !== request.generation) return;
-    if (!this.cpuCellWanted(cell, live)) return;
+    if (!this.cpuKeyWanted(cell, live)) return;
     const existing = this.tiles.get(cell.key);
     if (existing && (existing.cpuRes ?? 0) >= nextRes) return;
     const buffers = this.allocTileBuffers(cell, request, nextRes, nextRes);
@@ -818,7 +877,7 @@ export class GpuMapRenderer {
       throw error;
     }
     const latest = this.latest;
-    if (!latest || latest.generation !== request.generation || !this.cellOnScreen(cell, latest.view)) {
+    if (!latest || latest.generation !== request.generation || !this.keyOnScreen(cell, latest)) {
       buffers.uniform.destroy(); buffers.raw.destroy(); buffers.minmax.destroy();
       return;
     }
@@ -841,7 +900,8 @@ export class GpuMapRenderer {
     // In the precision void, gaps must reveal the black/dragon layer rather than
     // a magnified lower-LOD map, so only the frozen f64 grid is composited.
     const firstLevel = this.cpuSparse(request) ? request.level : 0;
-    for (let level = firstLevel; level <= request.level; level++) {
+    const lastLevel = request.level;
+    for (let level = firstLevel; level <= lastLevel; level++) {
       for (const cell of this.cells(request.view, level, 0)) {
         const tile = this.tiles.get(cell.key); if (!tile) continue;
         tile.used = ++this.useCounter;
@@ -1071,17 +1131,18 @@ export class GpuMapRenderer {
   private tileAt(x: number, y: number): Tile | null {
     if (!this.latest) return null;
     for (let level = this.latest.level; level >= 0; level--) {
-      const span = this.tileSpan(level); const ix = Math.floor((x - this.xOrigin()) / span);
+      const span = this.tileSpan(level); const ix = Math.floor((this.canonicalX(x) - this.xOrigin()) / span);
       const iy = Math.floor((this.canonicalY(y) - this.yOrigin()) / span);
-      const tile = this.tiles.get(`${this.generation}:${level}:${ix}:${this.canonicalIy(iy, level)}`);
+      const tile = this.tiles.get(`${this.generation}:${level}:${this.canonicalIx(ix, level)}:${this.canonicalIy(iy, level)}`);
       if (tile) return tile;
     }
     return null;
   }
 
   private stepsAt(x: number, y: number): number | null {
-    const tile = this.tileAt(x, y); if (!tile) return null; const cy = this.canonicalY(y);
-    const ix = clampSample(Math.floor(((x - tile.view.xMin) / viewSpanX(tile.view)) * tile.width), tile.width);
+    const tile = this.tileAt(x, y); if (!tile) return null;
+    const cx = this.canonicalX(x); const cy = this.canonicalY(y);
+    const ix = clampSample(Math.floor(((cx - tile.view.xMin) / viewSpanX(tile.view)) * tile.width), tile.width);
     const iy = clampSample(Math.floor(((cy - tile.view.yMin) / viewSpanY(tile.view)) * tile.height), tile.height);
     const value = tile.counts[iy * tile.width + ix]; return Number.isFinite(value) ? value : null;
   }
@@ -1089,6 +1150,7 @@ export class GpuMapRenderer {
   private evict(): void {
     if (this.tiles.size <= LOD_CACHE_TILES) return;
     const keep = new Set<string>();
+    for (const tile of this.tiles.values()) if (tile.level === 0) keep.add(tile.key);
     if (this.latest) for (let level = 0; level <= this.latest.level; level++) for (const cell of this.cells(this.latest.view, level, LOD_PREFETCH_PAD)) keep.add(cell.key);
     const candidates = [...this.tiles.values()].filter((tile) => !keep.has(tile.key)).sort((a, b) => a.used - b.used);
     while (this.tiles.size > LOD_CACHE_TILES && candidates.length) {

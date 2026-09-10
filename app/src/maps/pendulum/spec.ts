@@ -8,7 +8,7 @@ import {
   PENDULUM_M2,
   PENDULUM_MIN_ITER,
   PENDULUM_MAX_ITER,
-  PENDULUM_TILE_HALF,
+  PENDULUM_VIEW_CENTER,
   PENDULUM_VIEW_HALF,
   LESSON_NEIGHBOR_DEG,
 } from './constants';
@@ -72,14 +72,14 @@ export const pendulumMap: MapDefinition = {
   title: 'Double pendulum',
   preferencesKey: 'fractal-explorer',
   defaultView: {
-    xMin: -PENDULUM_VIEW_HALF,
-    xMax: PENDULUM_VIEW_HALF,
-    yMin: -PENDULUM_VIEW_HALF,
-    yMax: PENDULUM_VIEW_HALF,
+    xMin: PENDULUM_VIEW_CENTER - PENDULUM_VIEW_HALF,
+    xMax: PENDULUM_VIEW_CENTER + PENDULUM_VIEW_HALF,
+    yMin: PENDULUM_VIEW_CENTER - PENDULUM_VIEW_HALF,
+    yMax: PENDULUM_VIEW_CENTER + PENDULUM_VIEW_HALF,
   },
   navigation: {
-    xCenter: { min: -PENDULUM_TILE_HALF, max: PENDULUM_TILE_HALF },
-    yPeriod: { period: PENDULUM_TILE_HALF * 2, center: 0 },
+    xPeriod: { period: PENDULUM_VIEW_HALF * 2, center: 0 },
+    yPeriod: { period: PENDULUM_VIEW_HALF * 2, center: 0 },
   },
   workBudget: {
     param: 'MAX_ITERATIONS',
@@ -105,7 +105,6 @@ export const pendulumMap: MapDefinition = {
       default: LESSON_NEIGHBOR_DEG,
       scale: 'log',
       digits: 3,
-      lessonOnly: true,
     },
   ],
   gpu,
