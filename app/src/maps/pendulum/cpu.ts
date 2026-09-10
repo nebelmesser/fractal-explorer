@@ -4,6 +4,7 @@ import type { MapParams, ViewRect } from '../types';
 import type { TileStripRequest, TileStripResponse } from './tile-job';
 
 type Pending = {
+  worker: Worker;
   resolve: (buffer: ArrayBuffer) => void;
   reject: (error: Error) => void;
 };
@@ -31,6 +32,7 @@ function acquire(): Promise<Worker> {
 }
 
 function release(worker: Worker): void {
+  if (!pool?.includes(worker)) return;
   const waiter = waiters.shift();
   if (waiter) waiter(worker);
   else idle.push(worker);
@@ -47,19 +49,61 @@ function onMessage(event: MessageEvent<TileStripResponse>): void {
   job.resolve(event.data.buffer);
 }
 
+function spawnWorker(): Worker {
+  const worker = new TileWorker();
+  worker.onmessage = onMessage;
+  worker.onerror = (event) => failWorker(worker, new Error(event.message || 'CPU tile worker failed'));
+  worker.onmessageerror = () => failWorker(worker, new Error('CPU tile worker message error'));
+  return worker;
+}
+
+function failWorker(worker: Worker, err: Error): void {
+  for (const [id, job] of pending) {
+    if (job.worker !== worker) continue;
+    pending.delete(id);
+    job.reject(err);
+  }
+  const idleAt = idle.indexOf(worker);
+  if (idleAt >= 0) idle.splice(idleAt, 1);
+  if (pool) {
+    const at = pool.indexOf(worker);
+    if (at < 0) return;
+    pool.splice(at, 1);
+    try { worker.terminate(); } catch { /* already dead */ }
+    const replacement = spawnWorker();
+    pool.push(replacement);
+    release(replacement);
+  }
+}
+
+/** Stop tiles for a camera that is no longer visible and replace their workers. */
+export function cancelPendulumCpu(): void {
+  if (!pool) return;
+  const obsolete = new Set(pool);
+  pool = [];
+  idle.length = 0;
+  const error = new Error('CPU tile superseded by a newer camera');
+  error.name = 'AbortError';
+  for (const [id, job] of pending) {
+    if (!obsolete.has(job.worker)) continue;
+    pending.delete(id);
+    job.reject(error);
+  }
+  for (const worker of obsolete) {
+    try { worker.terminate(); } catch { /* already dead */ }
+  }
+  for (let i = 0; i < poolSize(); i++) {
+    const worker = spawnWorker();
+    pool.push(worker);
+    release(worker);
+  }
+}
+
 function ensurePool(): Worker[] {
   if (pool) return pool;
   const workers: Worker[] = [];
   for (let i = 0; i < poolSize(); i++) {
-    const worker = new TileWorker();
-    worker.onmessage = onMessage;
-    worker.onerror = (event) => {
-      const err = new Error(event.message || 'CPU tile worker failed');
-      for (const [id, job] of pending) {
-        pending.delete(id);
-        job.reject(err);
-      }
-    };
+    const worker = spawnWorker();
     workers.push(worker);
     idle.push(worker);
   }
@@ -69,7 +113,7 @@ function ensurePool(): Worker[] {
 
 function runStrip(worker: Worker, req: TileStripRequest): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
-    pending.set(req.id, { resolve, reject });
+    pending.set(req.id, { worker, resolve, reject });
     worker.postMessage(req);
   });
 }

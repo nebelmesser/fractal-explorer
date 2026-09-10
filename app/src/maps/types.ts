@@ -86,6 +86,8 @@ export type CpuKernel = {
     height: number,
     params: MapParams,
   ): Promise<Float32Array>;
+  /** Abort obsolete tile jobs after the camera or parameters change. */
+  cancelPending?(): void;
   /** Independent tiles the engine may fill at once. Each tile may also split internally. */
   concurrency?: number;
 };

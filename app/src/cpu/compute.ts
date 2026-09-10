@@ -140,6 +140,10 @@ export class CpuMapRenderer {
     moving = true,
     passive = false,
   ): void {
+    const previous = this.latest;
+    if (moving && !passive && previous && !previous.moving) {
+      this.map.cpu?.cancelPending?.();
+    }
     const request = this.makeRequest(view, params, width, height, invert, median, moving, passive, !passive);
     this.configureCanvas(request.width, request.height);
     if (!passive) this.updateExposure(request);
@@ -346,6 +350,7 @@ export class CpuMapRenderer {
   private ensureParams(params: MapParams): void {
     const key = Object.keys(params).sort().map((name) => `${name}:${Number(params[name]).toPrecision(9)}`).join('|');
     if (key === this.paramsKey) return;
+    this.map.cpu?.cancelPending?.();
     this.paramsKey = key;
     this.generation += 1;
     this.tiles.clear();

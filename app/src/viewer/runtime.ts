@@ -22,6 +22,7 @@ import {
   lerpParams,
   padViewWith,
   unionView,
+  viewAround,
   viewsEqual,
   viewSpanX,
   viewSpanY,
@@ -66,6 +67,44 @@ function waitForPresent(): Promise<void> {
   });
 }
 
+const VIEW_QUERY_KEYS = ['x', 'y', 'span'] as const;
+
+/** Read an exact map camera from a shareable URL. Values are radians. */
+function viewFromQuery(
+  world: ViewRect,
+  width: number,
+  height: number,
+  navigation: MapDefinition['navigation'],
+  minSpan: number,
+): ViewRect | null {
+  const query = new URLSearchParams(location.search);
+  const rawX = query.get('x');
+  const rawY = query.get('y');
+  const rawSpan = query.get('span');
+  if (rawX === null || rawY === null || rawSpan === null) return null;
+  const x = Number(rawX);
+  const y = Number(rawY);
+  const span = Number(rawSpan);
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(span) || !(span > 0)) return null;
+  const clamped = Math.min(shortSpan(world), Math.max(minSpan, span));
+  return fitViewAspect(viewAround(x, y, clamped, clamped), width, height, world, navigation ?? {});
+}
+
+/** Keep the live camera in the URL without adding a history entry per frame. */
+function replaceViewQuery(view: ViewRect): void {
+  const url = new URL(location.href);
+  const center = viewCenter(view);
+  const values = [center.x, center.y, shortSpan(view)];
+  let changed = false;
+  for (let i = 0; i < VIEW_QUERY_KEYS.length; i++) {
+    const value = String(values[i]);
+    if (url.searchParams.get(VIEW_QUERY_KEYS[i]) === value) continue;
+    url.searchParams.set(VIEW_QUERY_KEYS[i], value);
+    changed = true;
+  }
+  if (changed) history.replaceState(history.state, '', url);
+}
+
 export async function bootViewer(
   mapDef: MapDefinition,
   presentationFactory?: MapPresentationFactory,
@@ -106,7 +145,13 @@ export async function bootViewer(
   params[mapDef.workBudget.param] = preferredWork(saved?.targetFrameMs ?? TARGET_FRAME_MS, mapDef.workBudget);
   let display = fitMapDisplay(stage);
   let world = worldFromDisplay(display.width, display.height, mapDef.defaultView);
-  let view: ViewRect = copyView(world);
+  let view: ViewRect = viewFromQuery(
+    world,
+    display.width,
+    display.height,
+    navigation,
+    minSpan,
+  ) ?? copyView(world);
   let computedView = copyView(view);
   const history: ViewRect[] = [copyView(view)];
   let settledPx = snapComputePx(Math.min(display.width, display.height));
@@ -138,6 +183,7 @@ export async function bootViewer(
   let forcedParams: MapParams | null = null;
   let forcedWaiters: Array<() => void> = [];
   let viewFrame = 0;
+  let viewQueryTimer = 0;
   let pendingMotion: { coasting: boolean } | null = null;
 
   const controls: ViewerControls = {
@@ -409,6 +455,8 @@ export async function bootViewer(
   function applyShift(moving = animating || gestureActive): void {
     mapShift.style.transform = 'none';
     delete mapShift.dataset.lockTransform;
+    window.clearTimeout(viewQueryTimer);
+    viewQueryTimer = window.setTimeout(() => replaceViewQuery(view), moving ? 100 : 0);
     if (frontCanvas.dataset.ready === '1') {
       renderer.setCanvas(frontCanvas);
       renderer.present(

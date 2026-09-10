@@ -339,21 +339,10 @@ fn accelerations_f32(
 
 #[inline(always)]
 fn sincos_f64(x: f64) -> (f64, f64) {
-    let y = x - TWO_PI * (x / TWO_PI).round();
-    let y2 = y * y;
-    let sin = y * (1.0
-        + y2 * (-1.666666666666667e-1
-            + y2 * (8.333333333333333e-3
-                + y2 * (-1.9841269841269841e-4
-                    + y2 * (2.7557319223985893e-6
-                        + y2 * (-2.505210838544172e-8 + y2 * 1.6059043836821613e-10))))));
-    let cos = 1.0
-        + y2 * (-0.5
-            + y2 * (4.1666666666666664e-2
-                + y2 * (-1.388888888888889e-3
-                    + y2 * (2.48015873015873e-5
-                        + y2 * (-2.755731922398589e-7 + y2 * 2.08767569878681e-9)))));
-    (sin, cos)
+    // The old zero-centered Taylor polynomial accumulated visible error near
+    // ±π. In a chaotic trajectory that changed the escape-time geometry enough
+    // to look like a large camera jump at the GPU→f64 handoff.
+    x.sin_cos()
 }
 
 #[inline(always)]
@@ -407,63 +396,12 @@ mod tests {
     }
 
     #[test]
-    fn poly_sincos_matches_libm_cycles() {
-        let phys = lake_phys();
-        let mut worst = 0u32;
-        for i in 0..40 {
-            let th1 = -1.2 + f64::from(i) * 0.07;
-            let th2 = 0.4 - f64::from(i) * 0.05;
-            let fast = integrate_one(th1, th2, &phys, 800);
-            let slow = integrate_libm(th1, th2, &phys, 800);
-            worst = worst.max(fast.abs_diff(slow));
+    fn sincos_is_accurate_near_period_boundary() {
+        for x in [-std::f64::consts::PI, -3.0, 3.0, std::f64::consts::PI] {
+            let (sin, cos) = sincos_f64(x);
+            assert!((sin - x.sin()).abs() < 1.0e-14, "sin drift at {x}");
+            assert!((cos - x.cos()).abs() < 1.0e-14, "cos drift at {x}");
         }
-        assert!(worst <= 2, "cycle drift {worst}");
-    }
-
-    fn integrate_libm(start_th1: f64, start_th2: f64, phys: &PhysF64, max_iter: u32) -> u32 {
-        let start_th1 = wrap_angle(start_th1);
-        let start_th2 = wrap_angle(start_th2);
-        let mut th1 = start_th1;
-        let mut th2 = start_th2;
-        let mut w1 = 0.0;
-        let mut w2 = 0.0;
-        let mut cycles = 0u32;
-        for _ in 0..max_iter {
-            let (sin_th1, cos_th1) = th1.sin_cos();
-            let (sin_th2, cos_th2) = th2.sin_cos();
-            let sin_d = sin_th1 * cos_th2 - cos_th1 * sin_th2;
-            let cos_d = cos_th1 * cos_th2 + sin_th1 * sin_th2;
-            let cos_2d = 2.0 * cos_d * cos_d - 1.0;
-            let common = phys.two_m1_plus_m2 - phys.m2 * cos_2d;
-            let den1 = phys.l1 * common;
-            let alpha1 = if den1.abs() < SINGULAR_F64 {
-                0.0
-            } else {
-                let sin_th1_minus_2th2 = sin_d * cos_th2 - cos_d * sin_th2;
-                let num = -phys.g * phys.two_m1_plus_m2 * sin_th1
-                    + (-phys.m2 * phys.g * sin_th1_minus_2th2)
-                    + -2.0 * sin_d * phys.m2 * (w2 * w2 * phys.l2 + w1 * w1 * phys.l1 * cos_d);
-                num / den1
-            };
-            let den2 = phys.l2 * common;
-            let alpha2 = if den2.abs() < SINGULAR_F64 {
-                0.0
-            } else {
-                let term_sum = w1 * w1 * phys.l1 * (phys.m1 + phys.m2)
-                    + phys.g_m1_plus_m2 * cos_th1
-                    + w2 * w2 * phys.l2 * phys.m2 * cos_d;
-                (2.0 * sin_d * term_sum) / den2
-            };
-            w1 += (alpha1 - phys.f * w1) * phys.dt;
-            w2 += (alpha2 - phys.f * w2) * phys.dt;
-            th1 += w1 * phys.dt;
-            th2 += w2 * phys.dt;
-            cycles += 1;
-            if (th1 - start_th1).abs() > TWO_PI {
-                break;
-            }
-        }
-        cycles
     }
 
     fn lake_phys() -> PhysF64 {

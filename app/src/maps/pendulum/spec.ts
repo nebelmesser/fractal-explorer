@@ -21,7 +21,7 @@ import {
   type ViewRect,
 } from '../types';
 import computeWgsl from './pendulum.wgsl?raw';
-import { fillPendulumTile, pendulumCpuConcurrency } from './cpu';
+import { cancelPendulumCpu, fillPendulumTile, pendulumCpuConcurrency } from './cpu';
 
 /** Pack the 80-byte uniform block shared by the compute and postprocess shaders. */
 export function packPendulumUniforms(
@@ -78,8 +78,11 @@ export const pendulumMap: MapDefinition = {
     yMax: PENDULUM_VIEW_CENTER + PENDULUM_VIEW_HALF,
   },
   navigation: {
-    xPeriod: { period: PENDULUM_VIEW_HALF * 2, center: 0 },
-    yPeriod: { period: PENDULUM_VIEW_HALF * 2, center: 0 },
+    // Keep the default −180° point in the middle of the canonical band.
+    // A 0°-centered period puts a numerical seam through the initial camera;
+    // f64 chaos then makes adjacent ±180° CPU tiles visibly disagree.
+    xPeriod: { period: PENDULUM_VIEW_HALF * 2, center: PENDULUM_VIEW_CENTER },
+    yPeriod: { period: PENDULUM_VIEW_HALF * 2, center: PENDULUM_VIEW_CENTER },
   },
   workBudget: {
     param: 'MAX_ITERATIONS',
@@ -108,5 +111,9 @@ export const pendulumMap: MapDefinition = {
     },
   ],
   gpu,
-  cpu: { fillTile: fillPendulumTile, concurrency: pendulumCpuConcurrency() },
+  cpu: {
+    fillTile: fillPendulumTile,
+    cancelPending: cancelPendulumCpu,
+    concurrency: pendulumCpuConcurrency(),
+  },
 };

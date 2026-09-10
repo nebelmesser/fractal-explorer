@@ -68,6 +68,8 @@ export class GpuMapRenderer {
   private readonly cpuLevelCap: number;
   private cpuWave = 0;
   private cpuWaveView: ViewRect | null = null;
+  private retired: GPUBuffer[] = [];
+  private retireWait: Promise<void> | null = null;
 
   private constructor(
     private readonly gpu: GpuContext,
@@ -174,6 +176,10 @@ export class GpuMapRenderer {
     moving = true,
     passive = false,
   ): void {
+    const previous = this.latest;
+    if (moving && !passive && previous && !previous.moving && this.cpuView(previous)) {
+      this.map.cpu?.cancelPending?.();
+    }
     const request = this.makeRequest(view, params, width, height, invert, median, moving, !passive);
     request.passive = passive;
     // Lesson follow pans retain the map-mode exposure so the background does not flicker.
@@ -439,6 +445,7 @@ export class GpuMapRenderer {
   private ensureParams(params: MapParams): void {
     const key = Object.keys(params).sort().map((name) => `${name}:${Number(params[name]).toPrecision(9)}`).join('|');
     if (key === this.paramsKey) return;
+    this.map.cpu?.cancelPending?.();
     this.paramsKey = key; this.generation += 1;
     const retired = [...this.tiles.values()];
     this.tiles.clear();
@@ -538,9 +545,8 @@ export class GpuMapRenderer {
     return Math.max(1, this.map.cpu?.concurrency ?? LOD_CPU_PARALLEL);
   }
   private cpuWaveMax(): number {
-    const stages = Math.ceil(
-      Math.log(LOD_CPU_TILE_PX / LOD_CPU_INITIAL_RES) / Math.log(LOD_CPU_REFINE_FACTOR),
-    );
+    const ratio = LOD_CPU_TILE_PX / LOD_CPU_INITIAL_RES;
+    const stages = ratio <= 1 ? 0 : Math.ceil(Math.log(ratio) / Math.log(LOD_CPU_REFINE_FACTOR));
     return Math.max(0, stages + LOD_CPU_RINGS - 2);
   }
   private cpuLevels(request: PresentRequest): number[] {
@@ -578,12 +584,9 @@ export class GpuMapRenderer {
     return Math.min(LOD_CPU_RINGS - 1, Math.floor(t * LOD_CPU_RINGS));
   }
   private cpuCap(cell: Cell, request: PresentRequest, wave = this.cpuWave): number {
-    // Start every tile at the density of the f32 preview. The innermost ring is
-    // allowed to reach 64×64 immediately; later waves move that detail outward.
     const steps = Math.max(0, wave - this.cpuRing(cell, request) + 1);
-    const maxSteps = Math.ceil(
-      Math.log(LOD_CPU_TILE_PX / LOD_CPU_INITIAL_RES) / Math.log(LOD_CPU_REFINE_FACTOR),
-    );
+    const ratio = LOD_CPU_TILE_PX / LOD_CPU_INITIAL_RES;
+    const maxSteps = ratio <= 1 ? 0 : Math.ceil(Math.log(ratio) / Math.log(LOD_CPU_REFINE_FACTOR));
     return Math.min(
       LOD_CPU_TILE_PX,
       LOD_CPU_INITIAL_RES * LOD_CPU_REFINE_FACTOR ** Math.min(maxSteps, steps),
@@ -722,7 +725,13 @@ export class GpuMapRenderer {
         jobs = this.nextCpuJobs(live, parallel);
       }
       if (!jobs.length) break;
-      await Promise.all(jobs.map((job) => this.computeCpu(job.cell, live, job.nextRes)));
+      const committed = await Promise.all(jobs.map((job) => {
+        const before = this.tiles.get(job.cell.key)?.cpuRes ?? 0;
+        return this.computeCpu(job.cell, live, job.nextRes).then(() => (
+          (this.tiles.get(job.cell.key)?.cpuRes ?? 0) > before
+        ));
+      }));
+      if (!committed.some(Boolean)) break;
       any = true;
     }
     return any;
@@ -796,7 +805,7 @@ export class GpuMapRenderer {
     cpuRes?: number,
   ): void {
     if (request.generation !== this.generation) {
-      buffers.uniform.destroy(); buffers.raw.destroy(); buffers.minmax.destroy();
+      this.retireBuffers([buffers.uniform, buffers.raw, buffers.minmax]);
       return;
     }
     const previous = this.tiles.get(cell.key);
@@ -873,12 +882,13 @@ export class GpuMapRenderer {
         request.params,
       );
     } catch (error) {
-      buffers.uniform.destroy(); buffers.raw.destroy(); buffers.minmax.destroy();
+      this.retireBuffers([buffers.uniform, buffers.raw, buffers.minmax]);
+      if (error instanceof Error && error.name === 'AbortError') return;
       throw error;
     }
     const latest = this.latest;
     if (!latest || latest.generation !== request.generation || !this.keyOnScreen(cell, latest)) {
-      buffers.uniform.destroy(); buffers.raw.destroy(); buffers.minmax.destroy();
+      this.retireBuffers([buffers.uniform, buffers.raw, buffers.minmax]);
       return;
     }
     let lo = Number.POSITIVE_INFINITY;
@@ -1015,7 +1025,10 @@ export class GpuMapRenderer {
   private async primeCpuExposure(request: PresentRequest): Promise<void> {
     const cpu = this.map.cpu;
     if (!cpu || request.generation !== this.generation) return;
-    const size = LOD_CPU_TILE_PX;
+    // This path gates the first frame of a direct CPU deep-link. A full 64×64
+    // survey can take seconds in max-iteration regions; 16×16 is enough to seed
+    // exposure, while visible tiles refine independently afterwards.
+    const size = LOD_CPU_INITIAL_RES;
     const stripCount = Math.max(1, Math.min(size, cpu.concurrency ?? 1));
     const spanY = viewSpanY(request.view);
     const strips = await Promise.all(Array.from({ length: stripCount }, (_, strip) => {
@@ -1158,7 +1171,29 @@ export class GpuMapRenderer {
     }
   }
 
-  private destroyTile(tile: Tile): void { tile.uniform.destroy(); tile.raw.destroy(); tile.minmax.destroy(); }
+  private destroyTile(tile: Tile): void {
+    this.retireBuffers([tile.uniform, tile.raw, tile.minmax]);
+  }
+
+  /** Drop GPU buffers only after in-flight compose/compute has finished. */
+  private retireBuffers(buffers: GPUBuffer[]): void {
+    this.retired.push(...buffers);
+    if (this.retireWait) return;
+    this.retireWait = (async () => {
+      try {
+        while (this.retired.length) {
+          const batch = this.retired;
+          this.retired = [];
+          await this.gpu.device.queue.onSubmittedWorkDone();
+          for (const buffer of batch) buffer.destroy();
+        }
+      } finally {
+        this.retireWait = null;
+        if (this.retired.length) this.retireBuffers([]);
+      }
+    })();
+  }
+
   private bind(layout: GPUBindGroupLayout, entries: GPUBindGroupEntry[]): GPUBindGroup { return this.gpu.device.createBindGroup({ layout, entries }); }
   private configureCanvas(width: number, height: number): void {
     const { canvas, context } = this.target;

@@ -14,8 +14,8 @@ export const PENDULUM_DT = 0.1;
 export const PENDULUM_FRICTION = 0;
 export const PENDULUM_MIN_ITER = 1000;
 export const PENDULUM_MAX_ITER = 8000;
-/** WASM workers for f64 tiles; leave one core for the UI thread. */
-export const PENDULUM_CPU_WORKERS = 16;
+/** Trig-heavy f64 workers. Leave enough CPU for WebGPU composition and input. */
+export const PENDULUM_CPU_WORKERS = 4;
 
 // On-map pendulum presentation.
 export const PROBE_SEP_PX = 168;
