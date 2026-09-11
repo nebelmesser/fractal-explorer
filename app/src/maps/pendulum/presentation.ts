@@ -422,7 +422,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     playAcc = 0;
     hangWatchAt = 0;
     hangEmitted = false;
-    hudUi?.syncPlay(false);
+    hudUi?.syncPlay(true);
     if (pixelGrid) {
       revealStep = 0;
       revealStride = probes.length;

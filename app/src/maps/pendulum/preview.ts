@@ -728,6 +728,23 @@ export function drawProbeCross(
   ctx.restore();
 }
 
+/** One hanging segment: same rod/bob ratios as the on-map pendulum. */
+export function drawOverlaySegment(
+  ctx: CanvasRenderingContext2D,
+  origin: { x: number; y: number },
+  tip: { x: number; y: number },
+  mass: number,
+  color: string,
+  style: OverlayStyle,
+): void {
+  const r = overlayBobRadius(mass, style);
+  const width = overlayRodWidth(style);
+  const cut = trimRod(origin.x, origin.y, tip.x, tip.y, 0, r);
+  const rods: OverlayRod[] = cut ? [{ ...cut, color, width }] : [];
+  const bobs: OverlayBob[] = [{ x: tip.x, y: tip.y, r, color }];
+  drawOverlayFigure(ctx, rods, bobs, style.alpha, style.large);
+}
+
 /** Hang point at the reticle. */
 export function drawProbePivot(
   ctx: CanvasRenderingContext2D,

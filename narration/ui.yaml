@@ -1,19 +1,20 @@
 page.title: Фрактал двойного маятника
 page.description: Каждый пиксель — опыт с двойным маятником. Приближайте живую фрактальную карту движения, неустойчивости и хаоса.
 settings: Настройки
-gpu.missing: Этому обозревателю нужен WebGPU. Карта не считается на CPU.
 zoom.in: Приблизить
 zoom.out: Отдалить
 zoom.reset: Сбросить вид
 map: Карта
 mode.pendulum: Маятник
 mode.map: Карта
+view_mode: Режим просмотра
 attachment_points: Точки крепления
-start_simulation: Запустить симуляцию
-restart_simulation: Перезапустить симуляцию
-stop_simulation: Остановить симуляцию
-drop_pendulums: Сбросить маятники
-drop: Сброс
+pin_multiple_pendulums: Закрепить несколько маятников
+restart_pendulums: Перезапустить маятники
+start_pendulum: Запустить маятник
+stop_pendulum: Остановить маятник
+remove_pendulums: Убрать маятники
+remove: Убрать
 frame_budget: Бюджет кадра
 reset_parameters: Сбросить параметры
 hint: |-
@@ -21,6 +22,10 @@ hint: |-
   Перетаскивайте карту, колесо или щипок меняют масштаб. Правый клик возвращает назад.
   Клавиши + / − тоже меняют масштаб.
 learn_more: Узнать больше →
+ask_chatgpt: Спросить у ChatGPT
+copy_prompt: Копировать промпт
+prompt_copied: Скопировано
+ask_prompt_tail: 'Введите свой вопрос об этой карте ниже:'
 language: Язык
 enable_sound: Включить звук
 param.L1: Длина 1

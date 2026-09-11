@@ -9,6 +9,11 @@ export const PENDULUM_L1 = 1;
 export const PENDULUM_L2 = 1;
 export const PENDULUM_M1 = 1;
 export const PENDULUM_M2 = 1;
+/** Pad range is symmetric around the default so (L, M) = (1, 1) sits at the center. */
+export const PENDULUM_L_MIN = 0;
+export const PENDULUM_L_MAX = 2;
+export const PENDULUM_M_MIN = 0;
+export const PENDULUM_M_MAX = 2;
 export const PENDULUM_G = 9.81;
 export const PENDULUM_DT = 0.1;
 export const PENDULUM_FRICTION = 0;
@@ -85,11 +90,14 @@ export const LESSON_MIN_SCALE_PX = 30;
 export const LESSON_UNIT_LENGTH = 1;
 /** Fraction of the inscribed radius around the pivot that L1 = L2 = 1 may occupy. */
 export const LESSON_VIEW_FILL = 0.9;
-/** Segment L/M pad: hang the rod from the top; bob diameter matches the old mass thumbs. */
-export const SEGMENT_PAD_INSET_PX = 20;
-export const SEGMENT_PAD_BAR_PX = 5;
+/** Segment L/M pad: hang the rod from the top using overlay bob/rod ratios. */
+export const SEGMENT_PAD_INSET_PX = 24;
+export const SEGMENT_PAD_PIVOT_R = 4;
 export const SEGMENT_PAD_LABEL_PX = 11;
 export const SEGMENT_PAD_LABEL_GAP_PX = 8;
+/** Stick to the default (center) while dragging within this CSS radius. */
+export const SEGMENT_PAD_MAGNET_PX = 14;
+export const SEGMENT_PAD_MAGNET_LEAVE_PX = 24;
 
 // "HIC SUNT DRACONES" sits in the black precision void behind sparse samples.
 export const DRAGON_FONT_START_PX = 28;

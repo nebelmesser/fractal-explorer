@@ -28,18 +28,21 @@ simulation-repeat:
 simulation-start:
   text: Let us launch pendulums from neighboring points. With the same start, the
     motion will be the same every time.
+ui.ask_chatgpt:
+  text: Ask ChatGPT
+  frozen: true
+ui.ask_prompt_tail:
+  text: "Enter your question about this map below:"
+  frozen: true
 ui.attachment_points:
   text: Attachment points
-ui.drop:
-  text: Drop
-ui.drop_pendulums:
-  text: Drop pendulums
+ui.copy_prompt:
+  text: Copy prompt
+  frozen: true
 ui.enable_sound:
   text: Enable sound
 ui.frame_budget:
   text: Frame budget
-ui.gpu.missing:
-  text: This browser requires WebGPU. The map is not computed on the CPU.
 ui.hint:
   text: |-
     Click or double-tap to zoom in.
@@ -51,6 +54,13 @@ ui.learn_more:
   text: Learn more →
 ui.map:
   text: Map
+  frozen: true
+ui.mode.map:
+  text: Map
+  frozen: true
+ui.mode.pendulum:
+  text: Pendulum
+  frozen: true
 ui.page.description:
   text: Every pixel is an experiment with a double pendulum. Zoom into a living
     fractal map of motion, instability, and chaos.
@@ -70,14 +80,37 @@ ui.param.M1:
   text: Mass 1
 ui.param.M2:
   text: Mass 2
+ui.param.neighbor_deg:
+  text: Angle difference, °
+  frozen: true
+ui.pin_multiple_pendulums:
+  text: Pin multiple pendulums
+  frozen: true
+ui.prompt_copied:
+  text: Copied
+  frozen: true
+ui.remove:
+  text: Remove
+  frozen: true
+ui.remove_pendulums:
+  text: Remove pendulums
+  frozen: true
 ui.reset_parameters:
   text: Reset parameters
-ui.restart_simulation:
-  text: Restart simulation
+ui.restart_pendulums:
+  text: Restart pendulums
+  frozen: true
 ui.settings:
   text: Settings
-ui.start_simulation:
-  text: Start simulation
+ui.start_pendulum:
+  text: Start pendulum
+  frozen: true
+ui.stop_pendulum:
+  text: Stop pendulum
+  frozen: true
+ui.view_mode:
+  text: View mode
+  frozen: true
 ui.zoom.in:
   text: Zoom in
 ui.zoom.out:

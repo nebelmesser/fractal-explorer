@@ -1,14 +1,21 @@
 import { onUiChange, t } from '../../i18n';
-import { SLIDER_THUMB_PX } from '../../constants';
 import { markPrefsDirty } from '../../viewer/prefs';
 import type { MapParam } from '../types';
 import type { PresentationHost } from '../../viewer/presentation';
 import {
-  SEGMENT_PAD_BAR_PX,
   SEGMENT_PAD_INSET_PX,
   SEGMENT_PAD_LABEL_GAP_PX,
   SEGMENT_PAD_LABEL_PX,
+  SEGMENT_PAD_MAGNET_LEAVE_PX,
+  SEGMENT_PAD_MAGNET_PX,
+  SEGMENT_PAD_PIVOT_R,
 } from './constants';
+import {
+  drawOverlaySegment,
+  drawProbePivot,
+  overlayBobRadius,
+  overlayRodWidth,
+} from './preview';
 import { theme } from './theme';
 
 const SEGMENTS = [
@@ -50,8 +57,18 @@ function unit(spec: MapParam, value: number): number {
   return Math.min(1, Math.max(0, (value - spec.min) / span));
 }
 
-function bobRadius(mass: number): number {
-  return (SLIDER_THUMB_PX * Math.sqrt(Math.max(mass, 1e-6))) / 2;
+function padStyle(plot: HTMLCanvasElement, length: MapParam): {
+  css: number;
+  inner: number;
+  pxPerLen: number;
+} {
+  const css = Math.max(1, Math.round(Math.min(plot.clientWidth, plot.clientHeight)));
+  const inner = Math.max(1, css - SEGMENT_PAD_INSET_PX * 2);
+  return {
+    css,
+    inner,
+    pxPerLen: inner / Math.max(length.max - length.min, 1e-6),
+  };
 }
 
 function formatValue(spec: MapParam, value: number): string {
@@ -89,6 +106,32 @@ function valuesAt(plot: HTMLCanvasElement, clientX: number, clientY: number, len
   };
 }
 
+function magnetize(
+  plot: HTMLCanvasElement,
+  lengthSpec: MapParam,
+  massSpec: MapParam,
+  length: number,
+  mass: number,
+  held: { length: boolean; mass: boolean },
+): { length: number; mass: number } {
+  const center = plotPoint(
+    plot,
+    unit(massSpec, massSpec.default),
+    unit(lengthSpec, lengthSpec.default),
+  );
+  const point = plotPoint(plot, unit(massSpec, mass), unit(lengthSpec, length));
+  const enter = SEGMENT_PAD_MAGNET_PX;
+  const leave = SEGMENT_PAD_MAGNET_LEAVE_PX;
+  const snapMass = Math.abs(point.x - center.x) <= (held.mass ? leave : enter);
+  const snapLength = Math.abs(point.y - center.y) <= (held.length ? leave : enter);
+  held.mass = snapMass;
+  held.length = snapLength;
+  return {
+    mass: snapMass ? massSpec.default : mass,
+    length: snapLength ? lengthSpec.default : length,
+  };
+}
+
 function drawCaption(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -108,7 +151,7 @@ function drawCaption(
 
 function drawPad(host: PresentationHost, pad: Pad): void {
   const { plot, length, mass } = pad;
-  const css = Math.max(1, Math.round(Math.min(plot.clientWidth, plot.clientHeight)));
+  const { css, pxPerLen } = padStyle(plot, length);
   if (css < 8) return;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const pixel = Math.round(css * dpr);
@@ -125,48 +168,27 @@ function drawPad(host: PresentationHost, pad: Pad): void {
   const color = pad.segment.tone === 'th1' ? pal.th1 : pal.th2;
   const L = host.controls.params[length.key] ?? length.default;
   const M = host.controls.params[mass.key] ?? mass.default;
+  const style = { large: true, pxPerLen, alpha: 1 };
   const bob = plotPoint(plot, unit(mass, M), unit(length, L));
-  const r = bobRadius(M);
-  const barW = SEGMENT_PAD_BAR_PX;
-  const top = barW / 2 + 1;
-  const rodTrim = Math.min(r, Math.max(0, bob.y - top) * 0.45);
-  const rodY1 = Math.max(top, bob.y - rodTrim);
+  const origin = { x: bob.x, y: SEGMENT_PAD_INSET_PX };
+  const r = overlayBobRadius(M, style);
+  const rodW = overlayRodWidth(style);
+  drawOverlaySegment(ctx, origin, bob, M, color, style);
+  drawProbePivot(ctx, origin, SEGMENT_PAD_PIVOT_R);
   const lengthText = formatValue(length, L);
   const massText = formatValue(mass, M);
 
   ctx.save();
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = pal.figureOutline;
-  ctx.lineWidth = barW + 2;
-  ctx.beginPath();
-  ctx.moveTo(bob.x, top);
-  ctx.lineTo(bob.x, rodY1);
-  ctx.stroke();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = barW;
-  ctx.beginPath();
-  ctx.moveTo(bob.x, top);
-  ctx.lineTo(bob.x, rodY1);
-  ctx.stroke();
-
-  ctx.fillStyle = pal.figureOutline;
-  ctx.beginPath();
-  ctx.arc(bob.x, bob.y, r + 1, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.arc(bob.x, bob.y, r, 0, Math.PI * 2);
-  ctx.fill();
-
   ctx.font = `${SEGMENT_PAD_LABEL_PX}px Rubik, sans-serif`;
   ctx.textBaseline = 'middle';
   const gap = SEGMENT_PAD_LABEL_GAP_PX;
   const textW = Math.max(ctx.measureText(lengthText).width, ctx.measureText(massText).width);
-  const clear = Math.max(r, barW / 2 + 1);
+  const clear = Math.max(r, rodW / 2 + 1, SEGMENT_PAD_PIVOT_R);
   const onRight = bob.x + clear + gap + textW + 4 <= css;
   ctx.textAlign = onRight ? 'left' : 'right';
   const labelX = onRight ? bob.x + clear + gap : bob.x - clear - gap;
-  drawCaption(ctx, lengthText, labelX, (top + rodY1) / 2, color, pal.figureOutline);
+  const rodMidY = origin.y + Math.max(0, bob.y - origin.y) * 0.5;
+  drawCaption(ctx, lengthText, labelX, rodMidY, color, pal.figureOutline);
   drawCaption(ctx, massText, labelX, bob.y, color, pal.figureOutline);
   ctx.restore();
 }
@@ -179,10 +201,18 @@ function syncAria(host: PresentationHost, pad: Pad): void {
   pad.plot.setAttribute('aria-label', `${t(pad.length.label)} ${formatValue(pad.length, L)}, ${t(pad.mass.label)} ${formatValue(pad.mass, M)}`);
 }
 
-function applyPoint(host: PresentationHost, pad: Pad, clientX: number, clientY: number, phase: 'live' | 'settle'): void {
+function applyPoint(
+  host: PresentationHost,
+  pad: Pad,
+  clientX: number,
+  clientY: number,
+  phase: 'live' | 'settle',
+  magnet: { length: boolean; mass: boolean },
+): void {
   host.resetTransition.cancel();
   const snapped = snapHome(host);
-  const next = valuesAt(pad.plot, clientX, clientY, pad.length, pad.mass);
+  const raw = valuesAt(pad.plot, clientX, clientY, pad.length, pad.mass);
+  const next = magnetize(pad.plot, pad.length, pad.mass, raw.length, raw.mass, magnet);
   const length = quantize(pad.length, next.length);
   const mass = quantize(pad.mass, next.mass);
   const prevL = host.controls.params[pad.length.key] ?? pad.length.default;
@@ -226,31 +256,34 @@ export function bindSegmentPads(host: PresentationHost): { sync(): void } {
     const plot = document.createElement('canvas');
     plot.className = 'segment-pad-plot';
     plot.tabIndex = 0;
-    frame.append(plot);
     const xLabel = document.createElement('span');
     xLabel.className = 'segment-pad-x';
     xLabel.dataset.i18n = mass.label;
-    card.append(yLabel, frame, xLabel);
+    frame.append(plot);
+    card.append(frame, yLabel, xLabel);
     stack.append(card);
     const pad: Pad = { segment, length, mass, root: card, plot, yLabel, xLabel };
     pads.push(pad);
 
     let dragging = false;
+    const magnet = { length: false, mass: false };
     plot.addEventListener('pointerdown', (event) => {
       if (event.button !== 0) return;
       event.preventDefault();
       dragging = true;
+      magnet.length = false;
+      magnet.mass = false;
       plot.setPointerCapture(event.pointerId);
-      applyPoint(host, pad, event.clientX, event.clientY, 'live');
+      applyPoint(host, pad, event.clientX, event.clientY, 'live', magnet);
     });
     plot.addEventListener('pointermove', (event) => {
       if (!dragging) return;
-      applyPoint(host, pad, event.clientX, event.clientY, 'live');
+      applyPoint(host, pad, event.clientX, event.clientY, 'live', magnet);
     });
     const endDrag = (event: PointerEvent): void => {
       if (!dragging) return;
       dragging = false;
-      applyPoint(host, pad, event.clientX, event.clientY, 'settle');
+      applyPoint(host, pad, event.clientX, event.clientY, 'settle', magnet);
     };
     plot.addEventListener('pointerup', endDrag);
     plot.addEventListener('pointercancel', endDrag);

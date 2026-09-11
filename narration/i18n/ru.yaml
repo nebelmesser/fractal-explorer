@@ -29,18 +29,18 @@ simulation-repeat:
 simulation-start:
   text: Запустим маятники из соседних точек. При одинаковом старте каждый раз
     получится одно и то же движение.
+ui.ask_chatgpt:
+  text: Спросить у ChatGPT
+ui.ask_prompt_tail:
+  text: "Введите свой вопрос об этой карте ниже:"
 ui.attachment_points:
   text: Точки крепления
-ui.drop:
-  text: Сброс
-ui.drop_pendulums:
-  text: Сбросить маятники
+ui.copy_prompt:
+  text: Копировать промпт
 ui.enable_sound:
   text: Включить звук
 ui.frame_budget:
   text: Бюджет кадра
-ui.gpu.missing:
-  text: Этому обозревателю нужен WebGPU. Карта не считается на CPU.
 ui.hint:
   text: >-
     Нажмите или дважды коснитесь, чтобы приблизить.
@@ -80,16 +80,26 @@ ui.param.M2:
   text: Масса 2
 ui.param.neighbor_deg:
   text: Разница углов, °
+ui.pin_multiple_pendulums:
+  text: Закрепить несколько маятников
+ui.prompt_copied:
+  text: Скопировано
+ui.remove:
+  text: Убрать
+ui.remove_pendulums:
+  text: Убрать маятники
 ui.reset_parameters:
   text: Сбросить параметры
-ui.restart_simulation:
-  text: Перезапустить симуляцию
+ui.restart_pendulums:
+  text: Перезапустить маятники
 ui.settings:
   text: Настройки
-ui.start_simulation:
-  text: Запустить симуляцию
-ui.stop_simulation:
-  text: Остановить симуляцию
+ui.start_pendulum:
+  text: Запустить маятник
+ui.stop_pendulum:
+  text: Остановить маятник
+ui.view_mode:
+  text: Режим просмотра
 ui.zoom.in:
   text: Приблизить
 ui.zoom.out:

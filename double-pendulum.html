@@ -8,14 +8,14 @@
     <link rel="canonical" href="https://nebelmesser.com/fractal/double-pendulum.html">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://nebelmesser.com/fractal/double-pendulum.html">
-    <meta property="og:title" content="Double Pendulum Fractal Explorer">
-    <meta property="og:description" content="Every pixel hides a double-pendulum experiment. Zoom into a live fractal map of motion, instability, and chaos.">
+    <meta property="og:title" data-i18n-content="page.title" content="Фрактал двойного маятника">
+    <meta property="og:description" data-i18n-content="page.description" content="Каждый пиксель — опыт с двойным маятником. Приближайте живую фрактальную карту движения, неустойчивости и хаоса.">
     <meta property="og:image" content="https://nebelmesser.com/fractal/img/preview.jpg">
     <meta property="og:image:width" content="1257">
     <meta property="og:image:height" content="1080">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Double Pendulum Fractal Explorer">
-    <meta name="twitter:description" content="Every pixel hides a double-pendulum experiment. Zoom into a live fractal map of motion, instability, and chaos.">
+    <meta name="twitter:title" data-i18n-content="page.title" content="Фрактал двойного маятника">
+    <meta name="twitter:description" data-i18n-content="page.description" content="Каждый пиксель — опыт с двойным маятником. Приближайте живую фрактальную карту движения, неустойчивости и хаоса.">
     <meta name="twitter:image" content="https://nebelmesser.com/fractal/img/preview.jpg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com">
@@ -31,6 +31,24 @@
   <link rel="stylesheet" href="./assets/explorer.css?v=sim-run">
 </head>
 <body>
+    <article id="ask-prompt" lang="en">
+        <p>The user is looking at the interactive double-pendulum map at https://nebelmesser.com/fractal/double-pendulum.html and does not need to know physics. Explain what is on this page. You already know chaos, the butterfly effect, and fractals — do not recap the textbook. Be brief, without talking down.</p>
+        <h2>The map</h2>
+        <p>Each point is a double pendulum released from rest at two initial angles (axes in degrees; θ₁ along the bottom, θ₂ along the right; 0° is straight down). Brightness is escape-time: the number of steps until |θ₁ − θ₁(0)| exceeds 2π (the first rod’s accumulated turn from the start, not a jump in one step). Lighter means it lasted longer; darker means it flipped sooner. Values are stretched as log(1 + steps) over the current view’s min/max, contrast shifts while zooming. The top of the map is 360°×360°. On screen you see one slice of a six-dimensional atlas: two more lengths and two masses in the settings; each parameter set changes the map pattern.</p>
+        <h2>Navigation and zoom</h2>
+        <p>You can pan and zoom: click or double-tap, wheel, pinch, +/− buttons. +/− and click step the frame side by exactly ×2. Right-click and reset view go back. Angles wrap: crossing the 360° edge lands in the same atlas. Levels by the frame’s short axis:</p>
+        <p>Overview ≈ 360° — the full period, a continuous GPU map in float32. Each doubling of zoom shows new boundaries; the picture is still solid.</p>
+        <p>Handoff to CPU float64 — when one distinct float32 value spans ~4 screen pixels (order of 10⁻³°…10⁻⁵°).</p>
+        <p>Floor ≈ 1.07×10⁻¹²° — the float64 limit (~3.4×10¹⁴ cells along the map’s side). Sample squares pull apart (from ~4 to 16 px), with black void between them and the label HIC SUNT DRACONES. The pattern did not end — only the ability to tell angles apart. Start here plants pendulums on those squares: neighboring still-distinct starts still live different lives.</p>
+        <h2>Accelerations and stepping</h2>
+        <p>Angular accelerations of a planar double pendulum from the Lagrangian (the classical formulas; angles from the downward vertical). Integrator: semi-implicit Euler (Euler–Cromer) with linear friction −Fω: ω first, then θ. If the denominator is nearly zero, that step’s acceleration is set to zero. Defaults: M1 = M2 = L1 = L2 = 1.0, F = 0, dt = 0.1, g = 9.81. The map and the live pendulums use the same scheme.</p>
+        <h2>Start and detach</h2>
+        <p>A grid of pendulums on the visible points. Detach (display only; the map does not use it): if in one step |θ₁(t+dt) − θ₁(t)| ≥ 720° (two full turns in dt), the upper pivot is released. The masses then fall in Cartesian coordinates with gravity g downward, friction −F v, and the constraint |r₂ − r₁| = L₂. A real hinge does not break this way. It is a coarse threshold for a large dt: in dark points ω₁ grows fast and the step crosses the threshold sooner; light points swing for a long time without that jump and stay on the pin, tracing the light pattern.</p>
+        <h2>Pendulum mode</h2>
+        <p>Map / Pendulum toggle at the top. Instead of a grid on the map, one large double pendulum fills the frame (upper rod red, lower rod blue). Grab a bob or a rod and pose it however you like: while dragging there is no physics, only pose. The map center is those two angles: move the pendulum and the map follows that point; pan the map and the pendulum takes the angles of the frame center. After Start, two translucent neighbors appear — starts from adjacent pixels at the current zoom. Start integrates the same scheme for all three at once, so nearly identical angles can be seen to diverge quickly. While they swing, the map does not follow the motion; it stays on the starting point. Same 720°/step detach threshold, but no flight: the pendulum simply returns to the pose of the map center.</p>
+        <h2>Point</h2>
+        <p>The map’s purpose is to show that even at the computational limit, at the floor, pendulums from neighboring points still behave differently. The equations are exact and a rerun is reproducible; you still cannot predict a particular instance, because the needed point cannot be told apart, and the neighbor already has another outcome.</p>
+    </article>
     <select id="narration-locale" data-viewer-ui data-i18n-aria="language" aria-label="Язык">
         <option value="ru">Русский</option>
         <option value="en">English</option>
@@ -39,11 +57,7 @@
         <span></span><span></span><span></span>
     </button>
 
-    <div id="gpu-missing" hidden data-i18n="gpu.missing">
-        Этому обозревателю нужен WebGPU. Карта не считается на CPU.
-    </div>
-
-    <div id="mode-switch" data-viewer-ui role="tablist" aria-label="Режим просмотра">
+    <div id="mode-switch" data-viewer-ui role="tablist" data-i18n-aria="view_mode" aria-label="Режим просмотра">
         <button type="button" id="mode-pendulum" role="tab" aria-selected="false" data-i18n="mode.pendulum">Маятник</button>
         <button type="button" id="mode-map" class="is-active" role="tab" aria-selected="true" data-i18n="mode.map">Карта</button>
     </div>
@@ -63,7 +77,7 @@
         </aside>
         <div id="map-clip">
             <div id="map-shift">
-                <canvas id="map" class="map-view is-front" width="256" height="256" aria-label="Карта"></canvas>
+                <canvas id="map" class="map-view is-front" width="256" height="256" data-i18n-aria="map" aria-label="Карта"></canvas>
             </div>
             <canvas id="map-back" class="map-view map-pending" width="256" height="256" aria-hidden="true"></canvas>
             <svg id="map-void" aria-hidden="true">
@@ -84,17 +98,28 @@
                 <div class="probe-count-thumb" id="probe-count-thumb"></div>
             </div>
         </div>
-        <button type="button" id="probe-start" aria-label="Запустить симуляцию">
+        <button type="button" id="probe-start" data-i18n-aria="pin_multiple_pendulums" aria-label="Закрепить несколько маятников">
+            <svg class="icon-grid" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="5" cy="5" r="1.8" fill="currentColor" />
+                <circle cx="12" cy="5" r="1.8" fill="currentColor" />
+                <circle cx="19" cy="5" r="1.8" fill="currentColor" />
+                <circle cx="5" cy="12" r="1.8" fill="currentColor" />
+                <circle cx="12" cy="12" r="1.8" fill="currentColor" />
+                <circle cx="19" cy="12" r="1.8" fill="currentColor" />
+                <circle cx="5" cy="19" r="1.8" fill="currentColor" />
+                <circle cx="12" cy="19" r="1.8" fill="currentColor" />
+                <circle cx="19" cy="19" r="1.8" fill="currentColor" />
+            </svg>
             <svg class="icon-play" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M8 5.2v13.6L19 12 8 5.2Z" fill="currentColor" />
             </svg>
             <svg class="icon-pause" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M7 5h4v14H7zM14 5h4v14h-4z" fill="currentColor" />
             </svg>
-            <span class="probe-start-label">Запустить симуляцию</span>
+            <span class="probe-start-label" data-i18n="pin_multiple_pendulums">Закрепить несколько маятников</span>
         </button>
-        <button type="button" id="probe-drop" hidden aria-label="Сбросить маятники">
-            <span class="probe-start-label">Сброс</span>
+        <button type="button" id="probe-drop" hidden data-i18n-aria="remove_pendulums" aria-label="Убрать маятники">
+            <span class="probe-start-label" data-i18n="remove">Убрать</span>
         </button>
     </div>
 
@@ -120,6 +145,21 @@
         <a class="learn-more" href="/fractal/" data-i18n="learn_more">Узнать больше →</a>
     </div>
 
+    <div id="ask-bar" data-viewer-ui>
+        <a id="ask-chatgpt" href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer">
+            <span data-i18n="ask_chatgpt">Спросить у ChatGPT</span>
+        </a>
+        <button type="button" id="ask-copy" data-i18n-aria="copy_prompt" aria-label="Копировать промпт">
+            <svg class="icon-copy" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="8" y="3" width="13" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2" />
+                <rect x="3" y="8" width="13" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2" />
+            </svg>
+            <svg class="icon-copied" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    d="M5 12.5 9.5 17 19 7" />
+            </svg>
+        </button>
+    </div>
     <a id="site-credit" href="https://nebelmesser.com" data-viewer-ui>Nebelmesser, 2026</a>
 </body>
 </html>

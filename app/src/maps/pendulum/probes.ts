@@ -25,7 +25,7 @@ export type ProbeStep = {
   spacing: number;
 };
 
-const CHROME_IDS = ['map-hud', 'sidebar', 'menu-toggle', 'ui-container', 'narration-locale'] as const;
+const CHROME_IDS = ['map-hud', 'sidebar', 'menu-toggle', 'ui-container', 'narration-locale', 'ask-bar'] as const;
 const CHROME_PAD = 10;
 /** 0–1–2 sit farther apart than the later grid steps. */
 const EARLY_GAP = 1.85;
@@ -346,16 +346,16 @@ export function bindProbeHud(
     startEl.disabled = false;
     startEl.classList.toggle('is-playing', playing);
     startEl.classList.toggle('is-lesson', lessonMode);
-    const startKey = lessonMode && playing
-      ? 'stop_simulation'
-      : (playing ? 'restart_simulation' : 'start_simulation');
+    const startKey = lessonMode
+      ? (playing ? 'stop_pendulum' : 'start_pendulum')
+      : (playing ? 'restart_pendulums' : 'pin_multiple_pendulums');
     startEl.setAttribute('aria-label', t(startKey));
     const startLabel = startEl.querySelector('.probe-start-label');
     if (startLabel) startLabel.textContent = t(startKey);
     dropEl.hidden = !dropVisible;
-    dropEl.setAttribute('aria-label', t('drop_pendulums'));
+    dropEl.setAttribute('aria-label', t('remove_pendulums'));
     const dropLabel = dropEl.querySelector('.probe-start-label');
-    if (dropLabel) dropLabel.textContent = t('drop');
+    if (dropLabel) dropLabel.textContent = t('remove');
     for (const mark of ticksEl.querySelectorAll<HTMLElement>('[data-index]')) {
       mark.classList.toggle('is-on', Number(mark.dataset.index) === hud.index);
     }

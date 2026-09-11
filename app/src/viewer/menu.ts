@@ -226,7 +226,7 @@ export function bindMenu(
     return target instanceof Node && (
       uiContainer.contains(target)
       || menuToggle.contains(target)
-      || (target instanceof Element && Boolean(target.closest('#narration-locale')))
+      || (target instanceof Element && Boolean(target.closest('#narration-locale, #mode-switch')))
     );
   }
 

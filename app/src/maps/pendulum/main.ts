@@ -5,6 +5,7 @@ import { bootViewer } from '../../viewer/runtime';
 import type { ViewerSignals } from '../../viewer/presentation';
 import { pendulumPresentation } from './presentation';
 import { pendulumMap } from './spec';
+import { bindAskPrompt } from './ask';
 
 function narrationEnabled(): boolean {
   return new URLSearchParams(location.search).get('narration') === '1';
@@ -48,6 +49,7 @@ async function main(): Promise<void> {
     };
   }
   await bootViewer(pendulumMap, pendulumPresentation, signals);
+  bindAskPrompt();
   applyUi();
 }
 

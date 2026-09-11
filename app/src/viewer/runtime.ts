@@ -115,7 +115,6 @@ export async function bootViewer(
   presentationFactory?: MapPresentationFactory,
   signals?: ViewerSignals,
 ): Promise<void> {
-  const gpuMissing = document.getElementById('gpu-missing');
   const mapCanvas = document.getElementById('map') as HTMLCanvasElement;
   const mapBack = document.getElementById('map-back') as HTMLCanvasElement;
   const mapClip = document.getElementById('map-clip');
@@ -136,7 +135,7 @@ export async function bootViewer(
 
   const gpu = await requestGpu();
   if (!gpu && !mapDef.cpu) {
-    if (gpuMissing) gpuMissing.hidden = false;
+    console.error('No GPU and no CPU map path');
     return;
   }
   const minSpan = mapDef.cpu ? MIN_VIEW_SPAN_F64 : MIN_VIEW_SPAN;
@@ -211,11 +210,7 @@ export async function bootViewer(
     } catch (error) {
       console.error(error);
       if (!mapDef.cpu) {
-        if (gpuMissing) {
-          gpuMissing.hidden = false;
-          gpuMissing.removeAttribute('data-i18n');
-          gpuMissing.textContent = error instanceof Error ? error.message : String(error);
-        }
+        console.error(error);
         return;
       }
       // A failed WebGPU context locks that canvas to its original context
@@ -881,12 +876,6 @@ export async function bootViewer(
       }
     } catch (error) {
       console.error(error);
-      const hint = document.getElementById('gpu-missing');
-      if (hint && frontCanvas.dataset.ready !== '1') {
-        hint.hidden = false;
-        hint.removeAttribute('data-i18n');
-        hint.textContent = error instanceof Error ? error.message : String(error);
-      }
     } finally {
       rendering = false;
       renderingLive = false;
