@@ -5,15 +5,15 @@ export const PENDULUM_VIEW_CENTER = -Math.PI;
 export const PENDULUM_TILE_HALF = Math.PI * 2;
 
 // Physics defaults. Keep these synchronized with crates/map_core/src/constants.rs.
-export const PENDULUM_L1 = 1;
-export const PENDULUM_L2 = 1;
-export const PENDULUM_M1 = 1;
-export const PENDULUM_M2 = 1;
-/** Pad range is symmetric around the default so (L, M) = (1, 1) sits at the center. */
+export const PENDULUM_L1 = 0.681;
+export const PENDULUM_L2 = 0.681;
+export const PENDULUM_M1 = 0.681;
+export const PENDULUM_M2 = 0.681;
+/** Pad range is symmetric around the default so it sits at the center. */
 export const PENDULUM_L_MIN = 0;
-export const PENDULUM_L_MAX = 2;
+export const PENDULUM_L_MAX = 1.362;
 export const PENDULUM_M_MIN = 0;
-export const PENDULUM_M_MAX = 2;
+export const PENDULUM_M_MAX = 1.362;
 export const PENDULUM_G = 9.81;
 export const PENDULUM_DT = 0.1;
 export const PENDULUM_FRICTION = 0;
@@ -91,16 +91,17 @@ export const LESSON_NEIGHBOR_ALPHA = 0.52;
 export const LESSON_POINTER_SLOP_PX = 2;
 export const LESSON_MIN_SCALE_PX = 30;
 /** Reference rod length the lesson is scaled to fit. Actual L1/L2 stay proportional. */
-export const LESSON_UNIT_LENGTH = 1;
-/** Fraction of the inscribed radius around the pivot that L1 = L2 = 1 may occupy. */
+export const LESSON_UNIT_LENGTH = PENDULUM_L_MAX;
+/** Fraction of the inscribed radius around the pivot that max L1 = L2 may occupy. */
 export const LESSON_VIEW_FILL = 0.9;
-/** Segment L/M pad: hang the rod from the top using overlay bob/rod ratios. */
+/** Segment L/M pad: hang the rod from the top of the square. */
 export const SEGMENT_PAD_INSET_PX = 24;
-export const SEGMENT_PAD_PIVOT_R = 4;
 export const SEGMENT_PAD_LABEL_PX = 11;
 export const SEGMENT_PAD_LABEL_GAP_PX = 8;
-/** Snap to the default only inside this L/M box around the pad center. */
+/** Snap to a grid line when within this L/M distance. */
 export const SEGMENT_PAD_MAGNET = 0.05;
+/** Magnet lines between min and max, inclusive. Default sits on the center line. */
+export const SEGMENT_PAD_GRID_DIVS = 4;
 
 // "HIC SUNT DRACONES" sits in the black precision void behind sparse samples.
 export const DRAGON_FONT_START_PX = 28;

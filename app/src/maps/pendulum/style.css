@@ -10,6 +10,8 @@
     --hover: #555;
     --danger: #f88;
     --tile: #111;
+    --pad-grid: rgba(255, 255, 255, 0.14);
+    --pad-grid-center: rgba(255, 255, 255, 0.32);
     --preview-bg: #111;
     --preview-bg-live: #000;
     --preview-axis: #8a8a8a;
@@ -444,6 +446,7 @@ canvas.map-view.map-pending {
     border: 1px solid var(--panel-border);
     border-radius: 6px;
     background: var(--tile);
+    overflow: hidden;
 }
 
 .segment-pad-plot:focus-visible {

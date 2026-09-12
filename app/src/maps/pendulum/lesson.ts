@@ -8,6 +8,7 @@ import {
 import type { PresentationHost } from '../../viewer/presentation';
 import {
   drawOverlayPendulum,
+  drawOverlayPendulumGhosts,
   drawProbePivot,
   overlayBobRadius,
   overlayRodWidth,
@@ -26,6 +27,7 @@ import {
   LESSON_VIEW_FILL,
   LESSON_VIEW_IDLE_MS,
   PENDULUM_DT,
+  PENDULUM_M_MAX,
   PROBE_LARGE_BOB_PER_LEN,
   PROBE_OUTLINE_PX,
   PROBE_PLAY_FPS,
@@ -250,14 +252,22 @@ export class PendulumLesson {
     const origin = this.origin(width, height);
     const scale = this.scale(width, height);
     if (this.neighborsVisible && !this.drag) {
-      for (const neighbor of this.neighbors) {
-        drawOverlayPendulum(ctx, origin, neighbor.th1, neighbor.th2, this.params(), {
+      drawOverlayPendulumGhosts(
+        ctx,
+        origin,
+        this.neighbors,
+        this.params(),
+        {
           large: true,
           pxPerLen: scale,
           alpha: LESSON_NEIGHBOR_ALPHA,
           color: theme().lessonNeighbor,
-        });
-      }
+          outline: false,
+        },
+        width,
+        height,
+        dpr,
+      );
     }
     drawOverlayPendulum(ctx, origin, this.th1, this.th2, this.params(), {
       large: true,
@@ -388,10 +398,11 @@ export class PendulumLesson {
   private scale(width = this.canvas.clientWidth, height = this.canvas.clientHeight): number {
     const available = Math.min(width, height) * 0.5 * LESSON_VIEW_FILL;
     const refReach = LESSON_UNIT_LENGTH * 2;
+    const bobPad = PROBE_LARGE_BOB_PER_LEN * Math.sqrt(PENDULUM_M_MAX);
     const pad = PROBE_OUTLINE_PX * 2;
     return Math.max(
       LESSON_MIN_SCALE_PX,
-      (available - pad) / (refReach + PROBE_LARGE_BOB_PER_LEN),
+      (available - pad) / (refReach + bobPad),
     );
   }
 

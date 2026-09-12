@@ -14,6 +14,8 @@ export type OverlayStyle = {
   pxPerLen: number;
   alpha: number;
   color?: string;
+  /** Fat black outline. Defaults to `large`. Ghosts skip it. */
+  outline?: boolean;
 };
 
 export type OverlaySight = {
@@ -94,13 +96,14 @@ function drawOverlayFigure(
   alpha: number,
   large: boolean,
   sight?: OverlaySight,
+  outline?: boolean,
 ): void {
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   const a = Math.max(0, Math.min(1, alpha));
   ctx.globalAlpha = a;
-  if (large) {
+  if (outline ?? large) {
     const pal = theme();
     ctx.strokeStyle = pal.figureOutline;
     ctx.fillStyle = pal.figureOutline;
@@ -354,7 +357,53 @@ export function drawOverlayPendulum(
     ],
     [{ x: x1, y: y1 }, { x: x2, y: y2 }],
   );
-  drawOverlayFigure(ctx, rods, bobs, style.alpha, style.large, sight);
+  drawOverlayFigure(ctx, rods, bobs, style.alpha, style.large, sight, style.outline);
+}
+
+let ghostLayer: HTMLCanvasElement | null = null;
+let ghostLayerCtx: CanvasRenderingContext2D | null = null;
+
+function ghostContext(cssW: number, cssH: number, dpr: number): CanvasRenderingContext2D {
+  const w = Math.max(1, Math.round(cssW * dpr));
+  const h = Math.max(1, Math.round(cssH * dpr));
+  if (!ghostLayer || !ghostLayerCtx) {
+    ghostLayer = document.createElement('canvas');
+    ghostLayerCtx = ghostLayer.getContext('2d');
+    if (!ghostLayerCtx) throw new Error('ghost layer');
+  }
+  if (ghostLayer.width !== w || ghostLayer.height !== h) {
+    ghostLayer.width = w;
+    ghostLayer.height = h;
+  } else {
+    ghostLayerCtx.setTransform(1, 0, 0, 1, 0, 0);
+    ghostLayerCtx.clearRect(0, 0, w, h);
+  }
+  ghostLayerCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return ghostLayerCtx;
+}
+
+/** Neighbor poses as one flat gray silhouette, then a single transparent blit. */
+export function drawOverlayPendulumGhosts(
+  dest: CanvasRenderingContext2D,
+  origin: { x: number; y: number },
+  poses: readonly { th1: number; th2: number }[],
+  params: MapParams,
+  style: OverlayStyle,
+  width: number,
+  height: number,
+  dpr: number,
+): void {
+  if (poses.length === 0) return;
+  const layer = ghostContext(width, height, dpr);
+  const flat: OverlayStyle = { ...style, alpha: 1, outline: false };
+  for (const pose of poses) {
+    drawOverlayPendulum(layer, origin, pose.th1, pose.th2, params, flat);
+  }
+  dest.save();
+  dest.setTransform(1, 0, 0, 1, 0, 0);
+  dest.globalAlpha = Math.max(0, Math.min(1, style.alpha));
+  dest.drawImage(ghostLayer!, 0, 0);
+  dest.restore();
 }
 
 let fieldLive = new Uint8Array(0);

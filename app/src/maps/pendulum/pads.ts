@@ -3,15 +3,14 @@ import { markPrefsDirty } from '../../viewer/prefs';
 import type { MapParam } from '../types';
 import type { PresentationHost } from '../../viewer/presentation';
 import {
+  SEGMENT_PAD_GRID_DIVS,
   SEGMENT_PAD_INSET_PX,
   SEGMENT_PAD_LABEL_GAP_PX,
   SEGMENT_PAD_LABEL_PX,
   SEGMENT_PAD_MAGNET,
-  SEGMENT_PAD_PIVOT_R,
 } from './constants';
 import {
   drawOverlaySegment,
-  drawProbePivot,
   overlayBobRadius,
   overlayRodWidth,
 } from './preview';
@@ -44,10 +43,15 @@ function requireParam(host: PresentationHost, key: string): MapParam {
   return spec;
 }
 
+function stepDecimals(step: number): number {
+  if (!(step > 0)) return 2;
+  return Math.max(0, Math.min(6, Math.ceil(-Math.log10(step) - 1e-9)));
+}
+
 function quantize(spec: MapParam, value: number): number {
   const stepped = spec.min + Math.round((value - spec.min) / spec.step) * spec.step;
   const clamped = Math.min(spec.max, Math.max(spec.min, stepped));
-  return spec.kind === 'int' ? Math.round(clamped) : Number(clamped.toFixed(2));
+  return spec.kind === 'int' ? Math.round(clamped) : Number(clamped.toFixed(stepDecimals(spec.step)));
 }
 
 function unit(spec: MapParam, value: number): number {
@@ -71,7 +75,7 @@ function padStyle(plot: HTMLCanvasElement, length: MapParam): {
 }
 
 function formatValue(spec: MapParam, value: number): string {
-  return spec.kind === 'int' ? String(Math.round(value)) : Number(value).toFixed(2);
+  return spec.kind === 'int' ? String(Math.round(value)) : Number(value).toFixed(stepDecimals(spec.step));
 }
 
 function snapHome(host: PresentationHost): boolean {
@@ -105,6 +109,27 @@ function valuesAt(plot: HTMLCanvasElement, clientX: number, clientY: number, len
   };
 }
 
+function magnetStops(spec: MapParam): number[] {
+  const stops: number[] = [];
+  for (let i = 0; i <= SEGMENT_PAD_GRID_DIVS; i++) {
+    stops.push(quantize(spec, spec.min + (spec.max - spec.min) * (i / SEGMENT_PAD_GRID_DIVS)));
+  }
+  return stops;
+}
+
+function snapToStops(value: number, stops: number[], reach: number): number {
+  let best = value;
+  let bestDist = reach;
+  for (const stop of stops) {
+    const d = Math.abs(value - stop);
+    if (d <= bestDist) {
+      best = stop;
+      bestDist = d;
+    }
+  }
+  return best;
+}
+
 function magnetize(
   lengthSpec: MapParam,
   massSpec: MapParam,
@@ -112,10 +137,39 @@ function magnetize(
   mass: number,
 ): { length: number; mass: number } {
   const reach = SEGMENT_PAD_MAGNET;
-  if (Math.abs(mass - massSpec.default) > reach || Math.abs(length - lengthSpec.default) > reach) {
-    return { length, mass };
+  return {
+    length: snapToStops(length, magnetStops(lengthSpec), reach),
+    mass: snapToStops(mass, magnetStops(massSpec), reach),
+  };
+}
+
+function drawPadGrid(
+  ctx: CanvasRenderingContext2D,
+  plot: HTMLCanvasElement,
+  length: MapParam,
+  mass: MapParam,
+  css: number,
+  pal: ReturnType<typeof theme>,
+): void {
+  ctx.save();
+  ctx.lineWidth = 1;
+  for (const m of magnetStops(mass)) {
+    const x = Math.round(plotPoint(plot, unit(mass, m), 0).x) + 0.5;
+    ctx.strokeStyle = Math.abs(m - mass.default) < 1e-9 ? pal.padGridCenter : pal.padGrid;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, css);
+    ctx.stroke();
   }
-  return { mass: massSpec.default, length: lengthSpec.default };
+  for (const L of magnetStops(length)) {
+    const y = Math.round(plotPoint(plot, 0, unit(length, L)).y) + 0.5;
+    ctx.strokeStyle = Math.abs(L - length.default) < 1e-9 ? pal.padGridCenter : pal.padGrid;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(css, y);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawCaption(
@@ -149,18 +203,18 @@ function drawPad(host: PresentationHost, pad: Pad): void {
   if (!ctx) return;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, css, css);
-
   const pal = theme();
+  drawPadGrid(ctx, plot, length, mass, css, pal);
+
   const color = pad.segment.tone === 'th1' ? pal.th1 : pal.th2;
   const L = host.controls.params[length.key] ?? length.default;
   const M = host.controls.params[mass.key] ?? mass.default;
   const style = { large: true, pxPerLen, alpha: 1 };
   const bob = plotPoint(plot, unit(mass, M), unit(length, L));
-  const origin = { x: bob.x, y: SEGMENT_PAD_INSET_PX };
+  const origin = { x: bob.x, y: 0 };
   const r = overlayBobRadius(M, style);
   const rodW = overlayRodWidth(style);
   drawOverlaySegment(ctx, origin, bob, M, color, style);
-  drawProbePivot(ctx, origin, SEGMENT_PAD_PIVOT_R);
   const lengthText = formatValue(length, L);
   const massText = formatValue(mass, M);
 
@@ -169,11 +223,11 @@ function drawPad(host: PresentationHost, pad: Pad): void {
   ctx.textBaseline = 'middle';
   const gap = SEGMENT_PAD_LABEL_GAP_PX;
   const textW = Math.max(ctx.measureText(lengthText).width, ctx.measureText(massText).width);
-  const clear = Math.max(r, rodW / 2 + 1, SEGMENT_PAD_PIVOT_R);
+  const clear = Math.max(r, rodW / 2 + 1);
   const onRight = bob.x + clear + gap + textW + 4 <= css;
   ctx.textAlign = onRight ? 'left' : 'right';
   const labelX = onRight ? bob.x + clear + gap : bob.x - clear - gap;
-  const rodMidY = origin.y + Math.max(0, bob.y - origin.y) * 0.5;
+  const rodMidY = Math.max(0, bob.y) * 0.5;
   drawCaption(ctx, lengthText, labelX, rodMidY, color, pal.figureOutline);
   drawCaption(ctx, massText, labelX, bob.y, color, pal.figureOutline);
   ctx.restore();

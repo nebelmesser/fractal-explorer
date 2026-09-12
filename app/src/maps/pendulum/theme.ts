@@ -22,6 +22,8 @@ export type Theme = {
   lessonRing1: string;
   lessonRing2: string;
   lessonNeighbor: string;
+  padGrid: string;
+  padGridCenter: string;
 };
 
 let cachedTheme: Theme | null = null;
@@ -45,6 +47,8 @@ export function theme(): Theme {
     lessonRing1: cssVar('--lesson-ring-1'),
     lessonRing2: cssVar('--lesson-ring-2'),
     lessonNeighbor: cssVar('--lesson-neighbor'),
+    padGrid: cssVar('--pad-grid'),
+    padGridCenter: cssVar('--pad-grid-center'),
   };
   return cachedTheme;
 }
