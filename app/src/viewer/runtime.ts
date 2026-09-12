@@ -913,18 +913,71 @@ export async function bootViewer(
     presentation.resize();
   }
 
+  const docFs = document as Document & {
+    webkitFullscreenElement?: Element | null;
+    webkitExitFullscreen?: () => void;
+  };
+
+  function fullscreenElement(): Element | null {
+    return document.fullscreenElement ?? docFs.webkitFullscreenElement ?? null;
+  }
+
+  function requestPageFullscreen(): Promise<void> {
+    const el = document.documentElement as HTMLElement & {
+      webkitRequestFullscreen?: () => void;
+    };
+    if (el.requestFullscreen) return el.requestFullscreen();
+    if (el.webkitRequestFullscreen) {
+      el.webkitRequestFullscreen();
+      return new Promise((resolve) => window.setTimeout(resolve, 80));
+    }
+    return Promise.reject();
+  }
+
+  function exitPageFullscreen(): Promise<void> {
+    if (document.exitFullscreen) return document.exitFullscreen();
+    if (docFs.webkitExitFullscreen) {
+      docFs.webkitExitFullscreen();
+      return Promise.resolve();
+    }
+    return Promise.resolve();
+  }
+
+  function onFullscreenChange(): void {
+    setChromeHidden(Boolean(fullscreenElement()));
+  }
+
+  document.addEventListener('fullscreenchange', onFullscreenChange);
+  document.addEventListener('webkitfullscreenchange' as 'fullscreenchange', onFullscreenChange);
+
   window.addEventListener('keydown', (event) => {
     if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
-    const toggle = key === 'f' || event.code === 'KeyF' || key === 'Escape';
-    if (!toggle) return;
-    if (key === 'Escape' && document.getElementById('ui-container')?.classList.contains('is-open')) {
+    if (key === 'Escape') {
+      if (document.getElementById('ui-container')?.classList.contains('is-open')) {
+        event.preventDefault();
+        presentation.dismiss();
+        return;
+      }
+      if (fullscreenElement()) return;
+      if (typingInField()) return;
       event.preventDefault();
-      presentation.dismiss();
+      setChromeHidden(!document.body.classList.contains('is-chrome-hidden'));
       return;
     }
-    if (typingInField() && key !== 'Escape') return;
+    if (key !== 'f' && event.code !== 'KeyF') return;
+    if (typingInField()) return;
     event.preventDefault();
-    setChromeHidden(!document.body.classList.contains('is-chrome-hidden'));
+    if (fullscreenElement()) {
+      void exitPageFullscreen();
+      return;
+    }
+    void requestPageFullscreen().then(() => {
+      if (!fullscreenElement()) {
+        setChromeHidden(!document.body.classList.contains('is-chrome-hidden'));
+      }
+    }).catch(() => {
+      setChromeHidden(!document.body.classList.contains('is-chrome-hidden'));
+    });
   });
 }

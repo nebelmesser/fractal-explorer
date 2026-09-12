@@ -106,6 +106,8 @@ export function chromeRects(clip: HTMLElement): CssRect[] {
     if (!el) continue;
     if (id === 'ui-container' && !el.classList.contains('is-open')) continue;
     if (el.hidden) continue;
+    const vis = getComputedStyle(el);
+    if (vis.display === 'none' || vis.visibility === 'hidden') continue;
     const r = el.getBoundingClientRect();
     if (!(r.width > 0 && r.height > 0)) continue;
     out.push({

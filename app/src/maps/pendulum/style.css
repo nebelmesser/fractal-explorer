@@ -43,6 +43,8 @@
     --ctrl-radius: 8px;
     --ctrl-gap: 10px;
     --ctrl-inset: 12px;
+    --burger-bar: 18px;
+    --burger-gap: 5px;
 }
 
 * { box-sizing: border-box; }
@@ -76,6 +78,11 @@ body.is-chrome-hidden #map-scale-y,
 body.is-chrome-hidden #map-axes {
     visibility: hidden !important;
     pointer-events: none !important;
+}
+
+body.is-menu-hud-hidden #map-hud {
+    visibility: hidden;
+    pointer-events: none;
 }
 
 #stage {
@@ -277,15 +284,15 @@ canvas.map-view.map-pending {
     --pad-legend-gap: 8px;
     display: none;
     position: absolute;
-    top: 58px;
-    right: 10px;
+    top: calc(max(var(--ctrl-inset), env(safe-area-inset-top)) + var(--ctrl-size) + var(--ctrl-gap));
+    right: max(10px, env(safe-area-inset-right));
     background: var(--overlay);
     padding: 15px;
     border-radius: 8px;
     border: 1px solid var(--panel-border);
     user-select: none;
     width: min(280px, calc(100vw - 20px));
-    max-height: calc(100% - 80px);
+    max-height: calc(100dvh - max(var(--ctrl-inset), env(safe-area-inset-top)) - var(--ctrl-size) - var(--ctrl-gap) - max(12px, env(safe-area-inset-bottom)) - var(--ctrl-size) - 8px);
     overflow-y: auto;
     z-index: 4;
     touch-action: auto;
@@ -486,6 +493,8 @@ canvas.map-view.map-pending {
     line-height: 1.5;
     white-space: pre-line;
 }
+
+.hint.is-mobile { display: none; }
 
 .learn-more {
     display: inline-block;
@@ -893,14 +902,14 @@ body.is-pendulum-mode #probe-overlay {
     align-items: center;
     justify-content: center;
     flex-direction: column;
-    gap: 5px;
+    gap: var(--burger-gap);
     touch-action: auto;
 }
 
 #menu-toggle span {
     display: block;
     position: relative;
-    width: 18px;
+    width: var(--burger-bar);
     height: 2px;
     background: var(--fg);
     border-radius: 1px;
@@ -924,9 +933,9 @@ body.is-pendulum-mode #probe-overlay {
 #menu-toggle span:nth-child(2)::after { left: 2px; }
 #menu-toggle span:nth-child(3)::after { left: 8px; }
 
-#menu-toggle.is-open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+#menu-toggle.is-open span:nth-child(1) { transform: translateY(calc(var(--burger-gap) + 2px)) rotate(45deg); }
 #menu-toggle.is-open span:nth-child(2) { opacity: 0; }
-#menu-toggle.is-open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+#menu-toggle.is-open span:nth-child(3) { transform: translateY(calc(-1 * (var(--burger-gap) + 2px))) rotate(-45deg); }
 #menu-toggle.is-open span::after { opacity: 0; }
 
 .is-narrate-on {
@@ -935,11 +944,106 @@ body.is-pendulum-mode #probe-overlay {
 }
 
 @media (max-width: 900px), (max-height: 520px) {
-    :root { --ctrl-size: 32px; }
+    :root {
+        --ctrl-size: 32px;
+        --ctrl-gap: 8px;
+        --burger-bar: 16px;
+        --burger-gap: 4px;
+    }
 
     #mode-switch button {
         min-width: 70px;
         padding: 0 9px;
         font-size: 12px;
     }
+}
+
+@media (max-width: 700px), (max-height: 500px) {
+    :root {
+        --ctrl-size: 28px;
+        --ctrl-radius: 7px;
+        --ctrl-gap: 6px;
+        --ctrl-inset: 8px;
+        --burger-bar: 14px;
+        --burger-gap: 4px;
+    }
+
+    #zoom-bar button { font-size: 16px; }
+    #zoom-bar button svg,
+    #ask-copy svg {
+        width: 14px;
+        height: 14px;
+    }
+
+    #mode-switch button {
+        min-width: 58px;
+        padding: 0 8px;
+        font-size: 12px;
+    }
+
+    #narration-locale {
+        padding: 0 8px;
+        font-size: 12px;
+    }
+
+    #ui-container {
+        padding: 10px;
+        width: min(360px, calc(100vw - 16px));
+    }
+
+    .segment-pads {
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+
+    .segment-pad {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+
+    #resetParams {
+        margin-bottom: 8px;
+        padding: 6px 8px;
+        font-size: 12px;
+    }
+
+    .slider-label { margin-bottom: 8px; }
+
+    .hint { font-size: 11px; }
+    .learn-more { margin-top: 8px; font-size: 12px; }
+
+    #resetParams,
+    #map-extras,
+    #ui-container .hint,
+    #ui-container .learn-more {
+        width: 100%;
+    }
+
+    #probe-start,
+    #probe-drop {
+        padding: 0 10px;
+        gap: 6px;
+    }
+
+    .probe-start-label { font-size: 12px; }
+
+    #ask-chatgpt {
+        padding: 0 10px;
+        font-size: 12px;
+    }
+
+    body:has(#ui-container.is-open) #map-hud {
+        visibility: hidden;
+        pointer-events: none;
+    }
+
+    .hint.is-desktop { display: none; }
+    .hint.is-mobile { display: block; }
+}
+
+@media (hover: none) and (pointer: coarse) {
+    .hint.is-desktop { display: none; }
+    .hint.is-mobile { display: block; }
 }

@@ -43,11 +43,16 @@ ui.enable_sound:
   text: Enable sound
 ui.frame_budget:
   text: Frame budget
-ui.hint:
-  text: |-
-    Click or double-tap to zoom in.
-    Drag the map; the wheel or pinch changes the zoom. Right-click to go back.
-    The + / − keys also change the zoom.
+ui.hint.desktop:
+  text: >-
+    Click to zoom in; drag to pan. The wheel or pinch changes the zoom.
+    Right-click goes back.
+
+    The + / − keys also zoom. F toggles fullscreen.
+  frozen: true
+ui.hint.mobile:
+  text: Double-tap to zoom in. The + / − buttons zoom by ×2. Reset view goes back.
+  frozen: true
 ui.language:
   text: Language
 ui.learn_more:

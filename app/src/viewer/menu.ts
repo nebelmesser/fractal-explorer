@@ -1,4 +1,4 @@
-import { t } from '../i18n';
+import { onUiChange, t } from '../i18n';
 import {
   INVERT_DEFAULT,
   SLIDER_THUMB_PX,
@@ -217,9 +217,29 @@ export function bindMenu(
     uiContainer.classList.toggle('is-open', open);
     menuToggle.classList.toggle('is-open', open);
     menuToggle.setAttribute('aria-expanded', String(open));
+    syncHudForMenu();
     if (open === wasOpen) return;
     signals?.set('menu', open ? 'open' : 'closed');
     signals?.emit(open ? 'menu-open' : 'menu-close');
+  }
+
+  function syncHudForMenu(): void {
+    const hud = document.getElementById('map-hud');
+    if (!hud) return;
+    const open = uiContainer.classList.contains('is-open');
+    let hide = false;
+    if (open) {
+      const hudBox = hud.getBoundingClientRect();
+      const panelBox = uiContainer.getBoundingClientRect();
+      const gap = 12;
+      hide = hudBox.width > 0
+        && hudBox.right > panelBox.left - gap
+        && hudBox.left < panelBox.right + gap
+        && hudBox.bottom > panelBox.top - gap
+        && hudBox.top < panelBox.bottom + gap;
+    }
+    document.body.classList.toggle('is-menu-hud-hidden', hide);
+    hud.toggleAttribute('aria-hidden', hide);
   }
 
   function isMenuChrome(target: EventTarget | null): boolean {
@@ -250,6 +270,12 @@ export function bindMenu(
   }, { capture: true, passive: true });
 
   syncExtras();
+  const hud = document.getElementById('map-hud');
+  const hudWatch = new ResizeObserver(() => syncHudForMenu());
+  hudWatch.observe(uiContainer);
+  if (hud) hudWatch.observe(hud);
+  window.addEventListener('resize', syncHudForMenu);
+  onUiChange(syncHudForMenu);
   // Stay closed so the map can be hovered; the toggle is always visible.
   setMenuOpen(false);
   return { syncParams, setOpen: setMenuOpen };

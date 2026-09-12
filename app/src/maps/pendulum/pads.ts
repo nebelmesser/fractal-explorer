@@ -60,13 +60,17 @@ function unit(spec: MapParam, value: number): number {
   return Math.min(1, Math.max(0, (value - spec.min) / span));
 }
 
+function padInset(css: number): number {
+  return Math.min(SEGMENT_PAD_INSET_PX, Math.max(10, Math.round(css * 0.11)));
+}
+
 function padStyle(plot: HTMLCanvasElement, length: MapParam): {
   css: number;
   inner: number;
   pxPerLen: number;
 } {
   const css = Math.max(1, Math.round(Math.min(plot.clientWidth, plot.clientHeight)));
-  const inner = Math.max(1, css - SEGMENT_PAD_INSET_PX * 2);
+  const inner = Math.max(1, css - padInset(css) * 2);
   return {
     css,
     inner,
@@ -85,8 +89,9 @@ function snapHome(host: PresentationHost): boolean {
 }
 
 function plotPoint(plot: HTMLCanvasElement, massU: number, lengthU: number): { x: number; y: number } {
-  const inset = SEGMENT_PAD_INSET_PX;
-  const inner = Math.max(1, Math.min(plot.clientWidth, plot.clientHeight) - inset * 2);
+  const css = Math.max(1, Math.min(plot.clientWidth, plot.clientHeight));
+  const inset = padInset(css);
+  const inner = Math.max(1, css - inset * 2);
   const origin = inset;
   return {
     x: origin + massU * inner,
@@ -99,8 +104,9 @@ function valuesAt(plot: HTMLCanvasElement, clientX: number, clientY: number, len
   mass: number;
 } {
   const box = plot.getBoundingClientRect();
-  const inset = SEGMENT_PAD_INSET_PX;
-  const inner = Math.max(1, Math.min(box.width, box.height) - inset * 2);
+  const css = Math.max(1, Math.min(box.width, box.height));
+  const inset = padInset(css);
+  const inner = Math.max(1, css - inset * 2);
   const uM = (clientX - box.left - inset) / inner;
   const uL = (clientY - box.top - inset) / inner;
   return {
