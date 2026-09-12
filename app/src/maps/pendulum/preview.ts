@@ -68,55 +68,6 @@ function trimRod(
   return { x0: x0 + ux * a, y0: y0 + uy * a, x1: x1 - ux * b, y1: y1 - uy * b };
 }
 
-let figureLayer: HTMLCanvasElement | null = null;
-let figureLayerCtx: CanvasRenderingContext2D | null = null;
-
-function figureBounds(
-  rods: OverlayRod[],
-  bobs: OverlayBob[],
-  sight?: OverlaySight,
-): { x: number; y: number; w: number; h: number } {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  const include = (x: number, y: number, r: number): void => {
-    minX = Math.min(minX, x - r);
-    minY = Math.min(minY, y - r);
-    maxX = Math.max(maxX, x + r);
-    maxY = Math.max(maxY, y + r);
-  };
-  const pad = PROBE_OUTLINE_PX + 2;
-  for (const rod of rods) {
-    const r = rod.width / 2 + pad;
-    include(rod.x0, rod.y0, r);
-    include(rod.x1, rod.y1, r);
-  }
-  for (const bob of bobs) include(bob.x, bob.y, bob.r + pad);
-  if (sight) include(sight.x, sight.y, sight.crossHalf + 4);
-  if (!Number.isFinite(minX)) return { x: 0, y: 0, w: 1, h: 1 };
-  return { x: minX, y: minY, w: Math.max(1, maxX - minX), h: Math.max(1, maxY - minY) };
-}
-
-function layerContext(cssW: number, cssH: number, dpr: number): CanvasRenderingContext2D {
-  const w = Math.max(1, Math.ceil(cssW * dpr));
-  const h = Math.max(1, Math.ceil(cssH * dpr));
-  if (!figureLayer || !figureLayerCtx) {
-    figureLayer = document.createElement('canvas');
-    figureLayerCtx = figureLayer.getContext('2d');
-    if (!figureLayerCtx) throw new Error('overlay layer');
-  }
-  if (figureLayer.width < w || figureLayer.height < h) {
-    figureLayer.width = w;
-    figureLayer.height = h;
-  } else {
-    figureLayerCtx.setTransform(1, 0, 0, 1, 0, 0);
-    figureLayerCtx.clearRect(0, 0, w, h);
-  }
-  figureLayerCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  return figureLayerCtx;
-}
-
 function strokeRods(ctx: CanvasRenderingContext2D, rods: OverlayRod[], extra: number): void {
   for (const rod of rods) {
     ctx.lineWidth = rod.width + extra;
@@ -135,18 +86,27 @@ function fillDisks(ctx: CanvasRenderingContext2D, bobs: OverlayBob[], extra: num
   }
 }
 
-/** Grid: draw on the overlay. Rods stay trimmed; bobs paint over joints. No offscreen. */
-function drawOverlayFigureFast(
+/** Direct overlay strokes. Large figures get a fat outline; bobs paint last. */
+function drawOverlayFigure(
   ctx: CanvasRenderingContext2D,
   rods: OverlayRod[],
   bobs: OverlayBob[],
   alpha: number,
+  large: boolean,
   sight?: OverlaySight,
 ): void {
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+  const a = Math.max(0, Math.min(1, alpha));
+  ctx.globalAlpha = a;
+  if (large) {
+    const pal = theme();
+    ctx.strokeStyle = pal.figureOutline;
+    ctx.fillStyle = pal.figureOutline;
+    strokeRods(ctx, rods, PROBE_OUTLINE_PX * 2);
+    fillDisks(ctx, bobs, PROBE_OUTLINE_PX);
+  }
   for (const rod of rods) {
     ctx.strokeStyle = rod.color;
     ctx.lineWidth = rod.width;
@@ -160,7 +120,7 @@ function drawOverlayFigureFast(
     drawProbePivot(ctx, { x: sight.x, y: sight.y }, sight.pivotR, sight.alpha);
     drawProbeCross(ctx, { x: sight.x, y: sight.y }, sight.crossHalf, sight.alpha);
   }
-  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+  ctx.globalAlpha = a;
   for (const bob of bobs) {
     ctx.fillStyle = bob.color;
     ctx.beginPath();
@@ -168,80 +128,6 @@ function drawOverlayFigureFast(
     ctx.fill();
   }
   ctx.restore();
-}
-
-function drawOverlayFigure(
-  ctx: CanvasRenderingContext2D,
-  rods: OverlayRod[],
-  bobs: OverlayBob[],
-  alpha: number,
-  large: boolean,
-  sight?: OverlaySight,
-): void {
-  if (!large) {
-    drawOverlayFigureFast(ctx, rods, bobs, alpha, sight);
-    return;
-  }
-  const bounds = figureBounds(rods, bobs, sight);
-  const destDpr = ctx.getTransform().a || 1;
-  const layerDpr = destDpr;
-  const layer = layerContext(bounds.w, bounds.h, layerDpr);
-  const pal = theme();
-  layer.save();
-  layer.translate(-bounds.x, -bounds.y);
-  layer.lineCap = 'round';
-  layer.lineJoin = 'round';
-
-  const ring = PROBE_OUTLINE_PX * 2;
-  layer.globalAlpha = 1;
-  layer.strokeStyle = pal.figureOutline;
-  layer.fillStyle = pal.figureOutline;
-  strokeRods(layer, rods, ring);
-  fillDisks(layer, bobs, PROBE_OUTLINE_PX);
-  layer.globalCompositeOperation = 'destination-out';
-  strokeRods(layer, rods, 0);
-  fillDisks(layer, bobs, 0);
-
-  layer.globalCompositeOperation = 'source-over';
-  layer.globalAlpha = Math.max(0, Math.min(1, alpha));
-  for (const rod of rods) {
-    layer.strokeStyle = rod.color;
-    layer.lineWidth = rod.width;
-    layer.beginPath();
-    layer.moveTo(rod.x0, rod.y0);
-    layer.lineTo(rod.x1, rod.y1);
-    layer.stroke();
-  }
-  if (sight) {
-    layer.globalAlpha = 1;
-    drawProbePivot(layer, { x: sight.x, y: sight.y }, sight.pivotR, sight.alpha);
-    drawProbeCross(layer, { x: sight.x, y: sight.y }, sight.crossHalf, sight.alpha);
-  }
-
-  layer.globalCompositeOperation = 'destination-out';
-  layer.globalAlpha = 1;
-  fillDisks(layer, bobs, 0);
-  layer.globalCompositeOperation = 'source-over';
-  layer.globalAlpha = Math.max(0, Math.min(1, alpha));
-  for (const bob of bobs) {
-    layer.fillStyle = bob.color;
-    layer.beginPath();
-    layer.arc(bob.x, bob.y, bob.r, 0, Math.PI * 2);
-    layer.fill();
-  }
-  layer.restore();
-
-  ctx.drawImage(
-    figureLayer!,
-    0,
-    0,
-    bounds.w * layerDpr,
-    bounds.h * layerDpr,
-    bounds.x,
-    bounds.y,
-    bounds.w,
-    bounds.h,
-  );
 }
 
 function overlayParts(

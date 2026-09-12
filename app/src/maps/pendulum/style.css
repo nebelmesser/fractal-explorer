@@ -142,6 +142,10 @@ body.is-chrome-hidden #map-axes {
     z-index: 1;
 }
 
+#probe-overlay {
+    transform: translateZ(0);
+}
+
 /* Under the sidebar / HUD so rods never paint over those controls. */
 #probe-overlay { z-index: 3; }
 

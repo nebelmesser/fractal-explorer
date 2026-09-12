@@ -14,6 +14,7 @@ import {
 } from './preview';
 import {
   LESSON_BOB_HIT_PAD_PX,
+  LESSON_DPR,
   LESSON_MAGNET_MS,
   LESSON_MAX_FRAME_SEC,
   LESSON_MIN_SCALE_PX,
@@ -90,12 +91,12 @@ export class PendulumLesson {
   private w1 = 0;
   private w2 = 0;
   private lastTick = 0;
-  private playAcc = 0;
   private drag: DragState | null = null;
   private neighbors: PhysicsState[] = [];
   private neighborsVisible = false;
   private mapCenter = { x: Number.NaN, y: Number.NaN };
   private poseFromViewAt = 0;
+  private ctx: CanvasRenderingContext2D | null = null;
 
   constructor(
     private readonly host: PresentationHost,
@@ -115,7 +116,6 @@ export class PendulumLesson {
     this.w1 = 0;
     this.w2 = 0;
     this.lastTick = performance.now();
-    this.playAcc = 0;
     this.drag = null;
     this.hideNeighbors();
     this.rememberMapCenter();
@@ -150,7 +150,6 @@ export class PendulumLesson {
     this.running = true;
     const now = performance.now();
     this.lastTick = now;
-    this.playAcc = 0;
     this.poseFromViewAt = 0;
     this.rememberMapCenter();
     this.seedNeighbors();
@@ -163,7 +162,6 @@ export class PendulumLesson {
   pause(restorePose = true): void {
     if (!this.active || !this.running) return;
     this.running = false;
-    this.playAcc = 0;
     this.w1 = 0;
     this.w2 = 0;
     if (restorePose) this.restorePoseFromMap();
@@ -195,18 +193,13 @@ export class PendulumLesson {
     if (!this.active) return;
     this.syncWithView();
     if (!this.running) {
-      if (this.drag) {
-        this.applyDrag(now);
-        this.requestDraw();
-        return;
-      }
-      if (
+      if (this.drag) this.applyDrag(now);
+      else if (
         this.poseFromViewAt
         && !this.neighborsVisible
         && now - this.poseFromViewAt >= LESSON_VIEW_IDLE_MS
       ) {
         this.seedNeighbors();
-        this.requestDraw();
       }
       return;
     }
@@ -217,25 +210,24 @@ export class PendulumLesson {
     );
     this.lastTick = now;
     const params = this.params();
-    const frame = 1 / PROBE_PLAY_FPS;
     const dt = Math.max(1e-4, params.DT || PENDULUM_DT);
-    this.playAcc += elapsed;
+    let remain = elapsed * PROBE_PLAY_FPS * dt;
     this.applyDrag(now);
-    while (this.playAcc >= frame) {
+    while (remain > 1e-12) {
+      const step = Math.min(dt, remain);
       const prevTh1 = this.th1;
       this.applyDrag();
-      this.integrate(params, dt);
+      this.integrate(params, step);
       if (this.neighborsVisible && !this.drag) {
-        for (const neighbor of this.neighbors) this.integrateState(neighbor, params, dt);
+        for (const neighbor of this.neighbors) this.integrateState(neighbor, params, step);
       }
       this.applyDrag();
       if (!this.drag && this.mainDetached(prevTh1)) {
         this.resetAfterDetach();
         return;
       }
-      this.playAcc -= frame;
+      remain -= step;
     }
-    this.requestDraw();
   }
 
   draw(): void {
@@ -243,15 +235,16 @@ export class PendulumLesson {
     const width = Math.max(1, this.canvas.clientWidth);
     const height = Math.max(1, this.canvas.clientHeight);
     if (width < 8 || height < 8) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = LESSON_DPR;
     const pixelWidth = Math.round(width * dpr);
     const pixelHeight = Math.round(height * dpr);
     if (this.canvas.width !== pixelWidth || this.canvas.height !== pixelHeight) {
       this.canvas.width = pixelWidth;
       this.canvas.height = pixelHeight;
     }
-    const ctx = this.canvas.getContext('2d');
+    const ctx = this.ctx ?? this.canvas.getContext('2d');
     if (!ctx) return;
+    this.ctx = ctx;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
     const origin = this.origin(width, height);
@@ -385,7 +378,6 @@ export class PendulumLesson {
 
   private resetAfterDetach(): void {
     this.running = false;
-    this.playAcc = 0;
     this.restorePoseFromMap();
     this.host.signals?.set('simulation_running', false);
     this.host.signals?.emit('pendulum-simulation-pause');

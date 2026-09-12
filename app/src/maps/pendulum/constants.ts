@@ -70,11 +70,15 @@ export const PROBE_SIGHT_FLY_ALPHA = 0.14;
 export const PROBE_SNAP_DEG = 720;
 export const PROBE_FLY_TIME = 0.55;
 export const PROBE_ALPHA = 0.5;
+/** Map-grid overlay cadence. The large pendulum keeps this as simulated-time
+ *  per wall-second (`dt * PROBE_PLAY_FPS`) but paints every display frame. */
 export const PROBE_PLAY_FPS = 24;
 export const PROBE_MAX_STEPS = 40000;
 
 // Full-screen teaching pendulum.
 export const LESSON_MAX_FRAME_SEC = 0.15;
+/** Overlay backing store. 1× keeps motion cheap on large retina canvases. */
+export const LESSON_DPR = 1;
 /** After the map stops moving, show neighbor poses again. */
 export const LESSON_VIEW_IDLE_MS = 80;
 export const LESSON_MAGNET_MS = 180;
@@ -95,9 +99,8 @@ export const SEGMENT_PAD_INSET_PX = 24;
 export const SEGMENT_PAD_PIVOT_R = 4;
 export const SEGMENT_PAD_LABEL_PX = 11;
 export const SEGMENT_PAD_LABEL_GAP_PX = 8;
-/** Stick to the default (center) while dragging within this CSS radius. */
-export const SEGMENT_PAD_MAGNET_PX = 14;
-export const SEGMENT_PAD_MAGNET_LEAVE_PX = 24;
+/** Snap to the default only inside this L/M box around the pad center. */
+export const SEGMENT_PAD_MAGNET = 0.05;
 
 // "HIC SUNT DRACONES" sits in the black precision void behind sparse samples.
 export const DRAGON_FONT_START_PX = 28;

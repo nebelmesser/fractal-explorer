@@ -89,6 +89,7 @@ function makeDragonStamp(): SVGGElement {
 function mountPendulumPresentation(host: PresentationHost): MapPresentation {
   const axes = requireElement<HTMLCanvasElement>('map-axes');
   const overlay = requireElement<HTMLCanvasElement>('probe-overlay');
+  overlay.getContext('2d', { alpha: true, desynchronized: true });
   const mapVoid = requireElement<SVGSVGElement>('map-void');
   const dragonLayerEl = mapVoid.querySelector('.map-void-labels');
   if (!(dragonLayerEl instanceof SVGGElement)) throw new Error('Double-pendulum presentation is missing dragon labels');
@@ -118,6 +119,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
   let playAcc = 0;
   let playLast = 0;
   let drawFrame = 0;
+  let lessonAxisKey = '';
   let intro = false;
   let revealCount = 0;
   let revealNextAt = 0;
@@ -728,13 +730,20 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
 
   function drawNow(): void {
     drawFrame = 0;
-    syncVoid();
     if (lesson.active) {
       lesson.syncWithView();
-      drawMapAxes(axes, host.getView(), xScale, yScale, host.navigation, { points: [] });
+      const view = host.getView();
+      const key = `${view.xMin}:${view.xMax}:${view.yMin}:${view.yMax}:${axes.clientWidth}:${axes.clientHeight}`;
+      if (key !== lessonAxisKey) {
+        lessonAxisKey = key;
+        syncVoid();
+        drawMapAxes(axes, view, xScale, yScale, host.navigation, { points: [] });
+      }
       lesson.draw();
       return;
     }
+    lessonAxisKey = '';
+    syncVoid();
     const frame = sampleFrame();
     const { origins: nextOrigins, worlds: nextWorlds } = frame;
     const last = probes ? shownCount() : nextOrigins.length;
@@ -762,6 +771,15 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
     syncZoomDeg();
     if (drawFrame) return;
     drawFrame = requestAnimationFrame(drawNow);
+  }
+
+  function flushDraw(): void {
+    if (drawFrame) {
+      cancelAnimationFrame(drawFrame);
+      drawFrame = 0;
+    }
+    syncZoomDeg();
+    drawNow();
   }
 
   function flyStillHere(
@@ -852,6 +870,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
   function tick(now: number): void {
     if (lesson.active) {
       lesson.tick(now);
+      flushDraw();
       return;
     }
     syncVoid();
@@ -884,6 +903,7 @@ function mountPendulumPresentation(host: PresentationHost): MapPresentation {
   function setMode(pendulum: boolean): void {
     if (lesson.active === pendulum) return;
     resetMapSimulation();
+    lessonAxisKey = '';
     if (pendulum) {
       lesson.enter(viewCenter(host.getView()));
     } else {

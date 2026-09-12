@@ -6,8 +6,7 @@ import {
   SEGMENT_PAD_INSET_PX,
   SEGMENT_PAD_LABEL_GAP_PX,
   SEGMENT_PAD_LABEL_PX,
-  SEGMENT_PAD_MAGNET_LEAVE_PX,
-  SEGMENT_PAD_MAGNET_PX,
+  SEGMENT_PAD_MAGNET,
   SEGMENT_PAD_PIVOT_R,
 } from './constants';
 import {
@@ -107,29 +106,16 @@ function valuesAt(plot: HTMLCanvasElement, clientX: number, clientY: number, len
 }
 
 function magnetize(
-  plot: HTMLCanvasElement,
   lengthSpec: MapParam,
   massSpec: MapParam,
   length: number,
   mass: number,
-  held: { length: boolean; mass: boolean },
 ): { length: number; mass: number } {
-  const center = plotPoint(
-    plot,
-    unit(massSpec, massSpec.default),
-    unit(lengthSpec, lengthSpec.default),
-  );
-  const point = plotPoint(plot, unit(massSpec, mass), unit(lengthSpec, length));
-  const enter = SEGMENT_PAD_MAGNET_PX;
-  const leave = SEGMENT_PAD_MAGNET_LEAVE_PX;
-  const snapMass = Math.abs(point.x - center.x) <= (held.mass ? leave : enter);
-  const snapLength = Math.abs(point.y - center.y) <= (held.length ? leave : enter);
-  held.mass = snapMass;
-  held.length = snapLength;
-  return {
-    mass: snapMass ? massSpec.default : mass,
-    length: snapLength ? lengthSpec.default : length,
-  };
+  const reach = SEGMENT_PAD_MAGNET;
+  if (Math.abs(mass - massSpec.default) > reach || Math.abs(length - lengthSpec.default) > reach) {
+    return { length, mass };
+  }
+  return { mass: massSpec.default, length: lengthSpec.default };
 }
 
 function drawCaption(
@@ -207,12 +193,11 @@ function applyPoint(
   clientX: number,
   clientY: number,
   phase: 'live' | 'settle',
-  magnet: { length: boolean; mass: boolean },
 ): void {
   host.resetTransition.cancel();
   const snapped = snapHome(host);
   const raw = valuesAt(pad.plot, clientX, clientY, pad.length, pad.mass);
-  const next = magnetize(pad.plot, pad.length, pad.mass, raw.length, raw.mass, magnet);
+  const next = magnetize(pad.length, pad.mass, raw.length, raw.mass);
   const length = quantize(pad.length, next.length);
   const mass = quantize(pad.mass, next.mass);
   const prevL = host.controls.params[pad.length.key] ?? pad.length.default;
@@ -266,24 +251,21 @@ export function bindSegmentPads(host: PresentationHost): { sync(): void } {
     pads.push(pad);
 
     let dragging = false;
-    const magnet = { length: false, mass: false };
     plot.addEventListener('pointerdown', (event) => {
       if (event.button !== 0) return;
       event.preventDefault();
       dragging = true;
-      magnet.length = false;
-      magnet.mass = false;
       plot.setPointerCapture(event.pointerId);
-      applyPoint(host, pad, event.clientX, event.clientY, 'live', magnet);
+      applyPoint(host, pad, event.clientX, event.clientY, 'live');
     });
     plot.addEventListener('pointermove', (event) => {
       if (!dragging) return;
-      applyPoint(host, pad, event.clientX, event.clientY, 'live', magnet);
+      applyPoint(host, pad, event.clientX, event.clientY, 'live');
     });
     const endDrag = (event: PointerEvent): void => {
       if (!dragging) return;
       dragging = false;
-      applyPoint(host, pad, event.clientX, event.clientY, 'settle', magnet);
+      applyPoint(host, pad, event.clientX, event.clientY, 'settle');
     };
     plot.addEventListener('pointerup', endDrag);
     plot.addEventListener('pointercancel', endDrag);
