@@ -41,10 +41,10 @@ export const START_REVEAL_SLOW_RAD = (12 * Math.PI) / 180;
 export const START_REVEAL_ROW_RAD = (2.5 * Math.PI) / 180;
 /** Fastest neighbor angle (row sweep). */
 export const START_REVEAL_FAST_RAD = (0.35 * Math.PI) / 180;
-export const START_REVEAL_SLOW_ITEM_MS = 40;
-export const START_REVEAL_FAST_ITEM_MS = 16;
-export const START_REVEAL_SLOW_ROW_MS = 40;
-export const START_REVEAL_FAST_ROW_MS = 16;
+export const START_REVEAL_SLOW_ITEM_MS = 20;
+export const START_REVEAL_FAST_ITEM_MS = 8;
+export const START_REVEAL_SLOW_ROW_MS = 20;
+export const START_REVEAL_FAST_ROW_MS = 8;
 /** Pause after the last start pose appears, before physics. */
 export const START_REVEAL_PAUSE_MS = 500;
 /** Emit pendulum-hang after this many ms with fewer than half still on the pivot and no new detach. */
