@@ -66,11 +66,6 @@ ui.mode.map:
 ui.mode.pendulum:
   text: Pendulum
   frozen: true
-ui.page.description:
-  text: Every pixel is an experiment with a double pendulum. Zoom into a living
-    fractal map of motion, instability, and chaos.
-ui.page.title:
-  text: Double Pendulum Fractal
 ui.param.DT:
   text: Smoothness (dt)
 ui.param.F:

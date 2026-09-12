@@ -60,11 +60,6 @@ ui.mode.map:
   text: Карта
 ui.mode.pendulum:
   text: Маятник
-ui.page.description:
-  text: Каждый пиксель — опыт с двойным маятником. Приближайте живую фрактальную
-    карту движения, неустойчивости и хаоса.
-ui.page.title:
-  text: Фрактал двойного маятника
 ui.param.DT:
   text: Плавность (dt)
 ui.param.F:

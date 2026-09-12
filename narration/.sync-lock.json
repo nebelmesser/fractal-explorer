@@ -220,28 +220,6 @@
         }
       }
     },
-    "ui.page.title": {
-      "sourceHash": "9f94b459d28cefe8ddce14f1d6d9d3d02f07aa1d258ffc94999e176688623b3a",
-      "locales": {
-        "ru": {
-          "textHash": "9f94b459d28cefe8ddce14f1d6d9d3d02f07aa1d258ffc94999e176688623b3a"
-        },
-        "en": {
-          "textHash": "2f9074d479f8f41c2888e776186bb6a81ae5e07af0abed7dfffe0605624a19ff"
-        }
-      }
-    },
-    "ui.page.description": {
-      "sourceHash": "d6bb852dcee9a1db3577b091ec7d00378075aa288bfa89033323458f730f0dfe",
-      "locales": {
-        "ru": {
-          "textHash": "d6bb852dcee9a1db3577b091ec7d00378075aa288bfa89033323458f730f0dfe"
-        },
-        "en": {
-          "textHash": "546386e42dd28b27321110c9d78f6f19c8125d46683c6b6aaf180836d4609dfc"
-        }
-      }
-    },
     "ui.settings": {
       "sourceHash": "985b5e0f2ccf1ba08ac53253af32d2e9a600b846d3f3b99978f28d177388b9fa",
       "locales": {

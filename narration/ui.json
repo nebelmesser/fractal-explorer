@@ -10,8 +10,6 @@
   },
   "strings": {
     "ru": {
-      "page.title": "Фрактал двойного маятника",
-      "page.description": "Каждый пиксель — опыт с двойным маятником. Приближайте живую фрактальную карту движения, неустойчивости и хаоса.",
       "settings": "Настройки",
       "zoom.in": "Приблизить",
       "zoom.out": "Отдалить",
@@ -48,8 +46,6 @@
       "param.neighbor_deg": "Разница углов, °"
     },
     "en": {
-      "page.title": "Double Pendulum Fractal",
-      "page.description": "Every pixel is an experiment with a double pendulum. Zoom into a living fractal map of motion, instability, and chaos.",
       "settings": "Settings",
       "zoom.in": "Zoom in",
       "zoom.out": "Zoom out",
