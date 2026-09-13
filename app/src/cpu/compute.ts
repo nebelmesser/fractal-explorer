@@ -15,9 +15,9 @@ import {
   LOD_MAX_LEVEL_F64,
 } from '../constants';
 import { f64Ulp } from '../gpu/precision';
-import { mapToneCss, mapToneRgb } from '../mapTone';
 import type { MapDefinition, MapParams, ViewRect } from '../maps/types';
-import { viewSpanX, viewSpanY } from '../maps/types';
+import { mapDomain, viewSpanX, viewSpanY } from '../maps/types';
+import { fixedCompositorExposure, type MapCompositor } from '../viewer/compositor';
 
 type Exposure = { lo: number; hi: number };
 type Cell = {
@@ -55,7 +55,7 @@ type Tile = {
   used: number;
   toneKey?: string;
   toneCanvas?: HTMLCanvasElement;
-  gray?: Uint8Array;
+  rgba?: Uint8ClampedArray;
   filterKey?: number;
   filteredLog?: Float32Array;
 };
@@ -78,7 +78,11 @@ export class CpuMapRenderer {
   private canvas: HTMLCanvasElement;
   private context: CanvasRenderingContext2D;
 
-  private constructor(canvas: HTMLCanvasElement, private readonly map: MapDefinition) {
+  private constructor(
+    canvas: HTMLCanvasElement,
+    private readonly map: MapDefinition,
+    private readonly compositor: MapCompositor,
+  ) {
     if (!map.cpu) throw new Error('This map has no CPU kernel');
     const context = canvas.getContext('2d');
     if (!context) throw new Error('Canvas 2D is unavailable');
@@ -87,8 +91,8 @@ export class CpuMapRenderer {
     this.cpuLevelCap = this.preciseCpuLevelCap();
   }
 
-  static create(canvas: HTMLCanvasElement, map: MapDefinition): CpuMapRenderer {
-    return new CpuMapRenderer(canvas, map);
+  static create(canvas: HTMLCanvasElement, map: MapDefinition, compositor: MapCompositor): CpuMapRenderer {
+    return new CpuMapRenderer(canvas, map, compositor);
   }
 
   async render(
@@ -396,8 +400,13 @@ export class CpuMapRenderer {
     this.exposureAt = performance.now();
   }
 
+  private domain(): ViewRect {
+    return mapDomain(this.map);
+  }
+
   private baseSpan(): number {
-    return Math.min(viewSpanX(this.map.defaultView), viewSpanY(this.map.defaultView));
+    const domain = this.domain();
+    return Math.min(viewSpanX(domain), viewSpanY(domain));
   }
 
   private tileSpan(level: number): number {
@@ -406,9 +415,10 @@ export class CpuMapRenderer {
 
   private preciseCpuLevelCap(): number {
     const p = this.map.navigation;
+    const domain = this.domain();
     const coordinateLimit = Math.max(
-      Math.abs(this.map.defaultView.xMin), Math.abs(this.map.defaultView.xMax),
-      Math.abs(this.map.defaultView.yMin), Math.abs(this.map.defaultView.yMax),
+      Math.abs(domain.xMin), Math.abs(domain.xMax),
+      Math.abs(domain.yMin), Math.abs(domain.yMax),
       Math.abs(p?.xCenter?.min ?? 0), Math.abs(p?.xCenter?.max ?? 0),
       Math.abs((p?.xPeriod?.center ?? 0) - (p?.xPeriod?.period ?? 0) / 2),
       Math.abs((p?.xPeriod?.center ?? 0) + (p?.xPeriod?.period ?? 0) / 2),
@@ -428,12 +438,12 @@ export class CpuMapRenderer {
 
   private xOrigin(): number {
     const period = this.map.navigation?.xPeriod;
-    return period ? period.center - period.period / 2 : this.map.defaultView.xMin;
+    return period ? period.center - period.period / 2 : this.domain().xMin;
   }
 
   private yOrigin(): number {
     const period = this.map.navigation?.yPeriod;
-    return period ? period.center - period.period / 2 : this.map.defaultView.yMin;
+    return period ? period.center - period.period / 2 : this.domain().yMin;
   }
 
   private canonicalY(y: number): number {
@@ -635,7 +645,17 @@ export class CpuMapRenderer {
     return found;
   }
 
+  private applyFixedExposure(): boolean {
+    const exposure = fixedCompositorExposure(this.compositor);
+    if (!exposure) return false;
+    this.exposure = { ...exposure };
+    this.exposureTarget = { ...exposure };
+    this.exposureAt = performance.now();
+    return true;
+  }
+
   private updateExposure(request: Request): void {
+    if (this.applyFixedExposure()) return;
     const draws = this.visibleTiles(request);
     if (!draws.length) return;
     const bins = new Uint32Array(256);
@@ -666,6 +686,8 @@ export class CpuMapRenderer {
 
   /** Estimate the initial exposure from the whole FOV before showing its center tile. */
   private async measureViewExposure(request: Request): Promise<Exposure | null> {
+    const fixed = fixedCompositorExposure(this.compositor);
+    if (fixed) return { ...fixed };
     const cpu = this.map.cpu;
     if (!cpu || request.generation !== this.generation) return null;
     const size = LOD_CPU_TILE_PX;
@@ -750,7 +772,7 @@ export class CpuMapRenderer {
     if (!exposure) return tile;
     const median = Math.max(1, Math.min(5, Math.round(request.median)));
     const toneKey = `${exposure.lo}:${exposure.hi}:${request.invert ? 1 : 0}:${median}`;
-    if (tile.toneKey === toneKey && tile.toneCanvas && tile.gray) return tile;
+    if (tile.toneKey === toneKey && tile.toneCanvas && tile.rgba) return tile;
     const canvas = tile.toneCanvas ?? document.createElement('canvas');
     if (canvas.width !== tile.width || canvas.height !== tile.height) {
       canvas.width = tile.width;
@@ -759,8 +781,7 @@ export class CpuMapRenderer {
     const context = canvas.getContext('2d');
     if (!context) return tile;
     const image = context.createImageData(tile.width, tile.height);
-    const gray = new Uint8Array(tile.width * tile.height);
-    if (tile.filterKey !== median || !tile.filteredLog) {
+    if (this.compositor.exposure !== 'none' && (tile.filterKey !== median || !tile.filteredLog)) {
       const filtered = new Float32Array(tile.width * tile.height);
       if (median <= 1) {
         for (let i = 0; i < filtered.length; i++) filtered[i] = Math.log1p(tile.counts[i]);
@@ -789,13 +810,11 @@ export class CpuMapRenderer {
     for (let y = 0; y < tile.height; y++) {
       for (let x = 0; x < tile.width; x++) {
         const index = y * tile.width + x;
-        const value = tile.filteredLog[index];
-        let mapped = (value - exposure.lo) / Math.max(1e-9, exposure.hi - exposure.lo);
-        mapped = Math.max(0, Math.min(1, mapped));
-        if (request.invert) mapped = 1 - mapped;
-        const shade = Math.round(mapped * 255);
-        gray[index] = shade;
-        const [r, g, b] = mapToneRgb(mapped);
+        const value = tile.filteredLog?.[index] ?? 0;
+        const mapped = Math.max(0, Math.min(1,
+          (value - exposure.lo) / Math.max(1e-9, exposure.hi - exposure.lo),
+        ));
+        const [r, g, b] = this.compositor.colorize(tile.counts[index], mapped, request.invert);
         image.data[index * 4] = Math.round(r * 255);
         image.data[index * 4 + 1] = Math.round(g * 255);
         image.data[index * 4 + 2] = Math.round(b * 255);
@@ -805,7 +824,7 @@ export class CpuMapRenderer {
     context.putImageData(image, 0, 0);
     tile.toneKey = toneKey;
     tile.toneCanvas = canvas;
-    tile.gray = gray;
+    tile.rgba = image.data;
     return tile;
   }
 
@@ -823,30 +842,32 @@ export class CpuMapRenderer {
     const sy = viewSpanY(request.view);
     const grid = this.precisionGrid(request.view, request.width, request.height);
     if (grid.sparse) {
-      const paths: Array<Path2D | undefined> = new Array(256);
+      const paths = new Map<number, Path2D>();
       const squareW = grid.pixelPx * request.width / Math.max(this.canvas.clientWidth || request.width, 1);
       const squareH = grid.pixelPx * request.height / Math.max(this.canvas.clientHeight || request.height, 1);
       for (const { tile: rawTile, drawView } of draws) {
         const tile = this.toneTile(rawTile, request);
-        if (!tile.gray) continue;
+        if (!tile.rgba) continue;
         for (let y = 0; y < tile.height; y++) {
           const worldY = drawView.yMin + ((y + 0.5) / tile.height) * viewSpanY(drawView);
           const py = (worldY - request.view.yMin) / sy * request.height;
           for (let x = 0; x < tile.width; x++) {
             const worldX = drawView.xMin + ((x + 0.5) / tile.width) * viewSpanX(drawView);
             const px = (worldX - request.view.xMin) / sx * request.width;
-            const shade = tile.gray[y * tile.width + x];
-            const path = paths[shade] ?? new Path2D();
+            const offset = (y * tile.width + x) * 4;
+            const color = (tile.rgba[offset] << 16) | (tile.rgba[offset + 1] << 8) | tile.rgba[offset + 2];
+            const path = paths.get(color) ?? new Path2D();
             path.rect(px - squareW / 2, py - squareH / 2, squareW, squareH);
-            paths[shade] = path;
+            paths.set(color, path);
           }
         }
       }
       context.globalAlpha = grid.mapOpacity;
-      for (let shade = 0; shade < paths.length; shade++) {
-        const path = paths[shade];
-        if (!path) continue;
-        context.fillStyle = mapToneCss(shade / 255);
+      for (const [color, path] of paths) {
+        const r = (color >>> 16) & 0xff;
+        const g = (color >>> 8) & 0xff;
+        const b = color & 0xff;
+        context.fillStyle = `rgb(${r} ${g} ${b})`;
         context.fill(path);
       }
     } else {

@@ -34,4 +34,7 @@ param.M2: Масса 2
 param.G: Гравитация
 param.F: Трение
 param.DT: Плавность (dt)
+param.K: Сила магнитов
+param.R: Расстояние
+param.H: Высота
 param.neighbor_deg: Разница углов, °

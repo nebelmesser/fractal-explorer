@@ -7,8 +7,8 @@ struct Uniforms {
   view: vec4f,   // x_min, x_max, y_min, y_max
   phys: vec4f,   // L1, L2, M1, M2
   step: vec4f,   // G, DT, F, unused
-  size: vec4u,   // max_iter, width, height, invert
-  extra: vec4u,  // median, pad, pad, pad
+  size: vec4u,   // max_iter, width, height, unused
+  extra: vec4u,  // unused, pad, pad, pad
 }
 
 @group(0) @binding(0) var<uniform> u: Uniforms;

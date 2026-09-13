@@ -1,4 +1,4 @@
-import { onUiChange, t } from '../../i18n';
+import { onUiChange, t } from '../i18n';
 
 const CHATGPT_QUERY = 'https://chatgpt.com/?q=';
 const COPIED_MS = 1600;
@@ -32,9 +32,8 @@ export function bindAskPrompt(): void {
   const link = document.getElementById('ask-chatgpt');
   const copy = document.getElementById('ask-copy');
   if (!(link instanceof HTMLAnchorElement) || !(copy instanceof HTMLButtonElement)) return;
-
-  const copyBtn = copy;
   const askLink = link;
+  const copyButton = copy;
 
   function syncHref(): void {
     askLink.href = `${CHATGPT_QUERY}${encodeURIComponent(fullPrompt())}`;
@@ -44,11 +43,11 @@ export function bindAskPrompt(): void {
   let copiedTimer = 0;
 
   function syncCopyLabel(copied: boolean): void {
-    copyBtn.setAttribute('aria-label', t(copied ? 'prompt_copied' : 'copy_prompt'));
-    copyBtn.classList.toggle('is-copied', copied);
+    copyButton.setAttribute('aria-label', t(copied ? 'prompt_copied' : 'copy_prompt'));
+    copyButton.classList.toggle('is-copied', copied);
   }
 
-  copyBtn.addEventListener('click', () => {
+  copyButton.addEventListener('click', () => {
     void copyText(fullPrompt()).then(() => {
       copiedAt = performance.now();
       syncCopyLabel(true);
@@ -62,6 +61,6 @@ export function bindAskPrompt(): void {
   syncHref();
   onUiChange(() => {
     syncHref();
-    syncCopyLabel(copyBtn.classList.contains('is-copied'));
+    syncCopyLabel(copyButton.classList.contains('is-copied'));
   });
 }

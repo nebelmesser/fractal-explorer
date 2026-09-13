@@ -1,0 +1,8 @@
+#map-scale-x span,
+#map-scale-y span {
+    color: var(--muted);
+}
+
+#map-clip {
+    cursor: crosshair;
+}

@@ -1,4 +1,5 @@
 import type { MapDefinition, MapParams, NavigationPolicy, ViewRect } from '../maps/types';
+import type { MapCompositor } from './compositor';
 import type { ViewOpts } from './input';
 
 export type MapPoint = { x: number; y: number };
@@ -72,6 +73,8 @@ export type MapPresentation = {
 };
 
 export type MapPresentationFactory = {
+  /** Pixel color belongs to presentation, while MapDefinition stays semantic. */
+  compositor?: MapCompositor;
   init?(): Promise<void>;
   mount(host: PresentationHost): MapPresentation;
 };

@@ -1,7 +1,8 @@
+import { magnetsMap } from './magnets/spec';
 import { pendulumMap } from './pendulum/spec';
 import type { MapDefinition } from './types';
 
-const maps: MapDefinition[] = [pendulumMap];
+const maps: MapDefinition[] = [pendulumMap, magnetsMap];
 
 export function catalogEntries(): MapDefinition[] {
   return maps;

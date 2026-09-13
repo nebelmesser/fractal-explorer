@@ -44,14 +44,23 @@ Shared map contracts live in `app/src/maps/types.ts`. A `MapDefinition`
 describes only what the engine needs to compute and navigate a map:
 
 - default coordinate view and navigation policy;
+- optional `worldView` (widest camera; opening view and Reset stay on `defaultView`);
 - parameter declarations;
 - the work-budget parameter and its range;
-- GPU shader and uniform packing.
+- GPU shader and uniform packing;
+- an optional CPU kernel for the same semantic sample at f64 depth.
+
+Every kernel writes one semantic f32 sample per point. The engine treats that
+sample as opaque map data; it must not decode a concrete map's categories,
+colors, or packing.
 
 Each map implementation lives in its own `app/src/maps/<map>/` directory and
 is registered in `app/src/maps/catalog.ts` when catalog discovery is needed.
 Map physics, domain wrapping, shader semantics, parameter names, and map
 constants must remain inside that module.
+
+The double-pendulum map is `pendulum/`. The magnetic-pendulum basins map is
+`magnets/`.
 
 Adding another map must not require editing the GPU renderer, camera/input
 logic, prefetch pipeline, or reset transition algorithm.
@@ -60,7 +69,15 @@ logic, prefetch pipeline, or reset transition algorithm.
 
 The bridge between a map and its UI implements `MapPresentationFactory` from
 `app/src/viewer/presentation.ts`. A presentation may initialize supporting
-code and owns all map-specific visual and interface behavior.
+code and owns all map-specific visual and interface behavior. It may also
+provide a `MapCompositor`: GPU WGSL and a matching Canvas callback that convert
+the map's semantic sample into RGB. The default compositor applies the shared
+histogram/log tone; categorical color and packing stay in the concrete
+presentation. Initial median filtering belongs to this compositor too.
+
+Shared viewer chrome, styles, and the Ask bridge live in `app/src/viewer/`.
+Concrete presentations may import that layer, but must not import presentation
+code or styles from another concrete map.
 
 For the double-pendulum map, `app/src/maps/pendulum/` owns:
 
@@ -77,6 +94,11 @@ The generic runtime may call presentation lifecycle hooks, but it must not
 inspect or mutate presentation state. A map may provide a completely different
 presentation or no overlay at all while retaining the same map interaction and
 rendering engine.
+
+Magnetic-pendulum presentation is `app/src/maps/magnets/`: Cartesian axes,
+magnet markers, semantic-dwell colorization, and a hover trajectory. Its hover
+starts at the rendered pixel center, uses the current map work budget, and
+steps in f32 to match the GPU result. It does not use probes or narration.
 
 The concrete page entrypoint composes a `MapDefinition`, its presentation, and
 `bootViewer`. Keep this composition thin.
@@ -199,8 +221,9 @@ from the playground root:
 ./scripts/preview
 ```
 
-Open `https://127.0.0.1:4000/fractal/double-pendulum.html`. Add `?narration=1`
-to show the narrator overlay and play cues. Deep views switch to CPU/WASM tiles
+Open `https://127.0.0.1:4000/fractal/double-pendulum.html` or
+`https://127.0.0.1:4000/fractal/magnetic-pendulum.html`. Add `?narration=1`
+to show the narrator overlay and play cues on the double-pendulum page. Deep views switch to CPU/WASM tiles
 automatically. Do not start another Jekyll, Python, Vite preview, or static-file
 server.
 

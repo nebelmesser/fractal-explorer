@@ -66,6 +66,10 @@ ui.param.F:
   text: Трение
 ui.param.G:
   text: Гравитация
+ui.param.H:
+  text: Высота
+ui.param.K:
+  text: Сила магнитов
 ui.param.L1:
   text: Длина 1
 ui.param.L2:
@@ -74,6 +78,8 @@ ui.param.M1:
   text: Масса 1
 ui.param.M2:
   text: Масса 2
+ui.param.R:
+  text: Расстояние
 ui.param.neighbor_deg:
   text: Разница углов, °
 ui.pin_multiple_pendulums:

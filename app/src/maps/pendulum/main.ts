@@ -1,11 +1,11 @@
-import './style.css';
+import '../../viewer/style.css';
 import { bindHighlight, bindUnhighlight, mountNarrator, type Narrator } from '@nebelmesser/narration';
 import { applyUi, loadUi, onUiChange, t, uiLocale } from '../../i18n';
+import { bindAskPrompt } from '../../viewer/ask';
 import { bootViewer } from '../../viewer/runtime';
 import type { ViewerSignals } from '../../viewer/presentation';
 import { pendulumPresentation } from './presentation';
 import { pendulumMap } from './spec';
-import { bindAskPrompt } from './ask';
 
 function narrationEnabled(): boolean {
   return new URLSearchParams(location.search).get('narration') === '1';

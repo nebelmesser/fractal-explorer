@@ -100,22 +100,14 @@ fn sparse_sample_visible(uv: vec2f) -> bool {
   return d.x <= draw.sparse.x * 0.5 && d.y <= draw.sparse.y * 0.5;
 }
 
-// Color ramp: map_tone() is prepended from src/mapTone.ts.
+// map_sample_color() is appended by the selected presentation compositor.
 
 @fragment
 fn tile_fs(in: VertexOut) -> @location(0) vec4f {
   if (!sparse_sample_visible(in.uv)) {
     return vec4f(0.0);
   }
-  let value = filtered_sample(in.uv);
-  var gray = 0.0;
-  if (exposure.range.y > exposure.range.x) {
-    gray = clamp((value - exposure.range.x) / (exposure.range.y - exposure.range.x), 0.0, 1.0);
-  }
-  if (exposure.range.z > 0.5) {
-    gray = 1.0 - gray;
-  }
   let alpha = draw.sparse.w;
-  let rgb = map_tone(gray) * alpha;
-  return vec4f(rgb, alpha);
+  let rgb = map_sample_color(in.uv, exposure.range.z > 0.5);
+  return vec4f(rgb * alpha, alpha);
 }

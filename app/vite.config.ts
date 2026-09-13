@@ -15,14 +15,17 @@ export default defineConfig({
     emptyOutDir: false,
     sourcemap: false,
     rollupOptions: {
-        input: resolve(__dirname, 'double-pendulum.html'),
+      input: {
+        explorer: resolve(__dirname, 'double-pendulum.html'),
+        magnets: resolve(__dirname, 'magnetic-pendulum.html'),
+      },
       output: {
-        entryFileNames: 'assets/explorer.js',
+        entryFileNames: 'assets/[name].js',
         chunkFileNames: 'assets/explorer-[name].js',
         assetFileNames: (info) => {
           const name = info.name ?? '';
           // Keep the wasm next to the JS so the bundled loader can fetch it.
-          if (name.endsWith('.wasm')) return 'assets/[name][extname]';
+          if (name.endsWith('.wasm') || name.endsWith('.css')) return 'assets/[name][extname]';
           return 'assets/explorer[extname]';
         },
       },
@@ -42,8 +45,7 @@ export default defineConfig({
       transformIndexHtml(html) {
         return html
           .replace(/ crossorigin(?:="[^"]*")?/g, '')
-          .replace('src="./assets/explorer.js"', 'src="./assets/explorer.js?v=sim-run"')
-          .replace('href="./assets/explorer.css"', 'href="./assets/explorer.css?v=sim-run"');
+          .replace(/(\s(?:src|href)=")(\.\/assets\/[^"]+)(")/g, '$1$2?v=sim-run$3');
       },
     },
     {
@@ -56,6 +58,8 @@ export default defineConfig({
           for (const name of readdirSync(assets)) {
             if (
               name === 'explorer.js' || name === 'explorer.css'
+              || name === 'magnets.js' || name === 'magnets.css'
+              || name === 'ask.css'
               || name.startsWith('explorer-') || name.startsWith('tile-worker-')
               || name.startsWith('map_core_bg')
             ) {

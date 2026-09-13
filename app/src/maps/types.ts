@@ -56,13 +56,9 @@ export type WorkBudget = {
   step: number;
 };
 
-export type PostUniforms = {
-  invert: boolean;
-  median: number;
-  /** Stretch grayscale over this view; defaults to the computed `view` (whole buffer). */
+export type TileUniforms = {
+  /** Region represented by live pixels; defaults to the whole tile view. */
   normView?: ViewRect;
-  /** Integer contribution of each sample to the shared exposure histogram. */
-  histogramWeight?: number;
 };
 
 export type GpuKernel = {
@@ -76,7 +72,7 @@ export type GpuKernel = {
     width: number,
     height: number,
     params: MapParams,
-    post: PostUniforms,
+    tile: TileUniforms,
   ): ArrayBuffer;
 };
 
@@ -100,6 +96,11 @@ export type MapDefinition = {
   /** Override only to preserve an existing storage key. */
   preferencesKey?: string;
   defaultView: ViewRect;
+  /**
+   * Widest camera. Opening view and Reset stay on `defaultView`; unzoom can
+   * grow out to this rect. Defaults to `defaultView`.
+   */
+  worldView?: ViewRect;
   navigation?: NavigationPolicy;
   workBudget: WorkBudget;
   params: MapParam[];
@@ -107,6 +108,11 @@ export type MapDefinition = {
   /** Used automatically past the f32 zoom floor. */
   cpu?: CpuKernel;
 };
+
+/** Navigable domain used for zoom-out and the LOD tile origin. */
+export function mapDomain(map: MapDefinition): ViewRect {
+  return map.worldView ?? map.defaultView;
+}
 
 export function viewSpanX(view: ViewRect): number {
   return view.xMax - view.xMin;

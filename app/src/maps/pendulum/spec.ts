@@ -20,7 +20,7 @@ import {
   type GpuKernel,
   type MapDefinition,
   type MapParams,
-  type PostUniforms,
+  type TileUniforms,
   type ViewRect,
 } from '../types';
 import computeWgsl from './pendulum.wgsl?raw';
@@ -32,7 +32,7 @@ export function packPendulumUniforms(
   width: number,
   height: number,
   params: MapParams,
-  post: PostUniforms,
+  tile: TileUniforms,
 ): ArrayBuffer {
   // Five vec4s: view, phys, step, size (u32), extra (u32) — 80 bytes, 16-aligned.
   const buf = new ArrayBuffer(80);
@@ -53,13 +53,13 @@ export function packPendulumUniforms(
   u32[12] = Math.max(PENDULUM_MIN_ITER, Math.round(params.MAX_ITERATIONS ?? PENDULUM_MIN_ITER));
   u32[13] = width;
   u32[14] = height;
-  u32[15] = post.invert ? 1 : 0;
-  u32[16] = Math.max(0, Math.round(post.median));
-  const norm = normPixelRect(view, post.normView ?? view, width, height);
+  u32[15] = 0;
+  u32[16] = 0;
+  const norm = normPixelRect(view, tile.normView ?? view, width, height);
   // extra.yz: 16-bit pairs (x0,y0) and (x1,y1). Sides stay well below 65535.
   u32[17] = (norm.y0 << 16) | norm.x0;
   u32[18] = (norm.y1 << 16) | norm.x1;
-  u32[19] = Math.max(1, Math.round(post.histogramWeight ?? 1));
+  u32[19] = 1;
   return buf;
 }
 

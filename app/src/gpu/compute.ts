@@ -1,6 +1,7 @@
 import type { GpuContext } from './device';
 import type { MapDefinition, MapParams, ViewRect } from '../maps/types';
-import { viewSpanX, viewSpanY } from '../maps/types';
+import { mapDomain, viewSpanX, viewSpanY } from '../maps/types';
+import { fixedCompositorExposure, type MapCompositor } from '../viewer/compositor';
 import {
   LOD_CACHE_TILES, LOD_COARSE_GAP, LOD_CPU_GPU_PX, LOD_CPU_MIN_PX,
   LOD_CPU_EXPOSURE_FRAME_MS, LOD_CPU_INITIAL_RES, LOD_CPU_PARALLEL,
@@ -12,7 +13,6 @@ import {
   LOD_EXPOSURE_TAU_MS, LOD_MAX_LEVEL, LOD_MAX_LEVEL_F64, LOD_PREFETCH_PAD, LOD_TILE_PX,
 } from '../constants';
 import { f32Ulp, f64Ulp } from './precision';
-import { mapToneWgsl } from '../mapTone';
 import reduceWgsl from './reduce.wgsl?raw';
 import tileBlitWgsl from './tile_blit.wgsl?raw';
 
@@ -74,6 +74,7 @@ export class GpuMapRenderer {
   private constructor(
     private readonly gpu: GpuContext,
     private readonly map: MapDefinition,
+    private readonly compositor: MapCompositor,
     canvas: HTMLCanvasElement,
     p: {
       computeLayout: GPUBindGroupLayout; reduceLayout: GPUBindGroupLayout;
@@ -98,6 +99,7 @@ export class GpuMapRenderer {
     gpu: GpuContext,
     canvas: HTMLCanvasElement,
     map: MapDefinition,
+    compositor: MapCompositor,
   ): Promise<GpuMapRenderer> {
     const device = gpu.device;
     const computeLayout = device.createBindGroupLayout({ entries: [
@@ -116,7 +118,7 @@ export class GpuMapRenderer {
     ] });
     const computeMod = device.createShaderModule({ code: map.gpu.computeWgsl });
     const reduceMod = device.createShaderModule({ code: reduceWgsl });
-    const composeMod = device.createShaderModule({ code: mapToneWgsl() + tileBlitWgsl });
+    const composeMod = device.createShaderModule({ code: tileBlitWgsl + compositor.gpuWgsl });
     await Promise.all([
       assertShader(computeMod, 'compute'), assertShader(reduceMod, 'reduce'),
       assertShader(composeMod, 'tile compositor'),
@@ -134,7 +136,7 @@ export class GpuMapRenderer {
       vertex: { module: composeMod, entryPoint: 'tile_vs' },
       fragment: { module: composeMod, entryPoint: 'tile_fs', targets: [{ format: gpu.format }] },
     });
-    return new GpuMapRenderer(gpu, map, canvas, {
+    return new GpuMapRenderer(gpu, map, compositor, canvas, {
       computeLayout, reduceLayout, composeLayout, compute, reduce, compose,
     });
   }
@@ -500,14 +502,19 @@ export class GpuMapRenderer {
     });
   }
 
-  private baseSpan(): number { return Math.min(viewSpanX(this.map.defaultView), viewSpanY(this.map.defaultView)); }
+  private domain(): ViewRect { return mapDomain(this.map); }
+  private baseSpan(): number {
+    const domain = this.domain();
+    return Math.min(viewSpanX(domain), viewSpanY(domain));
+  }
   private maxLevel(): number { return this.map.cpu ? this.cpuLevelCap : LOD_MAX_LEVEL; }
   private preciseCpuLevelCap(): number {
     if (!this.map.cpu) return LOD_MAX_LEVEL;
     const p = this.map.navigation;
+    const domain = this.domain();
     const coordinateLimit = Math.max(
-      Math.abs(this.map.defaultView.xMin), Math.abs(this.map.defaultView.xMax),
-      Math.abs(this.map.defaultView.yMin), Math.abs(this.map.defaultView.yMax),
+      Math.abs(domain.xMin), Math.abs(domain.xMax),
+      Math.abs(domain.yMin), Math.abs(domain.yMax),
       Math.abs(p?.xCenter?.min ?? 0), Math.abs(p?.xCenter?.max ?? 0),
       Math.abs((p?.xPeriod?.center ?? 0) - (p?.xPeriod?.period ?? 0) / 2),
       Math.abs((p?.xPeriod?.center ?? 0) + (p?.xPeriod?.period ?? 0) / 2),
@@ -656,11 +663,11 @@ export class GpuMapRenderer {
   }
   private xOrigin(): number {
     const p = this.map.navigation?.xPeriod;
-    return p ? p.center - p.period / 2 : this.map.defaultView.xMin;
+    return p ? p.center - p.period / 2 : this.domain().xMin;
   }
   private yOrigin(): number {
     const p = this.map.navigation?.yPeriod;
-    return p ? p.center - p.period / 2 : this.map.defaultView.yMin;
+    return p ? p.center - p.period / 2 : this.domain().yMin;
   }
   private canonicalY(y: number): number {
     const p = this.map.navigation?.yPeriod;
@@ -828,7 +835,7 @@ export class GpuMapRenderer {
     const minmax = device.createBuffer({ size: 8, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
     device.queue.writeBuffer(uniform, 0, this.map.gpu.packUniforms(
       cell.sourceView, width, height, request.params,
-      { invert: false, median: 1, normView: cell.sourceView },
+      { normView: cell.sourceView },
     ));
     return { cell, uniform, raw, minmax, width, height };
   }
@@ -1028,8 +1035,17 @@ export class GpuMapRenderer {
     this.lastError = null;
   }
 
+  private applyFixedExposure(): boolean {
+    const exposure = fixedCompositorExposure(this.compositor);
+    if (!exposure) return false;
+    this.exposure = { ...exposure };
+    this.exposureTarget = { ...exposure };
+    return true;
+  }
+
   private updateExposure(request: PresentRequest): void {
     if (!this.requestIsLive(request)) return;
+    if (this.applyFixedExposure()) return;
     const draws = this.visibleTiles(request);
     if (!draws.length) return;
     const bins = new Uint32Array(256);
@@ -1066,6 +1082,7 @@ export class GpuMapRenderer {
 
   /** Estimate the initial deep-link exposure from the whole FOV, not its first center tiles. */
   private async primeCpuExposure(request: PresentRequest): Promise<void> {
+    if (this.applyFixedExposure()) return;
     const cpu = this.map.cpu;
     if (!cpu || request.generation !== this.generation) return;
     // This path gates the first frame of a direct CPU deep-link. A full 64×64

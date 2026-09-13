@@ -72,6 +72,12 @@ ui.param.F:
   text: Friction
 ui.param.G:
   text: Gravity
+ui.param.H:
+  text: Height
+  frozen: true
+ui.param.K:
+  text: Magnet strength
+  frozen: true
 ui.param.L1:
   text: Length 1
 ui.param.L2:
@@ -80,6 +86,9 @@ ui.param.M1:
   text: Mass 1
 ui.param.M2:
   text: Mass 2
+ui.param.R:
+  text: Spacing
+  frozen: true
 ui.param.neighbor_deg:
   text: Angle difference, °
   frozen: true

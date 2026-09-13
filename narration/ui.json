@@ -43,6 +43,9 @@
       "param.G": "Гравитация",
       "param.F": "Трение",
       "param.DT": "Плавность (dt)",
+      "param.K": "Сила магнитов",
+      "param.R": "Расстояние",
+      "param.H": "Высота",
       "param.neighbor_deg": "Разница углов, °"
     },
     "en": {
@@ -79,6 +82,9 @@
       "param.G": "Gravity",
       "param.F": "Friction",
       "param.DT": "Smoothness (dt)",
+      "param.K": "Magnet strength",
+      "param.R": "Spacing",
+      "param.H": "Height",
       "param.neighbor_deg": "Angle difference, °"
     }
   }

@@ -20,6 +20,7 @@ import {
   copyView,
   defaultParams,
   lerpParams,
+  mapDomain,
   padViewWith,
   unionView,
   viewAround,
@@ -32,6 +33,7 @@ import {
 } from '../maps/types';
 import { computeSize, cssShortPx, densityPreservingPad, fitMapDisplay, maxBudgetPx, nextWorkBudget, preferredWork, scaleSize, snapComputePx } from './budget';
 import { bindMapInput, type ViewOpts } from './input';
+import { toneMapCompositor } from './compositor';
 import { bindPrefs, consumeResetQuery, loadPrefs, markPrefsDirty } from './prefs';
 import {
   emptyPresentation,
@@ -132,6 +134,7 @@ export async function bootViewer(
   const mapShift = shiftEl;
   const clip = mapClip;
   const navigation = mapDef.navigation ?? {};
+  const compositor = presentationFactory?.compositor ?? toneMapCompositor;
 
   const gpu = await requestGpu();
   if (!gpu && !mapDef.cpu) {
@@ -148,14 +151,15 @@ export async function bootViewer(
   const params: MapParams = { ...defaultParams(mapDef), ...saved?.params };
   params[mapDef.workBudget.param] = preferredWork(saved?.targetFrameMs ?? TARGET_FRAME_MS, mapDef.workBudget);
   let display = fitMapDisplay(stage);
-  let world = worldFromDisplay(display.width, display.height, mapDef.defaultView);
+  let world = worldFromDisplay(display.width, display.height, mapDomain(mapDef));
+  let home = worldFromDisplay(display.width, display.height, mapDef.defaultView);
   let view: ViewRect = viewFromQuery(
     world,
     display.width,
     display.height,
     navigation,
     minSpan,
-  ) ?? copyView(world);
+  ) ?? copyView(home);
   let computedView = copyView(view);
   const history: ViewRect[] = [copyView(view)];
   let settledPx = snapComputePx(Math.min(display.width, display.height));
@@ -193,7 +197,7 @@ export async function bootViewer(
   const controls: ViewerControls = {
     params,
     invert: saved?.invert ?? false,
-    median: MEDIAN_DEFAULT,
+    median: compositor.initialMedian ?? MEDIAN_DEFAULT,
     targetFrameMs: saved?.targetFrameMs ?? TARGET_FRAME_MS,
   };
 
@@ -206,7 +210,7 @@ export async function bootViewer(
   let renderer: GpuMapRenderer | CpuMapRenderer;
   if (gpu) {
     try {
-      renderer = await GpuMapRenderer.create(gpu, backCanvas, mapDef);
+      renderer = await GpuMapRenderer.create(gpu, backCanvas, mapDef, compositor);
     } catch (error) {
       console.error(error);
       if (!mapDef.cpu) {
@@ -218,10 +222,10 @@ export async function bootViewer(
       const replacement = backCanvas.cloneNode(false) as HTMLCanvasElement;
       backCanvas.replaceWith(replacement);
       backCanvas = replacement;
-      renderer = CpuMapRenderer.create(frontCanvas, mapDef);
+      renderer = CpuMapRenderer.create(frontCanvas, mapDef, compositor);
     }
   } else {
-    renderer = CpuMapRenderer.create(backCanvas, mapDef);
+    renderer = CpuMapRenderer.create(backCanvas, mapDef, compositor);
   }
   const presentation: MapPresentation = presentationFactory?.mount({
     clip,
@@ -236,7 +240,7 @@ export async function bootViewer(
       end: resetHomeEnd,
       instant: resetHomeInstant,
       cancel: resetHomeCancel,
-      isAway: () => !atDefaultView(view, world, navigation),
+      isAway: () => !atDefaultView(view, home, navigation),
     },
     getView: () => view,
     setView: (next, opts) => applyView(next, opts),
@@ -281,7 +285,7 @@ export async function bootViewer(
   function syncZoomBar(): void {
     zoomIn.disabled = !canZoomIn(view, minSpan);
     zoomOut.disabled = !canZoomOut(view, world);
-    zoomReset.disabled = !canZoomOut(view, world) && atDefaultView(view, world, navigation);
+    zoomReset.disabled = atDefaultView(view, home, navigation);
   }
 
   function noteCamera(prev: ViewRect, next: ViewRect, kind?: 'reset' | 'back'): void {
@@ -541,11 +545,11 @@ export async function bootViewer(
 
   function lookaheadParams(cover: ViewRect): MapParams | undefined {
     if (!resetParamFrom || !resetParamTo) return undefined;
-    if (!resetFromView || !isUnzoom(resetFromView, world)) {
+    if (!resetFromView || !isUnzoom(resetFromView, home)) {
       return lerpParams(mapDef.params, resetParamFrom, resetParamTo, Math.min(1, resetEase + 0.35));
     }
     const s0 = Math.max(viewSpanX(resetFromView), viewSpanY(resetFromView));
-    const s1 = Math.max(viewSpanX(world), viewSpanY(world));
+    const s1 = Math.max(viewSpanX(home), viewSpanY(home));
     const sc = Math.max(viewSpanX(cover), viewSpanY(cover));
     const e = s1 > s0 * 1.001 ? Math.min(1, Math.max(0, (sc - s0) / (s1 - s0))) : 1;
     return lerpParams(mapDef.params, resetParamFrom, resetParamTo, e);
@@ -564,10 +568,10 @@ export async function bootViewer(
     return renderer.prefetch(landing, lookaheadParams(landing) ?? params, size.width, size.height);
   }
 
-  function resetToWorld(): void {
-    if (atDefaultView(view, world, navigation)) {
-      if (!viewsEqual(view, world)) {
-        view = copyView(world);
+  function resetToHome(): void {
+    if (atDefaultView(view, home, navigation)) {
+      if (!viewsEqual(view, home)) {
+        view = copyView(home);
         applyShift();
         drawChrome();
         syncZoomBar();
@@ -579,7 +583,7 @@ export async function bootViewer(
       view = folded;
       applyShift();
     }
-    applyView(copyView(world), { pushHistory: true, animate: true });
+    applyView(copyView(home), { pushHistory: true, animate: true });
   }
 
   function resetHomeBegin(): void {
@@ -592,7 +596,7 @@ export async function bootViewer(
       view = folded;
       applyShift();
     }
-    if (!atDefaultView(view, world, navigation)) history.push(copyView(view));
+    if (!atDefaultView(view, home, navigation)) history.push(copyView(view));
     resetFromView = copyView(view);
     resetParamFrom = { ...params };
     resetParamTo = {
@@ -601,7 +605,7 @@ export async function bootViewer(
     };
     resetEase = 0;
     lastCoverParams = null;
-    unzoomTarget = copyView(world);
+    unzoomTarget = copyView(home);
     presentation.reset();
     markPrefsDirty();
   }
@@ -610,8 +614,8 @@ export async function bootViewer(
     resetEase = eased;
     if (resetFromView) {
       const desired = eased >= 1
-        ? copyView(world)
-        : lerpViewShortY(resetFromView, world, eased, navigation);
+        ? copyView(home)
+        : lerpViewShortY(resetFromView, home, eased, navigation);
       view = desired;
     }
     applyShift();
@@ -620,7 +624,7 @@ export async function bootViewer(
   }
 
   function resetHomeEnd(): void {
-    view = copyView(world);
+    view = copyView(home);
     resetFromView = null;
     resetParamFrom = null;
     resetParamTo = null;
@@ -638,8 +642,8 @@ export async function bootViewer(
     cancelPrefetch();
     gestureActive = false;
     const folded = foldViewY(view, navigation);
-    if (!atDefaultView(folded, world, navigation)) history.push(copyView(folded));
-    view = copyView(world);
+    if (!atDefaultView(folded, home, navigation)) history.push(copyView(folded));
+    view = copyView(home);
     resetFromView = null;
     resetParamFrom = null;
     resetParamTo = null;
@@ -787,7 +791,7 @@ export async function bootViewer(
   zoomIn.addEventListener('click', () => buttonZoom(BUTTON_ZOOM_FACTOR));
   zoomReset.addEventListener('click', () => {
     signals?.emit('zoom-reset');
-    resetToWorld();
+    resetToHome();
   });
   syncZoomBar();
 
@@ -797,14 +801,19 @@ export async function bootViewer(
     const resized = next.width !== display.width || next.height !== display.height;
     display = next;
     const atWorld = !canZoomOut(view, world);
-    world = worldFromDisplay(display.width, display.height, mapDef.defaultView);
+    const atHome = atDefaultView(view, home, navigation);
+    world = worldFromDisplay(display.width, display.height, mapDomain(mapDef));
+    home = worldFromDisplay(display.width, display.height, mapDef.defaultView);
     view = atWorld
       ? copyView(world)
-      : fitViewAspect(view, display.width, display.height, world, navigation);
+      : atHome
+        ? copyView(home)
+        : fitViewAspect(view, display.width, display.height, world, navigation);
     for (let i = 0; i < history.length; i++) {
       history[i] = fitViewAspect(history[i], display.width, display.height, world, navigation);
     }
     if (atWorld) history[0] = copyView(world);
+    else if (atHome) history[0] = copyView(home);
     if (resized) requestVisible();
     applyShift();
     presentation.resize();

@@ -9,8 +9,10 @@ or the built `fractal/double-pendulum.html`. Source lives in `app/`
 preview). The map itself is computed only on the GPU.
 
 The first map is a double pendulum: each pixel is an initial pair of angles.
-Hover the map to pose the pendulum at that point. The viewer does not know
-the map — other maps can register in the catalog.
+The second is a magnetic pendulum: each pixel is a bob released over three
+magnets, colored RGB by time spent near each magnet. Hover the map to pose the
+pendulum at that point. The viewer does not know the map — other maps can
+register in the catalog.
 
 The square map panel fills the window. Compute resolution follows the frame
 budget; zoom animation can use more pixels if the GPU is idle. + / − above
@@ -23,7 +25,7 @@ Refresh starts at that view.
 cd app
 npm install
 npm run dev      # http://localhost:5173/double-pendulum.html
-npm run build    # writes ../double-pendulum.html and ../assets/explorer.{js,css}
+npm run build    # writes HTML and assets under fractal/
 ```
 
 `npm run build` compiles the Rust crate to WASM (`wasm-pack`) and then Vite.
