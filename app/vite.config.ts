@@ -22,14 +22,12 @@ export default defineConfig({
         chirikov: resolve(__dirname, 'chirikov.html'),
       },
       output: {
-        entryFileNames: 'assets/[name].js',
-        chunkFileNames: 'assets/explorer-[name].js',
-        assetFileNames: (info) => {
-          const name = info.name ?? '';
-          // Keep the wasm next to the JS so the bundled loader can fetch it.
-          if (name.endsWith('.wasm') || name.endsWith('.css')) return 'assets/[name][extname]';
-          return 'assets/explorer[extname]';
-        },
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        // Every file in one module graph must share the build's content
+        // identity. Stable shared-chunk names can mix incompatible Rollup
+        // export aliases when a browser or CDN caches across deployments.
+        assetFileNames: 'assets/[name]-[hash][extname]',
       },
     },
   },
@@ -45,9 +43,7 @@ export default defineConfig({
     {
       name: 'strip-crossorigin',
       transformIndexHtml(html) {
-        return html
-          .replace(/ crossorigin(?:="[^"]*")?/g, '')
-          .replace(/(\s(?:src|href)=")(\.\/assets\/[^"]+)(")/g, '$1$2?v=sim-run-9$3');
+        return html.replace(/ crossorigin(?:="[^"]*")?/g, '');
       },
     },
     {
@@ -63,8 +59,10 @@ export default defineConfig({
               || name === 'magnets.js' || name === 'magnets.css'
               || name === 'lyapunov.js' || name === 'lyapunov.css'
               || name === 'chirikov.js' || name === 'chirikov.css'
-              || name === 'ask.css'
+              || name === 'ask.css' || name === 'menu.css'
               || name.startsWith('explorer-') || name.startsWith('tile-worker-')
+              || name.startsWith('magnets-') || name.startsWith('lyapunov-')
+              || name.startsWith('chirikov-') || name.startsWith('menu-')
               || name.startsWith('map_core_bg')
             ) {
               rmSync(resolve(assets, name), { force: true });

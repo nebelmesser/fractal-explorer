@@ -221,6 +221,11 @@ This builds Rust/WASM, runs TypeScript checking, and writes production files to
 `narration/manifest.json`, `narration/ui.json`, and audio are current before
 the Vite build.
 
+Production entry modules, shared chunks, workers, CSS, and WASM must use
+content-hashed filenames. They form one compatible build graph; stable names
+or cache-busting only the HTML references can mix minified exports from
+different deployments and break every endpoint at startup.
+
 For integrated preview, follow the parent repository instructions and run only
 from the playground root:
 
