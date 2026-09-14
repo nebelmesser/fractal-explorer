@@ -658,6 +658,8 @@ export class CpuMapRenderer {
     if (this.applyFixedExposure()) return;
     const draws = this.visibleTiles(request);
     if (!draws.length) return;
+    const exact = this.compositor.exposure === 'quantile';
+    const samples: number[] = [];
     const bins = new Uint32Array(256);
     const maxIterations = Math.max(1, request.params[this.map.workBudget.param] ?? this.map.workBudget.min);
     const maxLog = Math.log1p(maxIterations);
@@ -675,13 +677,17 @@ export class CpuMapRenderer {
         const ix = clampSample(Math.floor((worldX - draw.drawView.xMin) / viewSpanX(draw.drawView) * draw.tile.width), draw.tile.width);
         const iy = clampSample(Math.floor((worldY - draw.drawView.yMin) / viewSpanY(draw.drawView) * draw.tile.height), draw.tile.height);
         const value = Math.max(0, draw.tile.counts[iy * draw.tile.width + ix]);
-        const bin = Math.min(255, Math.floor(Math.log1p(value) / maxLog * 256));
-        bins[bin] += 1;
+        const logValue = Math.log1p(value);
+        if (exact) samples.push(logValue);
+        else bins[Math.min(255, Math.floor(logValue / maxLog * 256))] += 1;
         total += 1;
       }
     }
     if (!total) return;
-    this.setExposure(exposureFromBins(bins, total, maxLog), !this.exposure);
+    this.setExposure(
+      exact ? exposureFromValues(samples) : exposureFromBins(bins, total, maxLog),
+      !this.exposure,
+    );
   }
 
   /** Estimate the initial exposure from the whole FOV before showing its center tile. */
@@ -704,6 +710,8 @@ export class CpuMapRenderer {
       }, size, row1 - row0, request.params);
     }));
     if (request.generation !== this.generation || this.latest?.generation !== request.generation) return null;
+    const exact = this.compositor.exposure === 'quantile';
+    const samples: number[] = [];
     const bins = new Uint32Array(256);
     const maxIterations = Math.max(1, request.params[this.map.workBudget.param] ?? this.map.workBudget.min);
     const maxLog = Math.log1p(maxIterations);
@@ -711,11 +719,12 @@ export class CpuMapRenderer {
     for (const counts of strips) {
       total += counts.length;
       for (const count of counts) {
-        const bin = Math.min(255, Math.floor(Math.log1p(Math.max(0, count)) / maxLog * 256));
-        bins[bin] += 1;
+        const logValue = Math.log1p(Math.max(0, count));
+        if (exact) samples.push(logValue);
+        else bins[Math.min(255, Math.floor(logValue / maxLog * 256))] += 1;
       }
     }
-    return exposureFromBins(bins, total, maxLog);
+    return exact ? exposureFromValues(samples) : exposureFromBins(bins, total, maxLog);
   }
 
   private setExposure(measured: Exposure, immediate = false): void {
@@ -814,7 +823,9 @@ export class CpuMapRenderer {
         const mapped = Math.max(0, Math.min(1,
           (value - exposure.lo) / Math.max(1e-9, exposure.hi - exposure.lo),
         ));
-        const [r, g, b] = this.compositor.colorize(tile.counts[index], mapped, request.invert);
+        const [r, g, b] = this.compositor.colorize(
+          tile.counts[index], mapped, request.invert, exposure,
+        );
         image.data[index * 4] = Math.round(r * 255);
         image.data[index * 4 + 1] = Math.round(g * 255);
         image.data[index * 4 + 2] = Math.round(b * 255);
@@ -879,7 +890,20 @@ export class CpuMapRenderer {
         const top = (drawView.yMin - request.view.yMin) / sy * request.height;
         const width = viewSpanX(drawView) / sx * request.width;
         const height = viewSpanY(drawView) / sy * request.height;
-        context.drawImage(tile.toneCanvas, left, top, width, height);
+        // Fractional destination edges can leave a transparent device-pixel
+        // crack between adjacent canvases. Cover the shared edge explicitly;
+        // finer LODs are painted later and still win the overlap.
+        const right = left + width;
+        const bottom = top + height;
+        const pixelLeft = Math.floor(left);
+        const pixelTop = Math.floor(top);
+        context.drawImage(
+          tile.toneCanvas,
+          pixelLeft,
+          pixelTop,
+          Math.ceil(right) - pixelLeft,
+          Math.ceil(bottom) - pixelTop,
+        );
       }
     }
     context.restore();
@@ -967,6 +991,14 @@ function exposureFromBins(bins: Uint32Array, total: number, maxLog: number): Exp
     lo: low,
     hi: Math.max(hi, low + maxLog / 256),
   };
+}
+
+function exposureFromValues(values: number[]): Exposure {
+  values.sort((a, b) => a - b);
+  const last = Math.max(0, values.length - 1);
+  const lo = values[Math.min(last, Math.floor(values.length * LOD_EXPOSURE_LOW))] ?? 0;
+  const hi = values[Math.min(last, Math.floor(values.length * LOD_EXPOSURE_HIGH))] ?? lo;
+  return { lo, hi: Math.max(hi, lo + 1e-6) };
 }
 
 function smoothstep(edge0: number, edge1: number, value: number): number {

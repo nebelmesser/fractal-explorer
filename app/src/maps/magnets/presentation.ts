@@ -2,7 +2,7 @@ import type { MapPresentation, MapPresentationFactory, PresentationHost } from '
 import { bindMenu, syncBudgetReadout, type MenuBinding } from '../../viewer/menu';
 import { viewSpanX, viewSpanY, type ViewRect } from '../types';
 import { drawMagnetsAxes } from './axes';
-import { colorFromDwell, magnetsCompositor, rgbCss } from './compositor';
+import { magnetsCompositor } from './compositor';
 import { MAGNET_BOB_R, MAGNET_MARKER_R, MAGNET_RGB, magnetPositions } from './constants';
 import { magnetsFromParams, traceCapture, type MagnetsPoint } from './physics';
 
@@ -26,7 +26,6 @@ function clientToPhysics(host: PresentationHost, clientX: number, clientY: numbe
 const MAGNET_FILL = MAGNET_RGB;
 const MAGNET_PATH = '#fff';
 const MAGNET_PATH_EDGE = '#000';
-const MAGNET_ROD = 'rgba(255, 255, 255, 0.5)';
 
 function mountMagnetsPresentation(host: PresentationHost): MapPresentation {
   const axes = requireElement<HTMLCanvasElement>('map-axes');
@@ -94,14 +93,6 @@ function mountMagnetsPresentation(host: PresentationHost): MapPresentation {
 
     if (hover) {
       const trace = traceCapture(hover.x, hover.y, phys);
-      const origin = physicsToScreen(view, { x: 0, y: 0 }, width, height);
-      const start = physicsToScreen(view, trace.path[0], width, height);
-      ctx.strokeStyle = MAGNET_ROD;
-      ctx.lineWidth = 1.25;
-      ctx.beginPath();
-      ctx.moveTo(origin.x, origin.y);
-      ctx.lineTo(start.x, start.y);
-      ctx.stroke();
       ctx.beginPath();
       trace.path.forEach((point, i) => {
         const p = physicsToScreen(view, point, width, height);
@@ -115,7 +106,7 @@ function mountMagnetsPresentation(host: PresentationHost): MapPresentation {
       ctx.lineWidth = 1.7;
       ctx.stroke();
       const bob = physicsToScreen(view, hover, width, height);
-      paintDisk(ctx, bob.x, bob.y, MAGNET_BOB_R, rgbCss(colorFromDwell(trace.dwell, trace.magnet)));
+      paintDisk(ctx, bob.x, bob.y, MAGNET_BOB_R, MAGNET_FILL[trace.magnet] ?? MAGNET_FILL[0]);
     }
 
     const pivot = physicsToScreen(view, { x: 0, y: 0 }, width, height);

@@ -2,7 +2,7 @@ import { mapToneRgb, mapToneWgsl } from '../mapTone';
 
 export type Rgb = [number, number, number];
 
-export type CompositorExposure = 'histogram' | 'none' | {
+export type CompositorExposure = 'histogram' | 'quantile' | 'none' | {
   /** Bounds in the compositor's log1p sample domain. */
   lo: number;
   hi: number;
@@ -17,14 +17,19 @@ export type CompositorExposure = 'histogram' | 'none' | {
  */
 export type MapCompositor = {
   gpuWgsl: string;
-  colorize(sample: number, tone: number, inverted: boolean): Rgb;
+  colorize(
+    sample: number,
+    tone: number,
+    inverted: boolean,
+    exposure: { lo: number; hi: number },
+  ): Rgb;
   exposure: CompositorExposure;
   /** Initial median window; 1 disables the filter. */
   initialMedian?: number;
 };
 
 export function fixedCompositorExposure(compositor: MapCompositor): { lo: number; hi: number } | null {
-  if (compositor.exposure === 'histogram') return null;
+  if (compositor.exposure === 'histogram' || compositor.exposure === 'quantile') return null;
   if (compositor.exposure === 'none') return { lo: 0, hi: 1 };
   return {
     lo: compositor.exposure.lo,

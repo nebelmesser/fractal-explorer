@@ -46,7 +46,10 @@
       "param.K": "Сила магнитов",
       "param.R": "Расстояние",
       "param.H": "Высота",
-      "param.neighbor_deg": "Разница углов, °"
+      "param.neighbor_deg": "Разница углов, °",
+      "param.lyapunov.rhythm": "Ритм",
+      "param.lyapunov.accuracy": "Точность",
+      "param.lyapunov.seed": "Начальное значение"
     },
     "en": {
       "settings": "Settings",
@@ -85,7 +88,10 @@
       "param.K": "Magnet strength",
       "param.R": "Spacing",
       "param.H": "Height",
-      "param.neighbor_deg": "Angle difference, °"
+      "param.neighbor_deg": "Angle difference, °",
+      "param.lyapunov.rhythm": "Rhythm",
+      "param.lyapunov.accuracy": "Accuracy",
+      "param.lyapunov.seed": "Initial value"
     }
   }
 }

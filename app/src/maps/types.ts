@@ -17,6 +17,8 @@ export type MapParam = {
   max: number;
   step: number;
   default: number;
+  /** Optional labels for evenly stepped numeric choices. */
+  choices?: readonly string[];
   /** Optional CSS theme name supplied by the map presentation. */
   tone?: string;
   /** Primary parameters stay in the first menu block. */
@@ -54,6 +56,8 @@ export type WorkBudget = {
   min: number;
   max: number;
   step: number;
+  /** False when the work value is a normal user-controlled map parameter. */
+  adaptive?: boolean;
 };
 
 export type TileUniforms = {
@@ -67,6 +71,10 @@ export type GpuKernel = {
   entryPoint: string;
   /** Byte length of the uniform buffer (must be a multiple of 16). */
   uniformBytes: number;
+  /** Square tile side in pixels; must be a multiple of the shader workgroup side. */
+  tileSize?: number;
+  /** Maximum tiles submitted in one command buffer. Lower this for long-running kernels. */
+  dispatchBatch?: number;
   packUniforms(
     view: ViewRect,
     width: number,

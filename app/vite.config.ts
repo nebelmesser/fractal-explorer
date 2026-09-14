@@ -18,6 +18,7 @@ export default defineConfig({
       input: {
         explorer: resolve(__dirname, 'double-pendulum.html'),
         magnets: resolve(__dirname, 'magnetic-pendulum.html'),
+        lyapunov: resolve(__dirname, 'lyapunov.html'),
       },
       output: {
         entryFileNames: 'assets/[name].js',
@@ -45,7 +46,7 @@ export default defineConfig({
       transformIndexHtml(html) {
         return html
           .replace(/ crossorigin(?:="[^"]*")?/g, '')
-          .replace(/(\s(?:src|href)=")(\.\/assets\/[^"]+)(")/g, '$1$2?v=sim-run$3');
+          .replace(/(\s(?:src|href)=")(\.\/assets\/[^"]+)(")/g, '$1$2?v=sim-run-3$3');
       },
     },
     {
@@ -59,6 +60,7 @@ export default defineConfig({
             if (
               name === 'explorer.js' || name === 'explorer.css'
               || name === 'magnets.js' || name === 'magnets.css'
+              || name === 'lyapunov.js' || name === 'lyapunov.css'
               || name === 'ask.css'
               || name.startsWith('explorer-') || name.startsWith('tile-worker-')
               || name.startsWith('map_core_bg')

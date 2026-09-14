@@ -10,6 +10,10 @@ import type { ResetTransition, ViewerControls, ViewerSignals } from './presentat
 import { markPrefsDirty } from './prefs';
 
 function formatValue(spec: MapParam, value: number): string {
+  if (spec.choices?.length) {
+    const index = Math.round((value - spec.min) / Math.max(spec.step, Number.EPSILON));
+    return spec.choices[Math.max(0, Math.min(spec.choices.length - 1, index))];
+  }
   return spec.kind === 'int'
     ? String(Math.round(value))
     : Number(value).toFixed(spec.digits ?? 2);
@@ -159,7 +163,7 @@ export function bindMenu(
   const reset = document.getElementById('resetParams');
   const targetSetting = document.getElementById('target-setting')
     ?? target.closest<HTMLElement>('.slider-label');
-  if (targetSetting) targetSetting.hidden = !advanced;
+  if (targetSetting) targetSetting.hidden = !advanced || map.workBudget.adaptive === false;
   controls.invert = INVERT_DEFAULT;
 
   function syncParams(): void {

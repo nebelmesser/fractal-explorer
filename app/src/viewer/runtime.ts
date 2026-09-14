@@ -149,7 +149,12 @@ export async function bootViewer(
   consumeResetQuery(preferencesKey);
   const saved = loadPrefs(preferencesKey);
   const params: MapParams = { ...defaultParams(mapDef), ...saved?.params };
-  params[mapDef.workBudget.param] = preferredWork(saved?.targetFrameMs ?? TARGET_FRAME_MS, mapDef.workBudget);
+  if (mapDef.workBudget.adaptive !== false) {
+    params[mapDef.workBudget.param] = preferredWork(
+      saved?.targetFrameMs ?? TARGET_FRAME_MS,
+      mapDef.workBudget,
+    );
+  }
   let display = fitMapDisplay(stage);
   let world = worldFromDisplay(display.width, display.height, mapDomain(mapDef));
   let home = worldFromDisplay(display.width, display.height, mapDef.defaultView);
@@ -270,7 +275,7 @@ export async function bootViewer(
   }) ?? emptyPresentation;
   bindPrefs(preferencesKey, () => {
     const stored = { ...params };
-    delete stored[mapDef.workBudget.param];
+    if (mapDef.workBudget.adaptive !== false) delete stored[mapDef.workBudget.param];
     return {
       params: stored,
       invert: controls.invert,
@@ -314,6 +319,7 @@ export async function bootViewer(
   }
 
   function applyBudget(): void {
+    if (mapDef.workBudget.adaptive === false) return;
     const currentSize = computeSize(display, settledPx);
     if (renderer.samplesF64(foldViewY(view, navigation), currentSize.width, currentSize.height)) {
       // Progressive CPU work has no synchronous full-frame duration. Keep the
@@ -599,10 +605,10 @@ export async function bootViewer(
     if (!atDefaultView(view, home, navigation)) history.push(copyView(view));
     resetFromView = copyView(view);
     resetParamFrom = { ...params };
-    resetParamTo = {
-      ...defaultParams(mapDef),
-      [mapDef.workBudget.param]: params[mapDef.workBudget.param],
-    };
+    resetParamTo = { ...defaultParams(mapDef) };
+    if (mapDef.workBudget.adaptive !== false) {
+      resetParamTo[mapDef.workBudget.param] = params[mapDef.workBudget.param];
+    }
     resetEase = 0;
     lastCoverParams = null;
     unzoomTarget = copyView(home);
