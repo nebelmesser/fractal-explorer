@@ -16,6 +16,7 @@
 
 #map-hud.lyapunov-hud {
     pointer-events: none;
+    top: max(var(--ctrl-inset), env(safe-area-inset-top));
     flex-direction: column;
     gap: 5px;
     min-width: min(370px, calc(100vw - 128px));
@@ -25,6 +26,19 @@
     background: rgba(2, 4, 9, 0.66);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.24);
     backdrop-filter: blur(8px);
+}
+
+@media (max-width: 900px), (max-height: 520px) {
+    #map-hud.lyapunov-hud {
+        /* Center inside the free strip between zoom and locale/menu controls. */
+        left: calc(max(var(--ctrl-inset), env(safe-area-inset-left)) + var(--ctrl-size) + var(--ctrl-gap));
+        right: calc(max(var(--ctrl-inset), env(safe-area-inset-right)) + var(--ctrl-size) + 102px);
+        width: auto;
+        min-width: 0;
+        max-width: 370px;
+        margin-inline: auto;
+        transform: none;
+    }
 }
 
 #lyapunov-readout {
@@ -100,8 +114,9 @@
 
 @media (max-width: 520px), (max-height: 520px) {
     #map-hud.lyapunov-hud {
-        min-width: min(280px, calc(100vw - 110px));
-        padding: 6px 8px;
+        min-width: 0;
+        max-width: 280px;
+        padding: 7px 8px;
     }
 
     #lyapunov-readout {
@@ -109,5 +124,17 @@
         font-size: 11px;
         text-overflow: ellipsis;
     }
-}
 
+    .lyapunov-legend {
+        gap: 4px;
+        font-size: 9px;
+    }
+
+    .lyapunov-legend span {
+        gap: 3px;
+    }
+
+    .lyapunov-legend i {
+        width: 14px;
+    }
+}

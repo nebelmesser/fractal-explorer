@@ -46,7 +46,7 @@ export default defineConfig({
       transformIndexHtml(html) {
         return html
           .replace(/ crossorigin(?:="[^"]*")?/g, '')
-          .replace(/(\s(?:src|href)=")(\.\/assets\/[^"]+)(")/g, '$1$2?v=sim-run-3$3');
+          .replace(/(\s(?:src|href)=")(\.\/assets\/[^"]+)(")/g, '$1$2?v=sim-run-4$3');
       },
     },
     {
