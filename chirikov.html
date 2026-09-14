@@ -3,20 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <title>Magnetic Pendulum Fractal</title>
-    <meta name="description" content="Every pixel drops a pendulum over three magnets. The color mixes red, green, and blue by time spent near each magnet.">
-    <link rel="canonical" href="https://nebelmesser.com/fractal/magnetic-pendulum.html">
+    <title>Chirikov–Taylor Map</title>
+    <meta name="description" content="Explore regular islands and chaotic layers in the Chirikov–Taylor standard map.">
+    <link rel="canonical" href="https://nebelmesser.com/fractal/chirikov.html">
     <meta property="og:type" content="website">
-    <meta property="og:url" content="https://nebelmesser.com/fractal/magnetic-pendulum.html">
-    <meta property="og:title" content="Magnetic Pendulum Fractal">
-    <meta property="og:description" content="Every pixel drops a pendulum over three magnets. The color mixes red, green, and blue by time spent near each magnet.">
-    <meta property="og:image" content="https://nebelmesser.com/fractal/img/magnetic.jpg">
-    <meta property="og:image:width" content="1280">
-    <meta property="og:image:height" content="1280">
+    <meta property="og:url" content="https://nebelmesser.com/fractal/chirikov.html">
+    <meta property="og:title" content="Chirikov–Taylor Map">
+    <meta property="og:description" content="A vivid phase portrait of the standard map, from invariant curves to global chaos.">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Magnetic Pendulum Fractal">
-    <meta name="twitter:description" content="Every pixel drops a pendulum over three magnets. The color mixes red, green, and blue by time spent near each magnet.">
-    <meta name="twitter:image" content="https://nebelmesser.com/fractal/img/magnetic.jpg">
+    <meta name="twitter:title" content="Chirikov–Taylor Map">
+    <meta name="twitter:description" content="A vivid phase portrait of the standard map, from invariant curves to global chaos.">
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-5D8EGFYM3L"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
@@ -24,18 +20,18 @@
       gtag('js', new Date());
       gtag('config', 'G-5D8EGFYM3L');
     </script>
-  <script type="module" src="./assets/magnets.js?v=sim-run-9"></script>
+  <script type="module" src="./assets/chirikov.js?v=sim-run-9"></script>
   <link rel="modulepreload" href="./assets/explorer-menu.js?v=sim-run-9">
   <link rel="stylesheet" href="./assets/menu.css?v=sim-run-9">
-  <link rel="stylesheet" href="./assets/magnets.css?v=sim-run-9">
+  <link rel="stylesheet" href="./assets/chirikov.css?v=sim-run-9">
 </head>
 <body>
     <article id="ask-prompt" lang="en">
-        <p>The user is looking at the interactive magnetic-pendulum map at https://nebelmesser.com/fractal/magnetic-pendulum.html and does not need to know physics. Explain what is on this page. You already know chaos, the butterfly effect, and fractals — do not recap the textbook. Be brief, without talking down.</p>
+        <p>The user is looking at the interactive Chirikov–Taylor standard map at https://nebelmesser.com/fractal/chirikov.html and may know nothing about it. Explain the page plainly and briefly, without assuming mathematics.</p>
         <h2>The map</h2>
-        <p>Each point is a pendulum bob released from rest above a table with three magnets at the vertices of an equilateral triangle. Red, green, and blue are the three magnets: the pixel mixes those colors by how long the bob spent near each one. Hover to see one trajectory. Gravity restores the bob toward the origin; friction damps the motion; magnet strength, height above the table, and step size are in settings.</p>
+        <p>Each pixel starts an orbit at angle θ and momentum p, then repeatedly applies a kick controlled by K. Smooth colored layers are regular motion; broken and speckled layers are chaotic motion. Hue follows the orbit's average phase, while brightness shows how coherently it stays in one rotational layer. The opening K value is close to the famous transition where the last large invariant barrier breaks.</p>
         <h2>Navigation</h2>
-        <p>Pan and zoom: click or double-tap, wheel, pinch, +/− buttons. Right-click and reset view go back. Nearby starts can end on different magnets — the boundaries are fractal.</p>
+        <p>Click or double-tap to zoom, drag to pan, and use the wheel, pinch, or +/− buttons. Right-click and reset view go back. Change K to move from nearly parallel invariant curves through mixed islands to widespread chaos. Accuracy controls how many kicks are sampled per pixel.</p>
     </article>
     <select id="narration-locale" data-viewer-ui data-i18n-aria="language" aria-label="Язык">
         <option value="ru">Русский</option>
@@ -58,26 +54,26 @@
                 </button>
             </div>
         </aside>
+        <div id="map-hud" class="chirikov-hud" data-viewer-ui aria-live="polite">
+            <div id="chirikov-readout">K 0.972 · 160</div>
+            <div class="chirikov-legend" aria-label="Orbit phase">
+                <span>−π</span><i></i><span>+π</span>
+            </div>
+        </div>
         <div id="map-clip">
             <div id="map-shift">
                 <canvas id="map" class="map-view is-front" width="256" height="256" data-i18n-aria="map" aria-label="Карта"></canvas>
             </div>
             <canvas id="map-back" class="map-view map-pending" width="256" height="256" aria-hidden="true"></canvas>
             <canvas id="map-axes" aria-hidden="true"></canvas>
-            <canvas id="probe-overlay" aria-hidden="true"></canvas>
             <div id="map-scale-x" aria-hidden="true"></div>
             <div id="map-scale-y" aria-hidden="true"></div>
+            <span id="chirikov-axis-theta" class="chirikov-axis-name" data-viewer-ui>θ</span>
+            <span id="chirikov-axis-momentum" class="chirikov-axis-name" data-viewer-ui>p</span>
         </div>
     </div>
 
     <div id="ui-container" data-viewer-ui>
-        <button type="button" id="resetParams" class="text-button icon-button">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                    d="M4.6 12a7.4 7.4 0 1 0 2.1-5.2M4.6 4.8v4.2h4.2" />
-            </svg>
-            <span data-i18n="reset_parameters">Сбросить параметры</span>
-        </button>
         <div id="map-params"></div>
         <div id="map-extras">
             <div id="map-params-more"></div>
@@ -102,8 +98,7 @@
                 <rect x="3" y="8" width="13" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2" />
             </svg>
             <svg class="icon-copied" viewBox="0 0 24 24" aria-hidden="true">
-                <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                    d="M5 12.5 9.5 17 19 7" />
+                <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M5 12.5 9.5 17 19 7" />
             </svg>
         </button>
     </div>

@@ -29,9 +29,17 @@ The engine must not import a concrete map module or refer to pendulum concepts,
 parameter names, angle units, DOM IDs for map-specific UI, or overlay state.
 The map is computed in f32 on the GPU until the current view needs finer
 coordinates. Tiles past that point are filled automatically by the map's
-optional CPU/WASM kernel. At the deepest distinct f64 grid, samples separate
+CPU/WASM kernel. At the deepest distinct f64 grid, samples separate
 once their pitch reaches 4 CSS pixels, grow more slowly to at most 16 pixels,
 and reveal the black precision void between them.
+
+Every map must provide a complete CPU kernel. When the page URL contains
+`?cpu=1`, do not request or initialize WebGPU: render the opening view,
+navigation, parameter changes, and all refinement exclusively through the CPU
+path. CPU work must run outside the main thread so this diagnostic mode keeps
+the interface responsive. Other query parameters may coexist with `cpu=1`, and
+camera URL updates must preserve it. A missing or failed WebGPU adapter must
+fall back to the same CPU path instead of leaving an empty canvas.
 
 Keep the last complete texture visible during asynchronous work. Normalize
 brightness against the visible view, never against overscan or prefetched
@@ -48,7 +56,7 @@ describes only what the engine needs to compute and navigate a map:
 - parameter declarations;
 - the work-budget parameter and its range;
 - GPU shader and uniform packing;
-- an optional CPU kernel for the same semantic sample at f64 depth.
+- a CPU kernel for the same semantic sample at f64 depth and explicit `cpu=1`.
 
 Every kernel writes one semantic f32 sample per point. The engine treats that
 sample as opaque map data; it must not decode a concrete map's categories,

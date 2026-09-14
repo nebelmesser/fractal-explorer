@@ -575,7 +575,8 @@ export class GpuMapRenderer {
       viewSpanY(view) / Math.max(height, 1),
     );
     const ulp = Math.max(f32Ulp(view.xMin), f32Ulp(view.xMax), f32Ulp(view.yMin), f32Ulp(view.yMax));
-    return ulp > LOD_CPU_GPU_PX * pixel;
+    const tolerance = this.map.cpu?.handoffPx ?? LOD_CPU_GPU_PX;
+    return ulp > tolerance * pixel;
   }
   private cellScreenPx(cell: Cell, request: PresentRequest): number {
     const sx = viewSpanX(request.view) / Math.max(request.width, 1);

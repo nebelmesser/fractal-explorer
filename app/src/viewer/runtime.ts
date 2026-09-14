@@ -3,7 +3,6 @@ import {
   BUTTON_ZOOM_FACTOR,
   MEDIAN_DEFAULT,
   MIN_COMPUTE_PX,
-  MIN_VIEW_SPAN,
   MIN_VIEW_SPAN_F64,
   MAX_OVERSCAN_PX,
   OVERSCAN_PAD,
@@ -136,12 +135,9 @@ export async function bootViewer(
   const navigation = mapDef.navigation ?? {};
   const compositor = presentationFactory?.compositor ?? toneMapCompositor;
 
-  const gpu = await requestGpu();
-  if (!gpu && !mapDef.cpu) {
-    console.error('No GPU and no CPU map path');
-    return;
-  }
-  const minSpan = mapDef.cpu ? MIN_VIEW_SPAN_F64 : MIN_VIEW_SPAN;
+  const cpuRequested = new URLSearchParams(location.search).get('cpu') === '1';
+  const gpu = cpuRequested ? null : await requestGpu();
+  const minSpan = MIN_VIEW_SPAN_F64;
 
   await presentationFactory?.init?.();
 
@@ -167,7 +163,9 @@ export async function bootViewer(
   ) ?? copyView(home);
   let computedView = copyView(view);
   const history: ViewRect[] = [copyView(view)];
-  let settledPx = snapComputePx(Math.min(display.width, display.height));
+  let settledPx = mapDef.settledResolution === 'device'
+    ? maxBudgetPx(display)
+    : cssShortPx(display);
   let animating = false;
   let stopCoast = (): void => {};
   let rendering = false;
@@ -218,10 +216,6 @@ export async function bootViewer(
       renderer = await GpuMapRenderer.create(gpu, backCanvas, mapDef, compositor);
     } catch (error) {
       console.error(error);
-      if (!mapDef.cpu) {
-        console.error(error);
-        return;
-      }
       // A failed WebGPU context locks that canvas to its original context
       // type. Replace the unused back buffer before switching to Canvas 2D.
       const replacement = backCanvas.cloneNode(false) as HTMLCanvasElement;
@@ -806,6 +800,9 @@ export async function bootViewer(
     const next = fitMapDisplay(stage);
     const resized = next.width !== display.width || next.height !== display.height;
     display = next;
+    if (resized && mapDef.settledResolution === 'device') {
+      settledPx = maxBudgetPx(display);
+    }
     const atWorld = !canZoomOut(view, world);
     const atHome = atDefaultView(view, home, navigation);
     world = worldFromDisplay(display.width, display.height, mapDomain(mapDef));

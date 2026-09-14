@@ -84,7 +84,7 @@ export type GpuKernel = {
   ): ArrayBuffer;
 };
 
-/** Optional CPU/WASM kernel for tiles finer than f32 can sample. */
+/** CPU/WASM kernel for explicit CPU rendering and tiles finer than f32 can sample. */
 export type CpuKernel = {
   fillTile(
     view: ViewRect,
@@ -96,6 +96,11 @@ export type CpuKernel = {
   cancelPending?(): void;
   /** Independent tiles the engine may fill at once. Each tile may also split internally. */
   concurrency?: number;
+  /**
+   * Maximum f32 coordinate ULP measured in render pixels before CPU handoff.
+   * Lower values switch to f64 earlier; the default is the engine-wide tolerance.
+   */
+  handoffPx?: number;
 };
 
 export type MapDefinition = {
@@ -103,6 +108,8 @@ export type MapDefinition = {
   title: string;
   /** Override only to preserve an existing storage key. */
   preferencesKey?: string;
+  /** Device renders at the maximum allowed DPR instead of adapting from CSS resolution. */
+  settledResolution?: 'adaptive' | 'device';
   defaultView: ViewRect;
   /**
    * Widest camera. Opening view and Reset stay on `defaultView`; unzoom can
@@ -113,8 +120,8 @@ export type MapDefinition = {
   workBudget: WorkBudget;
   params: MapParam[];
   gpu: GpuKernel;
-  /** Used automatically past the f32 zoom floor. */
-  cpu?: CpuKernel;
+  /** Used for the cpu=1 URL mode and automatically past the f32 zoom floor. */
+  cpu: CpuKernel;
 };
 
 /** Navigable domain used for zoom-out and the LOD tile origin. */

@@ -42,6 +42,7 @@ export const MAGNET_SETTLE_HOLD = 4;
 export const MAGNET_CLOSE_RADIUS = 6;
 export const MAGNET_MAX_STEP = 0.1;
 export const MAGNET_SUBSTEP_MAX = 8;
+export const MAGNET_CPU_WORKERS = 4;
 export const MAGNET_MIN_ITER = 1200;
 export const MAGNET_MAX_ITER = 8000;
 /** Overlay polyline: record a vertex after this travel, cap the drawn count. */

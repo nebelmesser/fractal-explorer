@@ -21,6 +21,7 @@ import {
   type ViewRect,
 } from '../types';
 import computeWgsl from './magnets.wgsl?raw';
+import { cancelMagnetsCpu, fillMagnetsTile, magnetsCpuConcurrency } from './cpu';
 
 export function packMagnetsUniforms(
   view: ViewRect,
@@ -87,4 +88,9 @@ export const magnetsMap: MapDefinition = {
     { key: 'DT', label: 'param.DT', kind: 'float', min: 0.005, max: 0.05, step: 0.001, default: MAGNET_DT, invert: true, digits: 3 },
   ],
   gpu,
+  cpu: {
+    fillTile: fillMagnetsTile,
+    cancelPending: cancelMagnetsCpu,
+    concurrency: magnetsCpuConcurrency(),
+  },
 };
