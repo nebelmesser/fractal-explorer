@@ -104,6 +104,11 @@ fn measure_cycle(state0: vec2f, a: f32, b: f32, rhythm: u32) -> vec2f {
   return state;
 }
 
+/** WGSL has no portable isFinite builtin; NaN is the only value unequal to itself. */
+fn orbit_escaped(x: f32) -> bool {
+  return x != x || abs(x) > 16.0;
+}
+
 fn encoded_exponent(a: f32, b: f32) -> f32 {
   let rhythm = min(u.size.w, 4u);
   let length = sequence_length(rhythm);
@@ -111,7 +116,7 @@ fn encoded_exponent(a: f32, b: f32) -> f32 {
   let warm_cycles = max(1u, u32(u.orbit.z) / length);
   for (var i = 0u; i < warm_cycles; i++) {
     x = orbit_cycle(x, a, b, rhythm);
-    if (!isFinite(x) || abs(x) > 16.0) {
+    if (orbit_escaped(x)) {
       return u.orbit.w + 1.5;
     }
   }
@@ -120,7 +125,7 @@ fn encoded_exponent(a: f32, b: f32) -> f32 {
   var state = vec2f(x, 0.0);
   for (var i = 0u; i < measured_cycles; i++) {
     state = measure_cycle(state, a, b, rhythm);
-    if (!isFinite(state.x) || abs(state.x) > 16.0) {
+    if (orbit_escaped(state.x)) {
       return u.orbit.w + 1.5;
     }
   }
