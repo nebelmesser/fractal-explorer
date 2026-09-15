@@ -108,14 +108,14 @@ export type MapDefinition = {
   title: string;
   /** Override only to preserve an existing storage key. */
   preferencesKey?: string;
-  /** Device renders at the maximum allowed DPR instead of adapting from CSS resolution. */
-  settledResolution?: 'adaptive' | 'device';
   /**
-   * For device resolution on WebGPU, wait this long after the last interaction
-   * before requesting the full-DPR pass. Zero or omission means immediate;
-   * adaptive maps ignore this setting. CPU rendering remains adaptive.
+   * Final visible resolution for each backend. Device mode always uses the
+   * maximum allowed DPR; adaptive mode follows the measured work budget.
    */
-  settledResolutionIdleMs?: number;
+  settledResolution: {
+    gpu: 'adaptive' | 'device';
+    cpu: 'adaptive' | 'device';
+  };
   defaultView: ViewRect;
   /**
    * Widest camera. Opening view and Reset stay on `defaultView`; unzoom can

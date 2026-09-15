@@ -67,7 +67,7 @@ const gpu: GpuKernel = {
 export const magnetsMap: MapDefinition = {
   id: 'magnets',
   title: 'Magnetic pendulum',
-  settledResolution: 'adaptive',
+  settledResolution: { gpu: 'device', cpu: 'adaptive' },
   defaultView: {
     xMin: -MAGNET_VIEW_HALF,
     xMax: MAGNET_VIEW_HALF,

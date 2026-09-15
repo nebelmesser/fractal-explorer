@@ -62,8 +62,7 @@ const gpu: GpuKernel = {
 export const chirikovMap: MapDefinition = {
   id: 'chirikov',
   title: 'Chirikov–Taylor map',
-  settledResolution: 'device',
-  settledResolutionIdleMs: 0,
+  settledResolution: { gpu: 'device', cpu: 'device' },
   defaultView: {
     xMin: -CHIRIKOV_HALF_TURN,
     xMax: CHIRIKOV_HALF_TURN,

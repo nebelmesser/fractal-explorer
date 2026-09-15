@@ -71,8 +71,7 @@ const gpu: GpuKernel = {
 export const lyapunovMap: MapDefinition = {
   id: 'lyapunov',
   title: 'Lyapunov fractal',
-  settledResolution: 'device',
-  settledResolutionIdleMs: 0,
+  settledResolution: { gpu: 'device', cpu: 'device' },
   defaultView: {
     xMin: LYAPUNOV_PARAM_MIN,
     xMax: LYAPUNOV_PARAM_MAX,

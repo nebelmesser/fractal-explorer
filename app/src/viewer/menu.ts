@@ -145,17 +145,23 @@ export function bindMenu(
       }
       select.value = String(controls.params[spec.key]);
       select.addEventListener('pointerdown', cancelResetAnim);
-      select.addEventListener('change', () => {
-        cancelResetAnim();
-        snapHomeForParams();
+      const applySelection = (phase: 'live' | 'settle') => {
         const next = Math.min(spec.max, Math.max(spec.min, Number(select.value)));
-        controls.params[spec.key] = spec.kind === 'int' ? Math.round(next) : next;
-        markPrefsDirty();
-        signals?.set('param', spec.key);
-        signals?.set('param_value', controls.params[spec.key]);
-        signals?.emit('param-change');
-        onParamsChange('settle');
-      });
+        const changed = controls.params[spec.key] !== next;
+        if (changed) {
+          cancelResetAnim();
+          snapHomeForParams();
+          controls.params[spec.key] = spec.kind === 'int' ? Math.round(next) : next;
+          markPrefsDirty();
+          signals?.set('param', spec.key);
+          signals?.set('param_value', controls.params[spec.key]);
+          signals?.emit('param-change');
+        }
+        if (phase === 'settle') onParamsChange('settle');
+        else if (changed) onParamsChange('live');
+      };
+      select.addEventListener('input', () => applySelection('live'));
+      select.addEventListener('change', () => applySelection('settle'));
       row.append(name, select);
       label.append(row);
       host.append(label);

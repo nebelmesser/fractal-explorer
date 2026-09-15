@@ -360,6 +360,10 @@ export class CpuMapRenderer {
     this.context = context;
   }
 
+  invalidateParams(params: MapParams): void {
+    this.ensureParams(params);
+  }
+
   private makeRequest(
     view: ViewRect,
     params: MapParams,

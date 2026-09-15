@@ -1,7 +1,6 @@
 import {
   PENDULUM_DT,
   PENDULUM_FRICTION,
-  PENDULUM_FULL_RESOLUTION_IDLE_MS,
   PENDULUM_G,
   PENDULUM_L1,
   PENDULUM_L2,
@@ -75,8 +74,7 @@ export const pendulumMap: MapDefinition = {
   id: 'pendulum',
   title: 'Double pendulum',
   preferencesKey: 'fractal-explorer',
-  settledResolution: 'device',
-  settledResolutionIdleMs: PENDULUM_FULL_RESOLUTION_IDLE_MS,
+  settledResolution: { gpu: 'device', cpu: 'adaptive' },
   defaultView: {
     xMin: PENDULUM_VIEW_CENTER - PENDULUM_VIEW_HALF,
     xMax: PENDULUM_VIEW_CENTER + PENDULUM_VIEW_HALF,

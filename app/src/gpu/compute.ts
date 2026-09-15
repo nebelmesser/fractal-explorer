@@ -461,6 +461,10 @@ export class GpuMapRenderer {
     this.target = { canvas, context, configuredW: previous?.w ?? 0, configuredH: previous?.h ?? 0 };
   }
 
+  invalidateParams(params: MapParams): void {
+    this.ensureParams(params);
+  }
+
   private enqueue(fn: () => Promise<void>): Promise<void> {
     const run = this.gpuTail.then(fn, fn);
     this.gpuTail = run.catch(() => undefined);
@@ -543,10 +547,15 @@ export class GpuMapRenderer {
   private levelFor(view: ViewRect, width: number, height: number): number {
     const worldPerPixel = Math.max(viewSpanX(view) / width, viewSpanY(view) / height);
     const gpuExact = Math.log2(this.baseSpan() / Math.max(Number.MIN_VALUE, this.gpuTilePx * worldPerPixel));
-    const gpuLevel = Math.max(0, Math.min(LOD_MAX_LEVEL, Math.round(gpuExact)));
+    // Device-resolution maps must never reuse a level whose samples are wider
+    // than a physical canvas pixel. Adaptive maps keep nearest-level rounding.
+    const selectLevel = this.map.settledResolution.gpu === 'device'
+      ? (exact: number): number => Math.ceil(exact - 1e-9)
+      : Math.round;
+    const gpuLevel = Math.max(0, Math.min(LOD_MAX_LEVEL, selectLevel(gpuExact)));
     if (!this.viewUsesCpu(view, width, height)) return gpuLevel;
     const cpuExact = Math.log2(this.baseSpan() / Math.max(Number.MIN_VALUE, LOD_CPU_TILE_PX * worldPerPixel));
-    return Math.max(0, Math.min(this.maxLevel(), Math.round(cpuExact)));
+    return Math.max(0, Math.min(this.maxLevel(), selectLevel(cpuExact)));
   }
   private levelStep(request: PresentRequest): number {
     return this.cpuView(request) ? LOD_CPU_STEP : LOD_COARSE_GAP;
