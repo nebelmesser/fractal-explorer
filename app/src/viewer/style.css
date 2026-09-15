@@ -329,6 +329,25 @@ canvas.map-view.map-pending {
     gap: 8px;
 }
 
+.slider-label.choice-label .row {
+    align-items: center;
+}
+
+.slider-label.choice-label select {
+    min-width: 120px;
+    max-width: 65%;
+    height: 32px;
+    margin: 0;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--fg);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
 .slider-label input[type="range"] {
     -webkit-appearance: none;
     appearance: none;

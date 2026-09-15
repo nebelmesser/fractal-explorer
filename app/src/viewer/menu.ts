@@ -91,7 +91,11 @@ export function bindMenu(
   const extraRoot = document.getElementById('map-params-more') ?? paramRoot;
   const advanced = new URLSearchParams(window.location.search).get('advanced') === '1';
 
-  const sliders: { key: string; input: HTMLInputElement; readout: HTMLElement }[] = [];
+  const bindings: Array<{
+    key: string;
+    control: HTMLInputElement | HTMLSelectElement;
+    readout?: HTMLElement;
+  }> = [];
   function cancelResetAnim(): void {
     onResetHome.cancel();
   }
@@ -128,6 +132,36 @@ export function bindMenu(
     const readout = document.createElement('span');
     readout.dataset.paramValue = spec.key;
     readout.textContent = formatValue(spec, controls.params[spec.key]);
+    if (spec.choices?.length) {
+      label.classList.add('choice-label');
+      const select = document.createElement('select');
+      select.dataset.paramValue = spec.key;
+      for (let index = 0; index < spec.choices.length; index++) {
+        const option = document.createElement('option');
+        const value = spec.min + index * spec.step;
+        option.value = String(spec.kind === 'int' ? Math.round(value) : value);
+        option.textContent = spec.choices[index];
+        select.append(option);
+      }
+      select.value = String(controls.params[spec.key]);
+      select.addEventListener('pointerdown', cancelResetAnim);
+      select.addEventListener('change', () => {
+        cancelResetAnim();
+        snapHomeForParams();
+        const next = Math.min(spec.max, Math.max(spec.min, Number(select.value)));
+        controls.params[spec.key] = spec.kind === 'int' ? Math.round(next) : next;
+        markPrefsDirty();
+        signals?.set('param', spec.key);
+        signals?.set('param_value', controls.params[spec.key]);
+        signals?.emit('param-change');
+        onParamsChange('settle');
+      });
+      row.append(name, select);
+      label.append(row);
+      host.append(label);
+      bindings.push({ key: spec.key, control: select });
+      continue;
+    }
     row.append(name, readout);
     const input = document.createElement('input');
     input.type = 'range';
@@ -156,7 +190,7 @@ export function bindMenu(
     input.addEventListener('change', () => onParamsChange('settle'));
     label.append(row, input);
     host.append(label);
-    sliders.push({ key: spec.key, input, readout });
+    bindings.push({ key: spec.key, control: input, readout });
   }
 
   const target = document.getElementById('targetSlider') as HTMLInputElement;
@@ -168,12 +202,16 @@ export function bindMenu(
 
   function syncParams(): void {
     for (const spec of map.params) {
-      const row = sliders.find((s) => s.key === spec.key);
-      if (!row) continue;
+      const binding = bindings.find((entry) => entry.key === spec.key);
+      if (!binding) continue;
       const value = controls.params[spec.key] ?? spec.default;
-      row.input.value = String(toSlider(spec, value));
-      row.readout.textContent = formatValue(spec, value);
-      paintParam(spec, row.input);
+      if (binding.control instanceof HTMLSelectElement) {
+        binding.control.value = String(value);
+        continue;
+      }
+      binding.control.value = String(toSlider(spec, value));
+      if (binding.readout) binding.readout.textContent = formatValue(spec, value);
+      paintParam(spec, binding.control);
     }
   }
 

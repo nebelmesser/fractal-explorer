@@ -63,6 +63,7 @@ export const chirikovMap: MapDefinition = {
   id: 'chirikov',
   title: 'Chirikov–Taylor map',
   settledResolution: 'device',
+  settledResolutionIdleMs: 0,
   defaultView: {
     xMin: -CHIRIKOV_HALF_TURN,
     xMax: CHIRIKOV_HALF_TURN,

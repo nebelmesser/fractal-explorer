@@ -163,7 +163,9 @@ export async function bootViewer(
   ) ?? copyView(home);
   let computedView = copyView(view);
   const history: ViewRect[] = [copyView(view)];
-  let settledPx = mapDef.settledResolution === 'device'
+  const delayedDeviceResolution = mapDef.settledResolution === 'device'
+    && (mapDef.settledResolutionIdleMs ?? 0) > 0;
+  let settledPx = mapDef.settledResolution === 'device' && !delayedDeviceResolution
     ? maxBudgetPx(display)
     : cssShortPx(display);
   let animating = false;
@@ -211,9 +213,11 @@ export async function bootViewer(
     frontCanvas.setAttribute('aria-label', t('map'));
   });
   let renderer: GpuMapRenderer | CpuMapRenderer;
+  let gpuRenderer = false;
   if (gpu) {
     try {
       renderer = await GpuMapRenderer.create(gpu, backCanvas, mapDef, compositor);
+      gpuRenderer = true;
     } catch (error) {
       console.error(error);
       // A failed WebGPU context locks that canvas to its original context
@@ -226,6 +230,12 @@ export async function bootViewer(
   } else {
     renderer = CpuMapRenderer.create(backCanvas, mapDef, compositor);
   }
+  const deviceResolutionIdleMs = gpuRenderer && delayedDeviceResolution
+    ? Math.max(0, mapDef.settledResolutionIdleMs ?? 0)
+    : 0;
+  let deviceResolutionReady = false;
+  let deviceResolutionVisible = false;
+  let deviceResolutionTimer = 0;
   const presentation: MapPresentation = presentationFactory?.mount({
     clip,
     map: mapDef,
@@ -327,7 +337,9 @@ export async function bootViewer(
       presentation.syncBudget(controls.targetFrameMs, params[mapDef.workBudget.param]);
       return;
     }
-    const capPx = maxBudgetPx(display);
+    const capPx = delayedDeviceResolution
+      ? cssShortPx(display)
+      : maxBudgetPx(display);
     const next = nextWorkBudget(
       { shortPx: settledPx, work: params[mapDef.workBudget.param] },
       lastRefineMs,
@@ -341,10 +353,30 @@ export async function bootViewer(
     presentation.syncBudget(controls.targetFrameMs, next.work);
   }
 
-  function requestVisible(): void {
+  function cancelDeviceResolution(): void {
+    if (!(deviceResolutionIdleMs > 0)) return;
+    window.clearTimeout(deviceResolutionTimer);
+    deviceResolutionTimer = 0;
+    deviceResolutionReady = false;
+  }
+
+  function armDeviceResolution(): void {
+    if (!(deviceResolutionIdleMs > 0)) return;
+    cancelDeviceResolution();
+    deviceResolutionTimer = window.setTimeout(() => {
+      deviceResolutionTimer = 0;
+      if (animating || gestureActive || paramDragging) return;
+      deviceResolutionReady = true;
+      requestVisible(false);
+      if (!rendering) void renderOnce();
+    }, deviceResolutionIdleMs);
+  }
+
+  function requestVisible(armFullResolution = true): void {
     wantHalo = false;
     wantRefine = true;
     renderGen += 1;
+    if (armFullResolution) armDeviceResolution();
   }
 
   function presentMotion(coasting: boolean): void {
@@ -359,6 +391,7 @@ export async function bootViewer(
   function scheduleView(opts: { immediate?: boolean; navigating?: boolean; coasting?: boolean }): void {
     window.clearTimeout(viewTimer);
     if (opts.coasting || opts.navigating) {
+      cancelDeviceResolution();
       // Pointer events can outpace the display. Keep the newest logical view, but
       // touch layout, CSS, controls, and overlays only once per animation frame.
       pendingMotion = { coasting: Boolean(opts.coasting) };
@@ -412,6 +445,7 @@ export async function bootViewer(
     presentation.noteActivity();
     parameterRenderPending = true;
     if (phase === 'live' || phase === 'reset') {
+      cancelDeviceResolution();
       paramDragging = true;
       wantHalo = false;
       wantRefine = true;
@@ -715,7 +749,10 @@ export async function bootViewer(
     if (!opts?.quiet) presentation.noteActivity();
     if (opts?.navigating || opts?.coasting) gestureActive = true;
     if (!opts?.coasting) stopCoast();
-    if (opts?.animate) cancelAnim();
+    if (opts?.animate) {
+      cancelAnim();
+      cancelDeviceResolution();
+    }
     if (!opts?.coasting && !opts?.keepPrefetch) cancelPrefetch();
     if (opts?.pushHistory && !viewsEqual(next, view)) history.push(copyView(view));
     markPrefsDirty();
@@ -773,6 +810,7 @@ export async function bootViewer(
     },
     interrupt() {
       cancelZoomAnim();
+      armDeviceResolution();
     },
     settleView() {
       settleCamera();
@@ -801,7 +839,9 @@ export async function bootViewer(
     const resized = next.width !== display.width || next.height !== display.height;
     display = next;
     if (resized && mapDef.settledResolution === 'device') {
-      settledPx = maxBudgetPx(display);
+      settledPx = delayedDeviceResolution
+        ? Math.min(settledPx, cssShortPx(display))
+        : maxBudgetPx(display);
     }
     const atWorld = !canZoomOut(view, world);
     const atHome = atDefaultView(view, home, navigation);
@@ -839,10 +879,14 @@ export async function bootViewer(
     wantRefine = false;
     wantHalo = false;
     try {
-      const size = computeSize(display, live ? paramPreviewPx() : settledPx);
+      const fullResolutionFrame = !live && deviceResolutionReady;
+      const renderPx = fullResolutionFrame ? maxBudgetPx(display) : settledPx;
+      const size = computeSize(display, live ? paramPreviewPx() : renderPx);
       // Parameter generations render off-screen. Resizing/configuring a visible
       // WebGPU canvas clears it immediately, before the submitted frame arrives.
-      const targetCanvas = parameterFrame ? backCanvas : frontCanvas;
+      // Delayed full-DPR transitions use the same buffer swap in both directions.
+      const offscreenFrame = parameterFrame || fullResolutionFrame || deviceResolutionVisible;
+      const targetCanvas = offscreenFrame ? backCanvas : frontCanvas;
       renderer.setCanvas(targetCanvas);
       const ms = await renderer.render(
         foldViewY(requestedView, navigation),
@@ -858,11 +902,12 @@ export async function bootViewer(
       // parked canvas or mark the new camera as already rendered.
       if (!sameView(view, requestedView)) return;
       if (live) lastParamMapMs = ms;
-      else lastRefineMs = ms;
+      else if (!fullResolutionFrame) lastRefineMs = ms;
       await waitForPresent();
       if (gen != renderGen) return;
       if (!sameView(view, requestedView)) return;
-      if (parameterFrame) swapMapCanvases();
+      if (offscreenFrame) swapMapCanvases();
+      deviceResolutionVisible = fullResolutionFrame;
       computedView = copyView(view);
       lastOverscanPad = 0;
       lastUnitSpan = { x: viewSpanX(view), y: viewSpanY(view) };
@@ -874,7 +919,7 @@ export async function bootViewer(
         signals?.set('map_ready', true);
         signals?.emit('map-ready');
       }
-      if (!live) {
+      if (!live && !fullResolutionFrame) {
         const prevPx = settledPx;
         const prevWork = params[mapDef.workBudget.param];
         applyBudget();
@@ -907,6 +952,7 @@ export async function bootViewer(
 
   drawChrome();
   presentation.noteActivity();
+  armDeviceResolution();
   requestAnimationFrame(tick);
 
   function typingInField(): boolean {

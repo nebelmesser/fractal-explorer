@@ -19,6 +19,8 @@ export const PENDULUM_DT = 0.1;
 export const PENDULUM_FRICTION = 0;
 export const PENDULUM_MIN_ITER = 1000;
 export const PENDULUM_MAX_ITER = 8000;
+/** Wait for navigation to stop before spending GPU time on a full-DPR map. */
+export const PENDULUM_FULL_RESOLUTION_IDLE_MS = 3_000;
 /** Trig-heavy f64 workers. Leave enough CPU for WebGPU composition and input. */
 export const PENDULUM_CPU_WORKERS = 4;
 
