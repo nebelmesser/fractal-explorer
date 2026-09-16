@@ -68,7 +68,7 @@ export type MapPresentation = {
   noteActivity(): void;
   resize(): void;
   dismiss(): void;
-  pickPoint(x: number, y: number, clientX: number, clientY: number): boolean;
+  pickPoint(x: number, y: number, clientX: number, clientY: number, pointerType: string): boolean;
   syncBudget(targetMs: number, work: number): void;
 };
 

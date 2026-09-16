@@ -30,14 +30,13 @@
 
 @media (max-width: 900px), (max-height: 520px) {
     #map-hud.lyapunov-hud {
-        /* Center inside the free strip between zoom and locale/menu controls. */
-        left: calc(max(var(--ctrl-inset), env(safe-area-inset-left)) + var(--ctrl-size) + var(--ctrl-gap));
-        right: calc(max(var(--ctrl-inset), env(safe-area-inset-right)) + var(--ctrl-size) + 102px);
-        width: auto;
+        left: var(--lyapunov-hud-center-x, 50%);
+        right: auto;
+        width: min(370px, var(--lyapunov-hud-max-width, calc(100vw - 128px)));
         min-width: 0;
-        max-width: 370px;
-        margin-inline: auto;
-        transform: none;
+        max-width: none;
+        margin-inline: 0;
+        transform: translateX(-50%);
     }
 }
 
@@ -100,12 +99,6 @@
     pointer-events: none;
 }
 
-#lyapunov-axis-a {
-    right: 12px;
-    bottom: 23px;
-    color: var(--lyapunov-gold);
-}
-
 #lyapunov-axis-b {
     top: 13px;
     right: 24px;
@@ -115,7 +108,8 @@
 @media (max-width: 520px), (max-height: 520px) {
     #map-hud.lyapunov-hud {
         min-width: 0;
-        max-width: 280px;
+        width: min(280px, var(--lyapunov-hud-max-width, calc(100vw - 104px)));
+        max-width: none;
         padding: 7px 8px;
     }
 

@@ -51,6 +51,7 @@ export function drawLyapunovAxes(
   view: ViewRect,
   xRoot: HTMLElement,
   yRoot: HTMLElement,
+  marker?: { x: number; y: number } | null,
 ): void {
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
@@ -102,4 +103,31 @@ export function drawLyapunovAxes(
     yLabels.push(label);
   }
   syncLabels(yRoot, yLabels);
+
+  if (!marker) return;
+  const x = (marker.x - view.xMin) / viewSpanX(view) * width;
+  const y = (marker.y - view.yMin) / viewSpanY(view) * height;
+  if (x < 0 || x > width || y < 0 || y > height) return;
+  const radius = 10;
+  const gap = 3;
+  const crosshair = (): void => {
+    ctx.beginPath();
+    ctx.moveTo(x - radius, y);
+    ctx.lineTo(x - gap, y);
+    ctx.moveTo(x + gap, y);
+    ctx.lineTo(x + radius, y);
+    ctx.moveTo(x, y - radius);
+    ctx.lineTo(x, y - gap);
+    ctx.moveTo(x, y + gap);
+    ctx.lineTo(x, y + radius);
+    ctx.stroke();
+  };
+  ctx.shadowBlur = 0;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = cssVar('--reticle-outline');
+  ctx.lineWidth = 4;
+  crosshair();
+  ctx.strokeStyle = cssVar('--reticle-core');
+  ctx.lineWidth = 2;
+  crosshair();
 }

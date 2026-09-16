@@ -39,7 +39,7 @@ export type InputHandlers = {
   setView(view: ViewRect, opts?: ViewOpts): void;
   popHistory(): void;
   /** Return true to consume the tap (do not zoom). */
-  pickPoint(x: number, y: number, clientX: number, clientY: number): boolean;
+  pickPoint(x: number, y: number, clientX: number, clientY: number, pointerType: string): boolean;
   hoverPoint?(x: number, y: number, clientX: number, clientY: number): void;
   hoverEnd?(): void;
   /** Compute the view inertia will rest at, before the coast finishes. */
@@ -316,7 +316,7 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
     if (moved) startCoast(pinchAnchor);
     if (event.button === 0 && dragging && !moved) {
       const point = at(event.clientX, event.clientY);
-      const launched = handlers.pickPoint(point.x, point.y, event.clientX, event.clientY);
+      const launched = handlers.pickPoint(point.x, point.y, event.clientX, event.clientY, event.pointerType);
       if (launched) {
         lastTap = null;
       } else {

@@ -774,8 +774,8 @@ export async function bootViewer(
       scheduleView({ immediate: true });
       presentation.noteActivity();
     },
-    pickPoint(x, y, clientX, clientY) {
-      return presentation.pickPoint(x, y, clientX, clientY);
+    pickPoint(x, y, clientX, clientY, pointerType) {
+      return presentation.pickPoint(x, y, clientX, clientY, pointerType);
     },
     prefetchView(target) {
       const size = computeSize(display, settledPx);
