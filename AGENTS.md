@@ -234,8 +234,8 @@ from the playground root:
 ./scripts/preview
 ```
 
-Open `https://127.0.0.1:4000/fractal/double-pendulum.html` or
-`https://127.0.0.1:4000/fractal/magnetic-pendulum.html`. Add `?narration=1`
+Open `http://127.0.0.1:4000/fractal/double-pendulum.html` or
+`http://127.0.0.1:4000/fractal/magnetic-pendulum.html`. Add `?narration=1`
 to show the narrator overlay and play cues on the double-pendulum page. Deep views switch to CPU/WASM tiles
 automatically. Do not start another Jekyll, Python, Vite preview, or static-file
 server.

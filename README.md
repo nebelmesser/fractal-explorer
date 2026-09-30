@@ -32,8 +32,8 @@ npm run build    # writes HTML and assets under fractal/
 You need a Rust toolchain with the `wasm32-unknown-unknown` target and
 `wasm-pack` on `PATH`.
 
-Preview the built files via the playground HTTPS origin
-(`https://127.0.0.1:4000/fractal/viewer.html`).
+Preview the built files via the playground HTTP origin
+(`http://127.0.0.1:4000/fractal/viewer.html`).
 
 ## License
 
