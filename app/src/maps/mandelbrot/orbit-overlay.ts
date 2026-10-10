@@ -2,7 +2,7 @@ import { onUiChange, t } from '../../i18n';
 import { coordinateFromNumber, coordinateToNumber, type CoordinateOrigin } from '../../viewer/coordinates';
 import type { PresentationHost } from '../../viewer/presentation';
 import { viewSpanX, viewSpanY } from '../types';
-import { MANDELBROT_DEFAULT_ITER, ORBIT_APPEAR_MS, ORBIT_CROSSFADE_MS, ORBIT_CYCLE_RADIUS, ORBIT_DWELL_MS, ORBIT_GRADIENT_STOPS, ORBIT_INSET_PADDING, ORBIT_MAP_LINE_PX, ORBIT_INSET_LINE_PX, ORBIT_MARK_RADIUS, ORBIT_MAX_DPR, ORBIT_OVERVIEW_HEIGHT, ORBIT_OVERVIEW_WIDTH, ORBIT_PREVIEW_ITER, ORBIT_REPEAT_PX, ORBIT_STEP_MS, ORBIT_TRAIL_DOTS } from './constants';
+import { MANDELBROT_DEFAULT_ITER, ORBIT_APPEAR_MS, ORBIT_CROSSFADE_MS, ORBIT_CYCLE_RADIUS, ORBIT_DWELL_MS, ORBIT_GRADIENT_STOPS, ORBIT_INSET_PADDING, ORBIT_MAP_LINE_PX, ORBIT_INSET_LINE_PX, ORBIT_MARK_RADIUS, ORBIT_MAX_DPR, ORBIT_OVERVIEW_HEIGHT, ORBIT_OVERVIEW_WIDTH, ORBIT_PANEL_GAP, ORBIT_PREVIEW_ITER, ORBIT_REPEAT_PX, ORBIT_STEP_MS, ORBIT_TRAIL_DOTS } from './constants';
 import { cyclePeriod, type ComplexPoint, type OrbitTrace } from './cycles';
 import { mandelbrotColor } from './compositor';
 import { clipOrbitSegment, orbitOverviewView, orbitStart, onScreen, orbitCoordinates, type OrbitProjection as Projection } from './orbit-layout';
@@ -27,6 +27,7 @@ export function mountOrbitOverlay(host: PresentationHost) {
   const complex = document.createElement('em');
   coordinates.append(complex);
   legend.append(first,ramp,last); panel.append(title,inset,coordinates,legend,label); host.clip.append(panel,overlay);
+  const credit = document.getElementById('site-credit'), askBar = document.getElementById('ask-bar');
   const style = getComputedStyle(document.documentElement);
   const color = (name: string) => style.getPropertyValue(`--orbit-${name}`).trim();
   const line = color('line'), outline = color('outline'), dot = color('dot'), connector = color('connector'), axis = color('axis'), axisText = color('axis-text');
@@ -224,9 +225,24 @@ export function mountOrbitOverlay(host: PresentationHost) {
       if(n&&py>=pad&&py<=h-pad){ink.font='italic 12px Georgia, serif';write(n===1?'i':n===-1?'−i':`${n<0?'−':''}${Math.abs(n)}i`,origin.r+4,py-3);ink.font='10px system-ui';}
     }
   }
+  function positionPanel(): void {
+    const clipBox=host.clip.getBoundingClientRect(),panelBox=panel.getBoundingClientRect();
+    const creditBox=credit?.getBoundingClientRect(),askBox=askBar?.getBoundingClientRect();
+    let bottom=ORBIT_PANEL_GAP;
+    if(creditBox?.height)bottom=Math.max(bottom,clipBox.bottom-creditBox.top+ORBIT_PANEL_GAP);
+    // Raise the overview above Ask only when their actual rectangles would overlap.
+    if(askBox?.height&&panelBox.left<askBox.right&&panelBox.right>askBox.left
+      &&clipBox.bottom-bottom>askBox.top-ORBIT_PANEL_GAP
+      &&clipBox.bottom-bottom-panelBox.height<askBox.bottom) {
+      bottom=Math.max(bottom,clipBox.bottom-askBox.top+ORBIT_PANEL_GAP);
+    }
+    const value=`${Math.ceil(bottom)}px`;
+    if(panel.style.bottom!==value)panel.style.bottom=value;
+  }
   function draw(now: number): void {
     const ctx=context(overlay);panel.hidden=!enabled;
     if(!ctx||!enabled){overlay.dataset.mode='hidden';return;}
+    positionPanel();
     requestOverview();
     const ink=context(inset);if(!ink)return;
     const view=host.getView(),width=overlay.clientWidth,height=overlay.clientHeight;

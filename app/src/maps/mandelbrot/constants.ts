@@ -39,6 +39,7 @@ export const ORBIT_CYCLE_RADIUS = 4;
 export const ORBIT_EXACT_SPAN = 1e-12;
 export const ORBIT_MAX_DPR = 2;
 export const ORBIT_INSET_PADDING = 20;
+export const ORBIT_PANEL_GAP = 8;
 export const ORBIT_DWELL_MS = 500;
 export const ORBIT_PREVIEW_ITER = 128;
 export const ORBIT_OVERVIEW_WIDTH = 320;

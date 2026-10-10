@@ -28,6 +28,7 @@
     --pad-legend: 0px;
     --pad-legend-gap: 0px;
     background: var(--bg);
+    width: min(250px, calc(100vw - 20px));
 }
 
 #ui-container .is-inactive { opacity: 0.4; }
@@ -38,7 +39,7 @@
     position: absolute;
     z-index: 4;
     right: 16px;
-    bottom: 64px;
+    bottom: max(8px, env(safe-area-inset-bottom));
     width: 300px;
     pointer-events: none;
     color: var(--orbit-line);
@@ -54,7 +55,7 @@
 .mandelbrot-orbit-legend { display: flex; align-items: center; gap: 8px; padding: 0 12px; color: var(--orbit-muted); font-size: 10px; }
 .mandelbrot-orbit-ramp { flex: 1; height: 2px; background: linear-gradient(to right,var(--orbit-gradient-0),var(--orbit-gradient-1) 35%,var(--orbit-gradient-2) 70%,var(--orbit-gradient-3)); }
 @media (max-width: 600px) {
-    .mandelbrot-orbit-inset { right: 10px; bottom: 60px; width: 220px; }
+    .mandelbrot-orbit-inset { right: 10px; width: 220px; }
     .mandelbrot-orbit-inset canvas { height: 170px; }
     .mandelbrot-orbit-title { font-size: 11px; }
 }
