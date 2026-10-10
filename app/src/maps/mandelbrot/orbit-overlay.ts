@@ -36,7 +36,7 @@ export function mountOrbitOverlay(host: PresentationHost) {
   const backdrop = document.createElement('canvas');
   let overviewKey = '', overviewWorker: Worker | null = null, overviewReady = false, enabled = true;
   let worker: Worker | null = null, busy: PendingTrace | null = null, queued: PendingTrace | null = null;
-  let dwellTimer = 0, version = 0, resting = false, touch = false, failed = false;
+  let dwellTimer = 0, version = 0, resting = false, failed = false;
   let point: CoordinateOrigin | null = null, trace: OrbitTrace | null = null, job: OrbitJob | null = null;
   let started = 0, lastStep = -1, appearedAt = 0, changedAt = 0;
   let previousTrace: OrbitTrace | null = null;
@@ -265,7 +265,7 @@ export function mountOrbitOverlay(host: PresentationHost) {
     const mainProject: Projection=p=>p===trace?.path[0]||p===previousTrace?.path[0]?mainStart
       :exactProject({x:coordinateFromNumber(p.r),y:coordinateFromNumber(-p.i)});
     const onMap=onScreen(mainStart,width,height);
-    overlay.dataset.mode=onMap?'map':'inset';
+    overlay.dataset.mode='map';
     drawTrajectory(ink,project,now);
     const bothVisible=onMap&&onScreen(marker,width,height);
     overlay.dataset.connector=String(bothVisible);
@@ -280,7 +280,7 @@ export function mountOrbitOverlay(host: PresentationHost) {
     ctx.save();ctx.beginPath();ctx.rect(0,0,width,height);
     ctx.rect(previewBox.left-overlayBox.left,previewBox.top-overlayBox.top,previewBox.width,previewBox.height);
     ctx.clip('evenodd');
-    if(onMap)drawTrajectory(ctx,mainProject,now);
+    drawTrajectory(ctx,mainProject,now);
     if(previousTrace&&now-changedAt>=ORBIT_CROSSFADE_MS)previousTrace=null;
     // This callout is independent of whether the rest of the orbit fits the map.
     if(bothVisible) {
@@ -300,11 +300,9 @@ export function mountOrbitOverlay(host: PresentationHost) {
     panel.dataset.pathPoints=overlay.dataset.pathPoints=String(trace?.path.length??0);
   }
   host.clip.addEventListener('pointermove',event=>{
-    if(event.buttons||event.pointerType==='touch'){if(event.buttons)clear();return;}
-    touch=false;select(event.clientX,event.clientY);
+    if(event.buttons||event.pointerType==='touch')return;
+    select(event.clientX,event.clientY);
   });
-  host.clip.addEventListener('pointerdown',clear);
-  host.clip.addEventListener('pointerleave',()=>{if(!touch)clear();});
   return {
     clear,setEnabled(value:boolean){enabled=value;clear();},draw:()=>draw(performance.now()),
     tick(now:number){
@@ -313,6 +311,6 @@ export function mountOrbitOverlay(host: PresentationHost) {
         lastStep=step;draw(now);
       }
     },
-    pickPoint(_x:number,_y:number,clientX:number,clientY:number,pointerType:string){if(pointerType==='touch'){touch=true;select(clientX,clientY);}return false;},
+    pickPoint(_x:number,_y:number,clientX:number,clientY:number,pointerType:string){if(pointerType==='touch')select(clientX,clientY);return false;},
   };
 }

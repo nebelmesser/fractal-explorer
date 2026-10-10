@@ -35,7 +35,6 @@ export const mandelbrotPresentation: MapPresentationFactory = {
       draw() { sync(); orbit.draw(); },
       tick(now) { sync(); orbit.tick(now); },
       reset() { sync(); orbit.clear(); },
-      noteActivity: orbit.clear,
       resize: orbit.draw,
       pickPoint: orbit.pickPoint,
       dismiss: () => menu.setOpen(false),
