@@ -54,6 +54,22 @@ ui.language:
   text: Язык
 ui.learn_more:
   text: Узнать больше →
+ui.mandelbrot.orbit.error:
+  text: Не удалось вычислить орбиту
+ui.mandelbrot.orbit.escape:
+  text: "Уход в бесконечность · шагов: {steps}"
+ui.mandelbrot.orbit.idle:
+  text: Наведите курсор или коснитесь карты
+ui.mandelbrot.orbit.loading:
+  text: Вычисляем орбиту…
+ui.mandelbrot.orbit.period:
+  text: "Период цикла: {period}"
+ui.mandelbrot.orbit.show:
+  text: Показывать траекторию
+ui.mandelbrot.orbit.title:
+  text: Орбита z
+ui.mandelbrot.orbit.unknown:
+  text: "Цикл не определён · шагов: {steps}"
 ui.map:
   text: Карта
 ui.mode.map:
@@ -80,6 +96,23 @@ ui.param.M2:
   text: Масса 2
 ui.param.R:
   text: Расстояние
+ui.param.lyapunov.accuracy:
+  text: Точность
+  frozen: true
+ui.param.lyapunov.rhythm:
+  text: Ритм
+  frozen: true
+ui.param.lyapunov.seed:
+  text: Начальное значение
+  frozen: true
+ui.param.mandelbrot.imag:
+  text: Жюлиа · Im(c)
+ui.param.mandelbrot.iterations:
+  text: Итерации
+ui.param.mandelbrot.morph:
+  text: Мандельброт → Жюлиа
+ui.param.mandelbrot.real:
+  text: Жюлиа · Re(c)
 ui.param.neighbor_deg:
   text: Разница углов, °
 ui.pin_multiple_pendulums:

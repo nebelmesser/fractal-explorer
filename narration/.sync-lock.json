@@ -407,14 +407,25 @@
         }
       }
     },
-    "ui.hint": {
-      "sourceHash": "1bee0f31374cd68899d98d19804ba1aa9998e4b9c258e029c7477afff99b6b46",
+    "ui.hint.desktop": {
+      "sourceHash": "6f634b9272a6db920e73df1d02a8cf67a7785806dc906f4fccd0e3c0796e684f",
       "locales": {
         "ru": {
-          "textHash": "1bee0f31374cd68899d98d19804ba1aa9998e4b9c258e029c7477afff99b6b46"
+          "textHash": "6f634b9272a6db920e73df1d02a8cf67a7785806dc906f4fccd0e3c0796e684f"
         },
         "en": {
-          "textHash": "2d11f362247fb0f8133f4b613c820b587de0cb1ea7e5ddd4be1dd687a5803610"
+          "textHash": "07b480facbfb2c0da76884cc1fa0a731690bc320060492b603de9fd15a903752"
+        }
+      }
+    },
+    "ui.hint.mobile": {
+      "sourceHash": "fc01b7971df3b98a04a6ce9fa2809fa072b35fdf07846668a5a8827004420aa9",
+      "locales": {
+        "ru": {
+          "textHash": "fc01b7971df3b98a04a6ce9fa2809fa072b35fdf07846668a5a8827004420aa9"
+        },
+        "en": {
+          "textHash": "60d8162b94c06ad3bf64a9c54153daa277bf8c8ed8b7dd8a611c6ee484d78e12"
         }
       }
     },
@@ -426,6 +437,50 @@
         },
         "en": {
           "textHash": "08e017eaa70ff69626a5eed317009befdc54a341564429e4aecf62c785c14475"
+        }
+      }
+    },
+    "ui.ask_chatgpt": {
+      "sourceHash": "3b58992441e67ac0d104bc9902d89bed0d80bcccbd69e788dbf4a00ae0684576",
+      "locales": {
+        "ru": {
+          "textHash": "3b58992441e67ac0d104bc9902d89bed0d80bcccbd69e788dbf4a00ae0684576"
+        },
+        "en": {
+          "textHash": "47f466e5f93f904dcf2bcdef06ef38d6573f17137dc0f369c1ece6152f9b74c6"
+        }
+      }
+    },
+    "ui.copy_prompt": {
+      "sourceHash": "17d55dbbac6cf286cce8674467f541fe512bb0901189f28105a8ce84dc4255c9",
+      "locales": {
+        "ru": {
+          "textHash": "17d55dbbac6cf286cce8674467f541fe512bb0901189f28105a8ce84dc4255c9"
+        },
+        "en": {
+          "textHash": "ffc64b8bb8c4532dd3df46f541a61e131d0a0ce5c9993db071afec0bfc272e5e"
+        }
+      }
+    },
+    "ui.prompt_copied": {
+      "sourceHash": "d2d08c715ee66cbdc425b3af67b87f2f3c9fbe845a8a2b3414e8b737af54484b",
+      "locales": {
+        "ru": {
+          "textHash": "d2d08c715ee66cbdc425b3af67b87f2f3c9fbe845a8a2b3414e8b737af54484b"
+        },
+        "en": {
+          "textHash": "8d525e5f158b9afe05f3122af363ac67763bdc4e1395b46597b320c289766ce3"
+        }
+      }
+    },
+    "ui.ask_prompt_tail": {
+      "sourceHash": "629f57302379f1d9952ba821329b9c709dd821c8f8d5fa1d6eece517a5c23f32",
+      "locales": {
+        "ru": {
+          "textHash": "629f57302379f1d9952ba821329b9c709dd821c8f8d5fa1d6eece517a5c23f32"
+        },
+        "en": {
+          "textHash": "336a08ce3941debee2f83007a5db5eef6468546ff99fa4bcfe4d57f18ee6618d"
         }
       }
     },
@@ -528,6 +583,39 @@
         }
       }
     },
+    "ui.param.K": {
+      "sourceHash": "daf6bccad631555a8cdc90680784424ca17a6ba789364ce05c4dea18c6d1063a",
+      "locales": {
+        "ru": {
+          "textHash": "daf6bccad631555a8cdc90680784424ca17a6ba789364ce05c4dea18c6d1063a"
+        },
+        "en": {
+          "textHash": "25a5fd59b1c3dd454e49df9c4b9b0c10f051f202fa43f3c9d2350677971a777b"
+        }
+      }
+    },
+    "ui.param.R": {
+      "sourceHash": "0da805ff878675ef3098410291f10a4208a58384d5eb5f4ac9db725cd8883ad5",
+      "locales": {
+        "ru": {
+          "textHash": "0da805ff878675ef3098410291f10a4208a58384d5eb5f4ac9db725cd8883ad5"
+        },
+        "en": {
+          "textHash": "62a822a5830967227de02c62b8fcece522de83983a87c15d42944dd5ccea7174"
+        }
+      }
+    },
+    "ui.param.H": {
+      "sourceHash": "cc838507114979fdd16ea0cc87b8ae622d8239ec90b3293879c30c3786bcae68",
+      "locales": {
+        "ru": {
+          "textHash": "cc838507114979fdd16ea0cc87b8ae622d8239ec90b3293879c30c3786bcae68"
+        },
+        "en": {
+          "textHash": "bfe2eca401797325bc268f93c7397554551de4274d5d73ed421ee36fe9cd3ae0"
+        }
+      }
+    },
     "ui.param.neighbor_deg": {
       "sourceHash": "bb9277ea81b539c917e7aec27f48687ef499b92b62e2910e6015904809470571",
       "locales": {
@@ -536,6 +624,171 @@
         },
         "en": {
           "textHash": "87e33074f71b05d17747a9db3eab18473fbd88d772619b37131c6dd42a10e44a"
+        }
+      }
+    },
+    "ui.param.lyapunov.rhythm": {
+      "sourceHash": "93e27b7717fe4a24be05fb6b29c4642650212f5c00514c4f8bfdd0a1f066d15e",
+      "locales": {
+        "ru": {
+          "textHash": "93e27b7717fe4a24be05fb6b29c4642650212f5c00514c4f8bfdd0a1f066d15e"
+        },
+        "en": {
+          "textHash": "5a165344e5dad83cf1740c7df3b3b28bf0b25c7b985685b77bff51c5799e9829"
+        }
+      }
+    },
+    "ui.param.lyapunov.accuracy": {
+      "sourceHash": "2f73b5866186dabb82b90a6b3ba38d1af9e06be67a5afaf774df85a2fb9d2a9a",
+      "locales": {
+        "ru": {
+          "textHash": "2f73b5866186dabb82b90a6b3ba38d1af9e06be67a5afaf774df85a2fb9d2a9a"
+        },
+        "en": {
+          "textHash": "ac991dd3c2d928da95b77afb954db61a3246be27b683f30d1232dcee625ae376"
+        }
+      }
+    },
+    "ui.param.lyapunov.seed": {
+      "sourceHash": "8ead905c00c69676f657fb6d349426082430dff109df9ded074a37105f257d13",
+      "locales": {
+        "ru": {
+          "textHash": "8ead905c00c69676f657fb6d349426082430dff109df9ded074a37105f257d13"
+        },
+        "en": {
+          "textHash": "5e3b13ab5ab8272a78ec09fdd886b202ba30864376db19f83d225c095bf020ab"
+        }
+      }
+    },
+    "ui.param.mandelbrot.morph": {
+      "sourceHash": "d1096f4b529fbfc5243a10a59d4bbb8a41a37cd8e75cea3568378608e1919270",
+      "locales": {
+        "ru": {
+          "textHash": "d1096f4b529fbfc5243a10a59d4bbb8a41a37cd8e75cea3568378608e1919270"
+        },
+        "en": {
+          "textHash": "e93af748aea3e6a62422c30b374d688c60e1065a15cc8de50b75bb6220ad6200"
+        }
+      }
+    },
+    "ui.param.mandelbrot.real": {
+      "sourceHash": "b3eea0da6ff6110eaa0c9da7eda86d7a7a421debe9b39b9521cb3a1e0696a2d7",
+      "locales": {
+        "ru": {
+          "textHash": "b3eea0da6ff6110eaa0c9da7eda86d7a7a421debe9b39b9521cb3a1e0696a2d7"
+        },
+        "en": {
+          "textHash": "e9cf229a127c873d52d43bb461fd9da100e6a236a82b8f8f31375e6bd182aeab"
+        }
+      }
+    },
+    "ui.param.mandelbrot.imag": {
+      "sourceHash": "c99ac3a1a6260fe4a72d2aa633dfd6d4dfda71d7bf5153522fea325fb57b863d",
+      "locales": {
+        "ru": {
+          "textHash": "c99ac3a1a6260fe4a72d2aa633dfd6d4dfda71d7bf5153522fea325fb57b863d"
+        },
+        "en": {
+          "textHash": "b414c23cccec066a7d52be592bc05b4907b6668830103a429b1dabdaeb456990"
+        }
+      }
+    },
+    "ui.param.mandelbrot.iterations": {
+      "sourceHash": "c6fcbd46dde91f65448e1a4eb5ad1c688f0d4e808c1c6f299657b1bf778b053e",
+      "locales": {
+        "ru": {
+          "textHash": "c6fcbd46dde91f65448e1a4eb5ad1c688f0d4e808c1c6f299657b1bf778b053e"
+        },
+        "en": {
+          "textHash": "4740b573715316a4698d4dee44ebb90046ed94f5f582ffa67ccab31e68a8a6b5"
+        }
+      }
+    },
+    "ui.mandelbrot.orbit.title": {
+      "sourceHash": "33de48eb7def554f413371b28f983961d611d1e56dd1508415f853c9aedc6889",
+      "locales": {
+        "ru": {
+          "textHash": "33de48eb7def554f413371b28f983961d611d1e56dd1508415f853c9aedc6889"
+        },
+        "en": {
+          "textHash": "c930a365e9bf1285453a1af0148176f792d44a309032581d67809cb84c020a61"
+        }
+      }
+    },
+    "ui.mandelbrot.orbit.show": {
+      "sourceHash": "aaf8382c056fd023f9e2e16e7f4a9f5057a3dd681758b4ba036590cefdf4b1de",
+      "locales": {
+        "ru": {
+          "textHash": "aaf8382c056fd023f9e2e16e7f4a9f5057a3dd681758b4ba036590cefdf4b1de"
+        },
+        "en": {
+          "textHash": "fddcf8f1cbbb11b87f398379eac998a055f847d4df6f61a2283f972ecf532159"
+        }
+      }
+    },
+    "ui.mandelbrot.orbit.idle": {
+      "sourceHash": "8eac38eedc709e8eecce99207343adaa77a190ba463f9f5e079c6c3174a55865",
+      "locales": {
+        "ru": {
+          "textHash": "8eac38eedc709e8eecce99207343adaa77a190ba463f9f5e079c6c3174a55865"
+        },
+        "en": {
+          "textHash": "da27efced0c72aec659e220b991eae275a1cf5a0decb85826f79510ac0f2e0a4"
+        }
+      }
+    },
+    "ui.mandelbrot.orbit.period": {
+      "sourceHash": "c06ab8e7238d876816c066ea5e2f7157795ab08133af77d3c0452d5c24626746",
+      "locales": {
+        "ru": {
+          "textHash": "c06ab8e7238d876816c066ea5e2f7157795ab08133af77d3c0452d5c24626746"
+        },
+        "en": {
+          "textHash": "51bbc5b20c9999ffd5164c8e36302f7d0629bae13a42c0dba81aac8570bac275"
+        }
+      }
+    },
+    "ui.mandelbrot.orbit.escape": {
+      "sourceHash": "adcf5d726a2ffde36655447080d42020a2bf5a72a9f62de37df4179ac4188ffb",
+      "locales": {
+        "ru": {
+          "textHash": "adcf5d726a2ffde36655447080d42020a2bf5a72a9f62de37df4179ac4188ffb"
+        },
+        "en": {
+          "textHash": "45604e34e7b7f82a00b62249753624e83f0ebc2e6820c09b2599564db9ad4b66"
+        }
+      }
+    },
+    "ui.mandelbrot.orbit.unknown": {
+      "sourceHash": "4fb8939cef8f1569876629927a0dd431003542afe489147b543cce85c9801d33",
+      "locales": {
+        "ru": {
+          "textHash": "4fb8939cef8f1569876629927a0dd431003542afe489147b543cce85c9801d33"
+        },
+        "en": {
+          "textHash": "6344963d83fb7a8e42205ce884a7c288a540966b6cc6d0d23783e2682c5f55f7"
+        }
+      }
+    },
+    "ui.mandelbrot.orbit.loading": {
+      "sourceHash": "687cf230ba2060f013cf57655c016012803e0557c9e479231155feb5d8252d98",
+      "locales": {
+        "ru": {
+          "textHash": "687cf230ba2060f013cf57655c016012803e0557c9e479231155feb5d8252d98"
+        },
+        "en": {
+          "textHash": "ef2c6af904d450b3fea8552db90d41fa1a5007628c1ed133a2104f6c2b6d7a8b"
+        }
+      }
+    },
+    "ui.mandelbrot.orbit.error": {
+      "sourceHash": "e456c16b37ba03952fac77ec09a90bd7e29692e06425f95965059c4cb0e62391",
+      "locales": {
+        "ru": {
+          "textHash": "e456c16b37ba03952fac77ec09a90bd7e29692e06425f95965059c4cb0e62391"
+        },
+        "en": {
+          "textHash": "6058368b9332daf2d140be9e6e7723d9f6c027b7a66fb743a803e979ac66f1cc"
         }
       }
     }

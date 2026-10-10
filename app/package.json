@@ -6,8 +6,11 @@
     "build:wasm": "PATH=\"$HOME/.cargo/bin:$PATH\" wasm-pack build crates/map_core --target web --out-dir ../../src/maps/pendulum/pkg --release",
     "dev": "npm run build:wasm && vite",
     "build": "npm run build:wasm && tsc --noEmit && vite build",
+    "test:mandelbrot": "node tests/mandelbrot.mjs && node tests/cycles.mjs",
     "narrate": "narration sync --dir ../narration",
-    "narrate:source": "narration sync --dir ../narration --source-only"
+    "narrate:source": "narration sync --dir ../narration --source-only",
+    "test:deep-zoom": "node tests/deep-zoom.mjs",
+    "test:deep-gpu:build": "node tests/build-deep-gpu.mjs"
   },
   "dependencies": {
     "@nebelmesser/narration": "file:../../narration"

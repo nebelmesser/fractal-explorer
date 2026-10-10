@@ -20,6 +20,7 @@ export default defineConfig({
         magnets: resolve(__dirname, 'magnetic-pendulum.html'),
         lyapunov: resolve(__dirname, 'lyapunov.html'),
         chirikov: resolve(__dirname, 'chirikov.html'),
+        mandelbrot: resolve(__dirname, 'mandelbrot.html'),
       },
       output: {
         entryFileNames: 'assets/[name]-[hash].js',
@@ -63,6 +64,8 @@ export default defineConfig({
               || name.startsWith('explorer-') || name.startsWith('tile-worker-')
               || name.startsWith('magnets-') || name.startsWith('lyapunov-')
               || name.startsWith('chirikov-') || name.startsWith('menu-')
+              || name.startsWith('mandelbrot-') || name.startsWith('deep-worker-')
+              || name.startsWith('orbit-worker-')
               || name.startsWith('map_core_bg')
             ) {
               rmSync(resolve(assets, name), { force: true });

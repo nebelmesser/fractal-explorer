@@ -1,6 +1,11 @@
+import { coordinateFromString, coordinateToString, exactCenter, preciseView, withPrecision } from './coordinates';
+import { PrecisionRenderer } from './precision-renderer';
 import { onUiChange, t } from '../i18n';
 import {
   BUTTON_ZOOM_FACTOR,
+  PRECISE_QUERY_DIGITS,
+  PRECISE_QUERY_GUARD_DIGITS,
+  PRECISE_QUERY_MIN_DIGITS,
   MEDIAN_DEFAULT,
   MIN_COMPUTE_PX,
   MIN_VIEW_SPAN_F64,
@@ -69,8 +74,7 @@ function waitForPresent(): Promise<void> {
 }
 
 function sameView(a: ViewRect, b: ViewRect): boolean {
-  return a.xMin === b.xMin && a.xMax === b.xMax
-    && a.yMin === b.yMin && a.yMax === b.yMax;
+  return a.origin || b.origin ? viewsEqual(a, b, 0) : a.xMin === b.xMin && a.xMax === b.xMax && a.yMin === b.yMin && a.yMax === b.yMax;
 }
 
 const VIEW_QUERY_KEYS = ['x', 'y', 'span'] as const;
@@ -93,14 +97,19 @@ function viewFromQuery(
   const span = Number(rawSpan);
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(span) || !(span > 0)) return null;
   const clamped = Math.min(shortSpan(world), Math.max(minSpan, span));
-  return fitViewAspect(viewAround(x, y, clamped, clamped), width, height, world, navigation ?? {});
+  try {
+    const camera = world.origin ? preciseView({ x: coordinateFromString(rawX), y: coordinateFromString(rawY) }, clamped, clamped) : viewAround(x, y, clamped, clamped);
+    return fitViewAspect(camera, width, height, world, navigation ?? {});
+  } catch { return null; }
 }
 
 /** Keep the live camera in the URL without adding a history entry per frame. */
 function replaceViewQuery(view: ViewRect): void {
   const url = new URL(location.href);
   const center = viewCenter(view);
-  const values = [center.x, center.y, shortSpan(view)];
+  const exact = view.origin ? exactCenter(view) : null;
+  const digits = Math.min(PRECISE_QUERY_DIGITS, Math.max(PRECISE_QUERY_MIN_DIGITS, Math.ceil(-Math.log10(shortSpan(view))) + PRECISE_QUERY_GUARD_DIGITS));
+  const values = exact ? [coordinateToString(exact.x, digits), coordinateToString(exact.y, digits), shortSpan(view)] : [center.x, center.y, shortSpan(view)];
   let changed = false;
   for (let i = 0; i < VIEW_QUERY_KEYS.length; i++) {
     const value = String(values[i]);
@@ -137,7 +146,8 @@ export async function bootViewer(
 
   const cpuRequested = new URLSearchParams(location.search).get('cpu') === '1';
   const gpu = cpuRequested ? null : await requestGpu();
-  const minSpan = MIN_VIEW_SPAN_F64;
+  const minSpan = mapDef.precision?.minSpan ?? MIN_VIEW_SPAN_F64;
+  const cameraView = (base: ViewRect): ViewRect => mapDef.precision ? withPrecision(base) : base;
 
   await presentationFactory?.init?.();
 
@@ -152,8 +162,8 @@ export async function bootViewer(
     );
   }
   let display = fitMapDisplay(stage);
-  let world = worldFromDisplay(display.width, display.height, mapDomain(mapDef));
-  let home = worldFromDisplay(display.width, display.height, mapDef.defaultView);
+  let world = cameraView(worldFromDisplay(display.width, display.height, mapDomain(mapDef)));
+  let home = cameraView(worldFromDisplay(display.width, display.height, mapDef.defaultView));
   let view: ViewRect = viewFromQuery(
     world,
     display.width,
@@ -208,9 +218,12 @@ export async function bootViewer(
   onUiChange(() => {
     frontCanvas.setAttribute('aria-label', t('map'));
   });
-  let renderer: GpuMapRenderer | CpuMapRenderer;
+  let renderer: GpuMapRenderer | CpuMapRenderer | PrecisionRenderer;
   let gpuRenderer = false;
-  if (gpu) {
+  if (mapDef.precision) {
+    renderer = await PrecisionRenderer.create(gpu, backCanvas, mapDef, compositor);
+    gpuRenderer = renderer.usesGpu;
+  } else if (gpu) {
     try {
       renderer = await GpuMapRenderer.create(gpu, backCanvas, mapDef, compositor);
       gpuRenderer = true;
@@ -707,6 +720,10 @@ export async function bootViewer(
       if (token !== zoomToken) return;
       animateViewTo(next, then);
     };
+    if (mapDef.precision) {
+      void computeForced(landing).then(begin);
+      return;
+    }
     // Do not enqueue simulation before animation: even a background compute
     // dispatch would make cached-LOD presentation miss frames.
     begin();
@@ -813,8 +830,8 @@ export async function bootViewer(
     if (resized && deviceResolution) settledPx = maxBudgetPx(display);
     const atWorld = !canZoomOut(view, world);
     const atHome = atDefaultView(view, home, navigation);
-    world = worldFromDisplay(display.width, display.height, mapDomain(mapDef));
-    home = worldFromDisplay(display.width, display.height, mapDef.defaultView);
+    world = cameraView(worldFromDisplay(display.width, display.height, mapDomain(mapDef)));
+    home = cameraView(worldFromDisplay(display.width, display.height, mapDef.defaultView));
     view = atWorld
       ? copyView(world)
       : atHome

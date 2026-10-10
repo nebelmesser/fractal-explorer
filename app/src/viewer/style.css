@@ -270,6 +270,11 @@ canvas.map-view {
     image-rendering: pixelated;
 }
 
+/* Exact-camera maps retain smooth previews until the former f64 zoom floor. */
+canvas.map-view[data-sampling="smooth"] {
+    image-rendering: auto;
+}
+
 /* Parked just outside the clip so WebGPU can present without covering the view. */
 canvas.map-view.map-pending {
     position: absolute;

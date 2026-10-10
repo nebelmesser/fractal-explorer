@@ -1,3 +1,4 @@
+import { coordinateToNumber, relativeView, withPrecision, type CoordinateOrigin } from './coordinates';
 import { COAST_FRICTION, COAST_MIN_PX, COAST_MIN_ZOOM, MIN_VIEW_SPAN, UNZOOM_GROW } from '../constants';
 import {
   copyView,
@@ -17,8 +18,9 @@ export function screenToMap(
   py: number,
   width: number,
   height: number,
-): { x: number; y: number } {
+): { x: number; y: number; origin?: CoordinateOrigin } {
   return {
+    origin: view.origin,
     x: view.xMin + (px / width) * viewSpanX(view),
     y: view.yMin + (py / height) * viewSpanY(view),
   };
@@ -33,7 +35,7 @@ export function worldFromDisplay(widthPx: number, heightPx: number, base: ViewRe
   const baseAspect = baseX / Math.max(baseY, MIN_VIEW_SPAN);
   const spanX = displayAspect > baseAspect ? baseY * displayAspect : baseX;
   const spanY = displayAspect > baseAspect ? baseY : baseX / displayAspect;
-  return viewAround(c.x, c.y, spanX, spanY);
+  return viewAround(c.x, c.y, spanX, spanY, base.origin);
 }
 
 /** Keep the short-axis span and center; match the window aspect. */
@@ -49,7 +51,7 @@ export function fitViewAspect(
   if (spanX >= viewSpanX(world) * 0.99 && spanY >= viewSpanY(world) * 0.99) {
     return copyView(world);
   }
-  return clampViewX(viewAround(c.x, c.y, spanX, spanY), navigation);
+  return clampViewX(viewAround(c.x, c.y, spanX, spanY, view.origin), navigation);
 }
 
 export function shortSpan(view: ViewRect): number {
@@ -77,17 +79,18 @@ export function zoomAbout(
   world: ViewRect,
   navigation: NavigationPolicy,
   minSpan = MIN_VIEW_SPAN,
+  anchorOrigin?: CoordinateOrigin,
 ): ViewRect {
+  if (anchorOrigin && view.origin) {
+    x += coordinateToNumber(anchorOrigin.x - view.origin.x);
+    y += coordinateToNumber(anchorOrigin.y - view.origin.y);
+  }
   const nextShort = clampSpan(shortSpan(view) * factor, shortSpan(world), minSpan);
   const { spanX, spanY } = spansForShort(nextShort, world);
   const fx = (x - view.xMin) / viewSpanX(view);
   const fy = (y - view.yMin) / viewSpanY(view);
-  return clampViewX({
-    xMin: x - fx * spanX,
-    xMax: x + (1 - fx) * spanX,
-    yMin: y - fy * spanY,
-    yMax: y + (1 - fy) * spanY,
-  }, navigation);
+  if (!view.origin) return clampViewX({ xMin: x - fx * spanX, xMax: x + (1 - fx) * spanX, yMin: y - fy * spanY, yMax: y + (1 - fy) * spanY }, navigation);
+  return clampViewX(viewAround(x + (0.5 - fx) * spanX, y + (0.5 - fy) * spanY, spanX, spanY, view.origin), navigation);
 }
 
 export function easeInOutCubic(t: number): number {
@@ -101,6 +104,7 @@ export function lerpViewShortY(
   t: number,
   navigation: NavigationPolicy,
 ): ViewRect {
+  if (a.origin || b.origin) return lerpView(a, b, t);
   const dx = wrapDeltaX(viewCenter(b).x - viewCenter(a).x, navigation);
   const dy = wrapDeltaY(viewCenter(b).y - viewCenter(a).y, navigation);
   const shifted = shiftView(
@@ -121,12 +125,8 @@ export function panView(
 ): ViewRect {
   const dx = (dxPx / width) * viewSpanX(view);
   const dy = (dyPx / height) * viewSpanY(view);
-  return clampViewX({
-    xMin: view.xMin - dx,
-    xMax: view.xMax - dx,
-    yMin: view.yMin - dy,
-    yMax: view.yMax - dy,
-  }, navigation);
+  const next = { ...view, xMin: view.xMin - dx, xMax: view.xMax - dx, yMin: view.yMin - dy, yMax: view.yMax - dy };
+  return clampViewX(view.origin ? withPrecision(next) : next, navigation);
 }
 
 function clampSpan(span: number, cap: number, floor: number): number {
@@ -181,12 +181,13 @@ export function wrapToPeriod(value: number, period: number, center = 0): number 
 
 export function shiftViewY(view: ViewRect, dy: number): ViewRect {
   if (dy === 0) return view;
-  return { xMin: view.xMin, xMax: view.xMax, yMin: view.yMin + dy, yMax: view.yMax + dy };
+  return { ...view, xMin: view.xMin, xMax: view.xMax, yMin: view.yMin + dy, yMax: view.yMax + dy };
 }
 
 function shiftView(view: ViewRect, dx: number, dy: number): ViewRect {
   if (dx === 0 && dy === 0) return view;
   return {
+    ...view,
     xMin: view.xMin + dx,
     xMax: view.xMax + dx,
     yMin: view.yMin + dy,
@@ -200,6 +201,7 @@ export function alignViewY(
   target: ViewRect,
   navigation: NavigationPolicy,
 ): ViewRect {
+  if (cover.origin || target.origin) return relativeView(cover, target);
   const pc = viewCenter(cover);
   const tc = viewCenter(target);
   const px = xPeriod(navigation);
@@ -285,7 +287,7 @@ export function coastStopView(
   velX: number,
   velY: number,
   velLog: number,
-  anchor: { x: number; y: number } | null,
+  anchor: { x: number; y: number; origin?: CoordinateOrigin } | null,
   width: number,
   height: number,
   navigation: NavigationPolicy,
@@ -294,7 +296,7 @@ export function coastStopView(
   const k = COAST_FRICTION;
   let next = view;
   if (anchor && Math.abs(velLog) >= COAST_MIN_ZOOM) {
-    next = zoomAbout(next, anchor.x, anchor.y, Math.exp(velLog / k), world, navigation, minSpan);
+    next = zoomAbout(next, anchor.x, anchor.y, Math.exp(velLog / k), world, navigation, minSpan, anchor.origin);
   }
   if (Math.hypot(velX, velY) >= COAST_MIN_PX) {
     next = panView(next, velX / k, velY / k, width, height, navigation);
@@ -325,6 +327,10 @@ export function nextUnzoomCover(
   navigation: NavigationPolicy,
 ): ViewRect {
   const landing = foldViewY(target, navigation);
+  if (have.origin || landing.origin) {
+    const a = shortSpan(have), b = shortSpan(landing);
+    return b > a * UNZOOM_GROW ? lerpView(have, landing, Math.log(UNZOOM_GROW) / (Math.log(b) - Math.log(a))) : copyView(landing);
+  }
   const aligned = alignViewY(foldViewY(have, navigation), landing, navigation);
   if (tiledInset(landing, aligned, navigation) >= 0) return copyView(landing);
   const s0 = Math.max(viewSpanX(aligned), viewSpanY(aligned));

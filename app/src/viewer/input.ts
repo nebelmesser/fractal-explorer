@@ -1,3 +1,4 @@
+import type { CoordinateOrigin } from './coordinates';
 import {
   CLICK_ZOOM_FACTOR,
   COAST_FRICTION,
@@ -57,7 +58,7 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
   let moved = false;
   let lastPinch = 0;
   let lastMid: { x: number; y: number } | null = null;
-  let pinchAnchor: { x: number; y: number } | null = null;
+  let pinchAnchor: { x: number; y: number; origin?: CoordinateOrigin } | null = null;
   let coastAfterPinch = false;
   let last = { x: 0, y: 0 };
   let origin = { x: 0, y: 0 };
@@ -79,7 +80,7 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
     return handlers.getMinSpan?.() ?? MIN_VIEW_SPAN;
   }
 
-  function at(clientX: number, clientY: number): { x: number; y: number } {
+  function at(clientX: number, clientY: number): { x: number; y: number; origin?: CoordinateOrigin } {
     const rect = surface.getBoundingClientRect();
     return screenToMap(
       handlers.getView(),
@@ -149,7 +150,7 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
     return sum / dt;
   }
 
-  function startCoast(anchor: { x: number; y: number } | null, settleIfStill = true): void {
+  function startCoast(anchor: { x: number; y: number; origin?: CoordinateOrigin } | null, settleIfStill = true): void {
     stopCoast();
     if (performance.now() - lastMoveT > COAST_STALE_MS) {
       velX = 0;
@@ -189,7 +190,7 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
         if ((velLog > 0 && !canZoomOut(next, world)) || (velLog < 0 && !canZoomIn(next, minSpan()))) {
           velLog = 0;
         } else {
-          next = zoomAbout(next, zoomAnchor.x, zoomAnchor.y, Math.exp(velLog * dt), world, handlers.getNavigation(), minSpan());
+          next = zoomAbout(next, zoomAnchor.x, zoomAnchor.y, Math.exp(velLog * dt), world, handlers.getNavigation(), minSpan(), zoomAnchor.origin);
         }
       }
       if (Math.hypot(velX, velY) >= COAST_MIN_PX) {
@@ -257,7 +258,7 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
         pinchAnchor = anchor;
         const factor = (lastPinch / dist) ** PINCH_ZOOM;
         const dLog = Math.log(factor);
-        let next = zoomAbout(handlers.getView(), anchor.x, anchor.y, factor, handlers.getWorld(), handlers.getNavigation(), minSpan());
+        let next = zoomAbout(handlers.getView(), anchor.x, anchor.y, factor, handlers.getWorld(), handlers.getNavigation(), minSpan(), anchor.origin);
         next = panView(next, mid.x - lastMid.x, mid.y - lastMid.y, box.width, box.height, handlers.getNavigation());
         const pinchDt = lastPinchT ? (now - lastPinchT) / 1000 : 0;
         if (pinchDt > 0 && pinchDt <= 0.2) {
@@ -333,7 +334,7 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
         // Mouse click zooms. A phone tap only poses; a second tap zooms about that point.
         if (event.pointerType !== 'touch' || doubled) {
           handlers.setView(
-            zoomAbout(handlers.getView(), point.x, point.y, CLICK_ZOOM_FACTOR, handlers.getWorld(), handlers.getNavigation(), minSpan()),
+            zoomAbout(handlers.getView(), point.x, point.y, CLICK_ZOOM_FACTOR, handlers.getWorld(), handlers.getNavigation(), minSpan(), point.origin),
             { pushHistory: true, animate: true },
           );
         }
@@ -359,7 +360,7 @@ export function bindMapInput(surface: HTMLElement, handlers: InputHandlers): { s
     const point = at(event.clientX, event.clientY);
     const gain = event.ctrlKey ? WHEEL_ZOOM_PINCH : WHEEL_ZOOM;
     handlers.setView(
-      zoomAbout(handlers.getView(), point.x, point.y, Math.exp(event.deltaY * gain), handlers.getWorld(), handlers.getNavigation(), minSpan()),
+      zoomAbout(handlers.getView(), point.x, point.y, Math.exp(event.deltaY * gain), handlers.getWorld(), handlers.getNavigation(), minSpan(), point.origin),
       { navigating: true },
     );
     window.clearTimeout(wheelSettle);

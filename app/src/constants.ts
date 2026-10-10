@@ -34,6 +34,16 @@ export const MIN_VIEW_SPAN = 1e-5; // default zoom floor for maps without an f64
 export const MIN_VIEW_SPAN_F64 = MIN_VIEW_SPAN * 2 ** (F32_MANTISSA_BITS - F64_MANTISSA_BITS);
 /** Same floor in degrees (~1.07e-12°). Narration uses a slightly looser lte. */
 export const MIN_VIEW_SPAN_F64_DEG = MIN_VIEW_SPAN_F64 * (180 / Math.PI);
+// Opt-in precise cameras keep their absolute origin separately from local f64 offsets.
+export const PRECISE_COORDINATE_BITS = 4096;
+export const PRECISE_QUERY_DIGITS = 340;
+export const PRECISE_QUERY_GUARD_DIGITS = 20;
+export const PRECISE_QUERY_MIN_DIGITS = 17;
+export const PRECISE_TILE_CACHE_BYTES = 128 * 1024 * 1024;
+export const PRECISE_EXPOSURE_GRID = 32;
+export const PRECISE_TILE_PX = 128;
+export const PRECISE_TILE_INITIAL_PX = 32;
+export const PRECISE_COMPOSE_MS = 1000 / 30;
 export const OVERSCAN_PAD = 0.5; // half a screen on each side of the visible view
 export const OVERSCAN_RELOAD = 0.6; // prefetch a new halo while this much pad remains
 

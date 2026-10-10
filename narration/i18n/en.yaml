@@ -57,6 +57,22 @@ ui.language:
   text: Language
 ui.learn_more:
   text: Learn more →
+ui.mandelbrot.orbit.error:
+  text: Failed to compute orbit
+ui.mandelbrot.orbit.escape:
+  text: "Escapes to infinity · steps: {steps}"
+ui.mandelbrot.orbit.idle:
+  text: Hover over or touch the map
+ui.mandelbrot.orbit.loading:
+  text: Computing orbit…
+ui.mandelbrot.orbit.period:
+  text: "Cycle period: {period}"
+ui.mandelbrot.orbit.show:
+  text: Show orbit
+ui.mandelbrot.orbit.title:
+  text: Mandelbrot · z orbit
+ui.mandelbrot.orbit.unknown:
+  text: "Cycle undetermined · steps: {steps}"
 ui.map:
   text: Map
   frozen: true
@@ -89,6 +105,23 @@ ui.param.M2:
 ui.param.R:
   text: Spacing
   frozen: true
+ui.param.lyapunov.accuracy:
+  text: Accuracy
+  frozen: true
+ui.param.lyapunov.rhythm:
+  text: Rhythm
+  frozen: true
+ui.param.lyapunov.seed:
+  text: Initial value
+  frozen: true
+ui.param.mandelbrot.imag:
+  text: Julia · Im(c)
+ui.param.mandelbrot.iterations:
+  text: Iterations
+ui.param.mandelbrot.morph:
+  text: Mandelbrot → Julia
+ui.param.mandelbrot.real:
+  text: Julia · Re(c)
 ui.param.neighbor_deg:
   text: Angle difference, °
   frozen: true

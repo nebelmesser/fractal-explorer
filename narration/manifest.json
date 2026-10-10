@@ -15,7 +15,10 @@
         "ru": "Непостижимое мы обычно ищем в космосе. [pause] Но бесконечность есть и в обычных вещах. [pause] <emphasis>Приближайте карту для продолжения</emphasis>.",
         "en": "This is a map of millions of experiments with double pendulums. Try zooming in and examining it more closely"
       },
-      "audio": {}
+      "audio": {
+        "ru": "audio/ru/map-ready.mp3",
+        "en": "audio/en/map-ready.mp3"
+      }
     },
     {
       "once": "zoom-forecast",
@@ -28,7 +31,10 @@
         "ru": "Это двойной маятник: [pause] к одному маятнику подвесили второй на шарнире. Его движение описывают точные формулы. <lower-pitch>Значит ли это, что и будущее известно?</lower-pitch>",
         "en": "This is a double pendulum: a second pendulum is suspended from the first on a joint. Its motion is described by exact formulas. Does that mean its future is known too?"
       },
-      "audio": {}
+      "audio": {
+        "ru": "audio/ru/zoom-forecast.mp3",
+        "en": "audio/en/zoom-forecast.mp3"
+      }
     },
     {
       "once": "zoom-neighbors",
@@ -41,7 +47,10 @@
         "ru": "Перед нами карта возможных запусков. Каждая точка — два начальных угла. Чем она светлее, тем дольше живёт маятник.",
         "en": "Here is a map of possible launches. Each point represents two initial angles. The lighter it is, the longer the pendulum lasts."
       },
-      "audio": {}
+      "audio": {
+        "ru": "audio/ru/zoom-neighbors.mp3",
+        "en": "audio/en/zoom-neighbors.mp3"
+      }
     },
     {
       "once": "zoom-butterfly",
@@ -54,7 +63,10 @@
         "ru": "Светлая и тёмная точки могут лежать почти вплотную. Но один маятник сорвётся быстро, а другой проживёт гораздо дольше. Малейшая разница в начале изменила исход. Это эффект бабочки.",
         "en": "A light point and a dark point can lie almost side by side. But one pendulum will fail quickly, while the other will last much longer. The slightest difference at the start changed the outcome. This is the butterfly effect."
       },
-      "audio": {}
+      "audio": {
+        "ru": "audio/ru/zoom-butterfly.mp3",
+        "en": "audio/en/zoom-butterfly.mp3"
+      }
     },
     {
       "once": "zoom-error",
@@ -67,7 +79,10 @@
         "ru": "Чтобы предсказать конкретный маятник, надо отыскать на карте именно его. Но измерения дают не точку, а пятно возможных положений. Внутри него — разное время жизни.",
         "en": "To predict a particular pendulum, we need to find that exact one on the map. But measurements give us not a point, but a blur of possible positions. Inside it are different lifetimes."
       },
-      "audio": {}
+      "audio": {
+        "ru": "audio/ru/zoom-error.mp3",
+        "en": "audio/en/zoom-error.mp3"
+      }
     },
     {
       "once": "zoom-laws",
@@ -80,7 +95,10 @@
         "ru": "Приближаем это пятно в надежде найти нужную точку — а внутри снова светлые и тёмные участки. Новые детали появляются на каждом масштабе. Это и есть фрактал.",
         "en": "We zoom in on this blur, hoping to find the right point—but inside there are light and dark areas again. New details appear at every scale. This is a fractal."
       },
-      "audio": {}
+      "audio": {
+        "ru": "audio/ru/zoom-laws.mp3",
+        "en": "audio/en/zoom-laws.mp3"
+      }
     },
     {
       "once": "zoom-absurd",
@@ -93,7 +111,10 @@
         "ru": "Если напечатать всю карту со всей её детализацией в фотографическом качестве, она почти накроет орбиту Меркурия. И нужная точка всё ещё не найдена.",
         "en": "If we printed the entire map with all its detail at photographic quality, it would almost cover Mercury's orbit. And the needed point still would not be found."
       },
-      "audio": {}
+      "audio": {
+        "ru": "audio/ru/zoom-absurd.mp3",
+        "en": "audio/en/zoom-absurd.mp3"
+      }
     },
     {
       "once": "zoom-society",
@@ -106,7 +127,10 @@
         "ru": "И это всего два угла одного маятника. В погоде, экономике или обществе переменных и ошибок измерения несравнимо больше.",
         "en": "And these are only two angles of a single pendulum. In weather, economics, or society, there are incomparably more variables and measurement errors."
       },
-      "audio": {}
+      "audio": {
+        "ru": "audio/ru/zoom-society.mp3",
+        "en": "audio/en/zoom-society.mp3"
+      }
     },
     {
       "once": "zoom-horizon",
@@ -119,7 +143,10 @@
         "ru": "Вот в чём тщетность точных прогнозов. Почти правильная точка сначала даёт похожее движение. Потом эффект бабочки превращает её в неверный прогноз.",
         "en": "This is the futility of precise forecasts. An almost correct point initially produces similar motion. Then the butterfly effect turns it into an incorrect prediction."
       },
-      "audio": {}
+      "audio": {
+        "ru": "audio/ru/zoom-horizon.mp3",
+        "en": "audio/en/zoom-horizon.mp3"
+      }
     },
     {
       "once": "zoom-8",
@@ -132,7 +159,10 @@
         "ru": "Найти нужную точку полным перебором тоже не получится. Даже по тысяче точек в секунду этот уровень займёт 260 миллионов возрастов Вселенной.",
         "en": "Finding the right point by brute force will not work either. Even at a thousand points per second, this level would take 260 million ages of the Universe."
       },
-      "audio": {}
+      "audio": {
+        "ru": "audio/ru/zoom-8.mp3",
+        "en": "audio/en/zoom-8.mp3"
+      }
     },
     {
       "once": "zoom-limit",
@@ -145,7 +175,10 @@
         "ru": "На старых картах писали, что здесь водятся драконы. Узор не закончился — компьютер просто перестал различать соседние углы.",
         "en": "You have reached the limit of the simulation, but the map does not end here"
       },
-      "audio": {}
+      "audio": {
+        "ru": "audio/ru/zoom-limit.mp3",
+        "en": "audio/en/zoom-limit.mp3"
+      }
     },
     {
       "once": "simulation-start",
@@ -153,7 +186,10 @@
         "ru": "Запустим маятники из соседних точек. При одинаковом старте каждый раз получится одно и то же движение.",
         "en": "Let us launch pendulums from neighboring points. With the same start, the motion will be the same every time."
       },
-      "audio": {}
+      "audio": {
+        "ru": "audio/ru/simulation-start.mp3",
+        "en": "audio/en/simulation-start.mp3"
+      }
     },
     {
       "once": "simulation-repeat",
@@ -164,7 +200,10 @@
         "ru": "Тот же запуск — те же траектории. Хаос не случаен. Тщетность прогноза — в невозможности измерить старт бесконечно точно.",
         "en": "The same launch means the same trajectories. Chaos is not random. The futility of prediction lies in the impossibility of measuring the start with infinite precision."
       },
-      "audio": {}
+      "audio": {
+        "ru": "audio/ru/simulation-repeat.mp3",
+        "en": "audio/en/simulation-repeat.mp3"
+      }
     },
     {
       "once": "simulation-other",
@@ -178,7 +217,10 @@
         "ru": "Изменили массу или длину — и вся карта поменялась. Прежний прогноз больше не подходит.",
         "en": "Change the mass or length, and the whole map changes. The previous prediction no longer applies."
       },
-      "audio": {}
+      "audio": {
+        "ru": "audio/ru/simulation-other.mp3",
+        "en": "audio/en/simulation-other.mp3"
+      }
     },
     {
       "once": "simulation-others",
@@ -192,7 +234,10 @@
         "ru": "Значит, надо без ошибки знать не только углы, но и само устройство. Любая неточность со временем уводит прогноз в сторону.",
         "en": "So we need to know not only the angles but also the device itself without error. Any inaccuracy gradually pulls the prediction off course."
       },
-      "audio": {}
+      "audio": {
+        "ru": "audio/ru/simulation-others.mp3",
+        "en": "audio/en/simulation-others.mp3"
+      }
     },
     {
       "once": "probe-detach",
@@ -200,7 +245,10 @@
         "ru": "Маятники над тёмными точками срываются раньше. Над светлыми они держатся дольше.",
         "en": "The pendulum has no friction. If it spins too fast, it breaks off the axis"
       },
-      "audio": {}
+      "audio": {
+        "ru": "audio/ru/probe-detach.mp3",
+        "en": "audio/en/probe-detach.mp3"
+      }
     },
     {
       "once": "pendulum-hang",
@@ -208,7 +256,10 @@
         "ru": "Оставшиеся маятники повторяют светлый рисунок карты. Ответ на карте есть. Тщетность прогноза лежит в попытке точно найти на ней настоящий маятник.",
         "en": "The remaining pendulums reproduce the map's light pattern. The answer is on the map. The futility of prediction lies in trying to locate the real pendulum on it exactly."
       },
-      "audio": {}
+      "audio": {
+        "ru": "audio/ru/pendulum-hang.mp3",
+        "en": "audio/en/pendulum-hang.mp3"
+      }
     },
     {
       "once": "menu-open",
@@ -216,7 +267,10 @@
         "ru": "На экране меняются только два угла. Добавим две массы и две длины — карта уже шестимерна. Перед нами лишь один плоский срез.",
         "en": "This is the pendulum settings menu"
       },
-      "audio": {},
+      "audio": {
+        "ru": "audio/ru/menu-open.mp3",
+        "en": "audio/en/menu-open.mp3"
+      },
       "at_start": [
         {
           "emit": "settings-panel-highlight"
@@ -234,7 +288,10 @@
         "ru": "Меняя массу или длину, мы переходим в другой слой шестимерной карты. И в каждом слое — свои фрактальные границы.",
         "en": "By changing the mass or length, we move to another layer of a six-dimensional map. And each layer has its own fractal boundaries."
       },
-      "audio": {}
+      "audio": {
+        "ru": "audio/ru/param-change.mp3",
+        "en": "audio/en/param-change.mp3"
+      }
     },
     {
       "once": "params-reset",
@@ -242,7 +299,10 @@
         "ru": "Вернёмся к исходному маятнику. Даже один срез неисчерпаем, а искать маятник нужно сразу в шести измерениях.",
         "en": "Let us return to the original pendulum. Even a single slice is inexhaustible, while the pendulum must be sought in six dimensions at once."
       },
-      "audio": {}
+      "audio": {
+        "ru": "audio/ru/params-reset.mp3",
+        "en": "audio/en/params-reset.mp3"
+      }
     }
   ]
 }

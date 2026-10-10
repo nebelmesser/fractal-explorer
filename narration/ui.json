@@ -49,7 +49,19 @@
       "param.neighbor_deg": "Разница углов, °",
       "param.lyapunov.rhythm": "Ритм",
       "param.lyapunov.accuracy": "Точность",
-      "param.lyapunov.seed": "Начальное значение"
+      "param.lyapunov.seed": "Начальное значение",
+      "param.mandelbrot.morph": "Мандельброт → Жюлиа",
+      "param.mandelbrot.real": "Жюлиа · Re(c)",
+      "param.mandelbrot.imag": "Жюлиа · Im(c)",
+      "param.mandelbrot.iterations": "Итерации",
+      "mandelbrot.orbit.title": "Орбита z",
+      "mandelbrot.orbit.show": "Показывать траекторию",
+      "mandelbrot.orbit.idle": "Наведите курсор или коснитесь карты",
+      "mandelbrot.orbit.period": "Период цикла: {period}",
+      "mandelbrot.orbit.escape": "Уход в бесконечность · шагов: {steps}",
+      "mandelbrot.orbit.unknown": "Цикл не определён · шагов: {steps}",
+      "mandelbrot.orbit.loading": "Вычисляем орбиту…",
+      "mandelbrot.orbit.error": "Не удалось вычислить орбиту"
     },
     "en": {
       "settings": "Settings",
@@ -91,7 +103,19 @@
       "param.neighbor_deg": "Angle difference, °",
       "param.lyapunov.rhythm": "Rhythm",
       "param.lyapunov.accuracy": "Accuracy",
-      "param.lyapunov.seed": "Initial value"
+      "param.lyapunov.seed": "Initial value",
+      "param.mandelbrot.morph": "Mandelbrot → Julia",
+      "param.mandelbrot.real": "Julia · Re(c)",
+      "param.mandelbrot.imag": "Julia · Im(c)",
+      "param.mandelbrot.iterations": "Iterations",
+      "mandelbrot.orbit.title": "Mandelbrot · z orbit",
+      "mandelbrot.orbit.show": "Show orbit",
+      "mandelbrot.orbit.idle": "Hover over or touch the map",
+      "mandelbrot.orbit.period": "Cycle period: {period}",
+      "mandelbrot.orbit.escape": "Escapes to infinity · steps: {steps}",
+      "mandelbrot.orbit.unknown": "Cycle undetermined · steps: {steps}",
+      "mandelbrot.orbit.loading": "Computing orbit…",
+      "mandelbrot.orbit.error": "Failed to compute orbit"
     }
   }
 }

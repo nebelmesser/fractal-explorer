@@ -20,3 +20,5 @@ target/
 .env.*
 !.env.example
 dp_map/
+# Local browser verification output
+test-output/

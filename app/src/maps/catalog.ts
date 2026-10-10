@@ -1,10 +1,11 @@
 import { chirikovMap } from './chirikov/spec';
 import { lyapunovMap } from './lyapunov/spec';
 import { magnetsMap } from './magnets/spec';
+import { mandelbrotMap } from './mandelbrot/spec';
 import { pendulumMap } from './pendulum/spec';
 import type { MapDefinition } from './types';
 
-const maps: MapDefinition[] = [pendulumMap, magnetsMap, lyapunovMap, chirikovMap];
+const maps: MapDefinition[] = [pendulumMap, magnetsMap, lyapunovMap, chirikovMap, mandelbrotMap];
 
 export function catalogEntries(): MapDefinition[] {
   return maps;

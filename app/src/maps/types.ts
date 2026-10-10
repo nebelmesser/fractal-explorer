@@ -1,5 +1,8 @@
-/** Axis-aligned rectangle in a map's own coordinate system. */
+import { coordinateFromNumber, coordinateToNumber, exactCenter, preciseView, relativeView, type CoordinateOrigin } from '../viewer/coordinates';
+
+/** Axis-aligned rectangle; opt-in precise cameras use local offsets from an exact origin. */
 export type ViewRect = {
+  origin?: CoordinateOrigin;
   xMin: number;
   xMax: number;
   yMin: number;
@@ -103,6 +106,29 @@ export type CpuKernel = {
   handoffPx?: number;
 };
 
+/** Map-owned preparation; the renderer treats the reference storage as opaque data. */
+export type PrecisionSession = {
+  gpu?: {
+    storage: Float32Array;
+    packUniforms(view: ViewRect, width: number, height: number): ArrayBuffer;
+  };
+  fillTile(view: ViewRect, width: number, height: number, signal: AbortSignal): Promise<Float32Array>;
+  /** Map-owned validation and merge keep semantic sample encoding opaque. */
+  needsRefinement?(samples: Float32Array): boolean;
+  mergeRefinement?(samples: Float32Array, replacement: Float32Array): Float32Array;
+  /** Prepare another reference for a tile with unstable samples. */
+  refineTile?(samples: Float32Array, view: ViewRect, width: number, height: number, signal: AbortSignal): Promise<PrecisionSession | null>;
+  /** Replace samples flagged by the GPU kernel using the CPU's higher precision. */
+  repairTile?(samples: Float32Array, view: ViewRect, width: number, height: number, signal: AbortSignal): Promise<Float32Array>;
+};
+
+export type PrecisionKernel = {
+  minSpan: number;
+  threshold: number;
+  gpu: { computeWgsl: string; entryPoint: string; uniformBytes: number };
+  begin(view: ViewRect, params: MapParams, signal: AbortSignal): Promise<PrecisionSession>;
+};
+
 export type MapDefinition = {
   id: string;
   title: string;
@@ -128,6 +154,8 @@ export type MapDefinition = {
   gpu: GpuKernel;
   /** Used for the cpu=1 URL mode and automatically past the f32 zoom floor. */
   cpu: CpuKernel;
+  /** Enables exact camera origins and map-specific deep computation. */
+  precision?: PrecisionKernel;
 };
 
 /** Navigable domain used for zoom-out and the LOD tile origin. */
@@ -151,10 +179,29 @@ export function viewCenter(view: ViewRect): { x: number; y: number } {
 }
 
 export function copyView(view: ViewRect): ViewRect {
-  return { xMin: view.xMin, xMax: view.xMax, yMin: view.yMin, yMax: view.yMax };
+  return { ...view };
 }
 
 export function lerpView(a: ViewRect, b: ViewRect, t: number): ViewRect {
+  if (a.origin || b.origin) {
+    if (t <= 0) return copyView(a);
+    if (t >= 1) return copyView(b);
+    const ax = viewSpanX(a), bx = viewSpanX(b);
+    const ay = viewSpanY(a), by = viewSpanY(b);
+    const sx = Math.exp(Math.log(ax) + t * (Math.log(bx) - Math.log(ax)));
+    const sy = Math.exp(Math.log(ay) + t * (Math.log(by) - Math.log(ay)));
+    const ac = exactCenter(a), bc = exactCenter(b);
+    // Anchor interpolation at the smaller view, avoiding subtraction from one
+    // when reset spans hundreds of orders of magnitude.
+    const small = ax <= bx ? ac : bc;
+    const large = ax <= bx ? bc : ac;
+    const weight = Math.abs(bx - ax) < ax * 1e-10 ? (ax <= bx ? t : 1 - t)
+      : (sx - Math.min(ax, bx)) / Math.abs(bx - ax);
+    return preciseView({
+      x: small.x + coordinateFromNumber(coordinateToNumber(large.x - small.x) * weight),
+      y: small.y + coordinateFromNumber(coordinateToNumber(large.y - small.y) * weight),
+    }, sx, sy);
+  }
   return {
     xMin: a.xMin + (b.xMin - a.xMin) * t,
     xMax: a.xMax + (b.xMax - a.xMax) * t,
@@ -164,6 +211,15 @@ export function lerpView(a: ViewRect, b: ViewRect, t: number): ViewRect {
 }
 
 export function viewsEqual(a: ViewRect, b: ViewRect, eps = 1e-12): boolean {
+  if (a.origin || b.origin) {
+    const ac = exactCenter(a), bc = exactCenter(b);
+    if (eps === 0) return ac.x === bc.x && ac.y === bc.y && viewSpanX(a) === viewSpanX(b) && viewSpanY(a) === viewSpanY(b);
+    const tolerance = eps * Math.max(viewSpanX(a), viewSpanY(a), viewSpanX(b), viewSpanY(b));
+    return Math.abs(coordinateToNumber(ac.x - bc.x)) <= tolerance
+      && Math.abs(coordinateToNumber(ac.y - bc.y)) <= tolerance
+      && Math.abs(viewSpanX(a) - viewSpanX(b)) <= tolerance
+      && Math.abs(viewSpanY(a) - viewSpanY(b)) <= tolerance;
+  }
   const span = Math.max(viewSpanX(a), viewSpanY(a), viewSpanX(b), viewSpanY(b));
   const mag = Math.max(
     Math.abs(a.xMin), Math.abs(a.xMax), Math.abs(b.xMin), Math.abs(b.xMax),
@@ -182,7 +238,9 @@ export function viewsEqual(a: ViewRect, b: ViewRect, eps = 1e-12): boolean {
 
 /** Axis-aligned union of two views. */
 export function unionView(a: ViewRect, b: ViewRect): ViewRect {
+  b = relativeView(b, a);
   return {
+    origin: a.origin,
     xMin: Math.min(a.xMin, b.xMin),
     xMax: Math.max(a.xMax, b.xMax),
     yMin: Math.min(a.yMin, b.yMin),
@@ -201,6 +259,7 @@ export function padViewWith(core: ViewRect, pad: number, unit: ViewRect): ViewRe
   const sx = viewSpanX(unit);
   const sy = viewSpanY(unit);
   return {
+    origin: core.origin,
     xMin: core.xMin - sx * pad,
     xMax: core.xMax + sx * pad,
     yMin: core.yMin - sy * pad,
@@ -215,6 +274,7 @@ export function unpadView(view: ViewRect, pad: number): ViewRect {
   const sx = viewSpanX(view);
   const sy = viewSpanY(view);
   return {
+    origin: view.origin,
     xMin: view.xMin + sx * f,
     xMax: view.xMax - sx * f,
     yMin: view.yMin + sy * f,
@@ -249,6 +309,7 @@ export function normPixelRect(
  * Negative means `inner` sticks out of `outer`.
  */
 export function viewInset(inner: ViewRect, outer: ViewRect): number {
+  outer = relativeView(outer, inner);
   const sx = viewSpanX(inner);
   const sy = viewSpanY(inner);
   if (!(sx > 0) || !(sy > 0)) return -1;
@@ -262,7 +323,9 @@ export function viewAround(
   y: number,
   spanX: number,
   spanY: number,
+  origin?: CoordinateOrigin,
 ): ViewRect {
+  if (origin) return preciseView({ x: origin.x + coordinateFromNumber(x), y: origin.y + coordinateFromNumber(y) }, spanX, spanY);
   return {
     xMin: x - spanX / 2,
     xMax: x + spanX / 2,
