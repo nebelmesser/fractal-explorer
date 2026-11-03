@@ -36,6 +36,24 @@ ui.ask_prompt_tail:
   frozen: true
 ui.attachment_points:
   text: Attachment points
+ui.burning_ship.orbit.bounded:
+  text: Did not escape after {steps} steps
+ui.burning_ship.orbit.error:
+  text: Failed to compute orbit
+ui.burning_ship.orbit.escape:
+  text: "Escapes to infinity · steps: {steps}"
+ui.burning_ship.orbit.idle:
+  text: Hover over or touch the map
+ui.burning_ship.orbit.limit:
+  text: First {steps} steps shown
+ui.burning_ship.orbit.loading:
+  text: Computing orbit…
+ui.burning_ship.orbit.period:
+  text: "Cycle period: {period}"
+ui.burning_ship.orbit.show:
+  text: Show trajectory
+ui.burning_ship.orbit.title:
+  text: Orbit z
 ui.copy_prompt:
   text: Copy prompt
   frozen: true
@@ -105,6 +123,8 @@ ui.param.M2:
 ui.param.R:
   text: Spacing
   frozen: true
+ui.param.burning_ship.iterations:
+  text: Iterations
 ui.param.lyapunov.accuracy:
   text: Accuracy
   frozen: true

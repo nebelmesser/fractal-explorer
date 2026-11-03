@@ -21,6 +21,7 @@ export default defineConfig({
         lyapunov: resolve(__dirname, 'lyapunov.html'),
         chirikov: resolve(__dirname, 'chirikov.html'),
         mandelbrot: resolve(__dirname, 'mandelbrot.html'),
+        'burning-ship': resolve(__dirname, 'burning-ship.html'),
       },
       output: {
         entryFileNames: 'assets/[name]-[hash].js',
@@ -53,6 +54,7 @@ export default defineConfig({
         const assets = resolve(outDir, 'assets');
         rmSync(resolve(outDir, 'explorer.html'), { force: true });
         rmSync(resolve(outDir, 'viewer.html'), { force: true });
+        rmSync(resolve(outDir, 'henon.html'), { force: true });
         try {
           for (const name of readdirSync(assets)) {
             if (
@@ -65,6 +67,8 @@ export default defineConfig({
               || name.startsWith('magnets-') || name.startsWith('lyapunov-')
               || name.startsWith('chirikov-') || name.startsWith('menu-')
               || name.startsWith('mandelbrot-') || name.startsWith('deep-worker-')
+              || name.startsWith('burning-ship-') || name.startsWith('henon-')
+              || name.startsWith('inspect-worker-')
               || name.startsWith('orbit-worker-')
               || name.startsWith('map_core_bg')
             ) {

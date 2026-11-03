@@ -7,6 +7,8 @@
     "dev": "npm run build:wasm && vite",
     "build": "npm run build:wasm && tsc --noEmit && vite build",
     "test:mandelbrot": "node tests/mandelbrot.mjs && node tests/cycles.mjs",
+    "test:maps": "node tests/maps.mjs",
+    "test:maps:browser:build": "node tests/build-maps-browser.mjs",
     "narrate": "narration sync --dir ../narration",
     "narrate:source": "narration sync --dir ../narration --source-only",
     "test:deep-zoom": "node tests/deep-zoom.mjs",

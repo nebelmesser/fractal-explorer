@@ -791,6 +791,116 @@
           "textHash": "6058368b9332daf2d140be9e6e7723d9f6c027b7a66fb743a803e979ac66f1cc"
         }
       }
+    },
+    "ui.param.burning_ship.iterations": {
+      "sourceHash": "c6fcbd46dde91f65448e1a4eb5ad1c688f0d4e808c1c6f299657b1bf778b053e",
+      "locales": {
+        "ru": {
+          "textHash": "c6fcbd46dde91f65448e1a4eb5ad1c688f0d4e808c1c6f299657b1bf778b053e"
+        },
+        "en": {
+          "textHash": "4740b573715316a4698d4dee44ebb90046ed94f5f582ffa67ccab31e68a8a6b5"
+        }
+      }
+    },
+    "ui.burning_ship.orbit.title": {
+      "sourceHash": "33de48eb7def554f413371b28f983961d611d1e56dd1508415f853c9aedc6889",
+      "locales": {
+        "ru": {
+          "textHash": "33de48eb7def554f413371b28f983961d611d1e56dd1508415f853c9aedc6889"
+        },
+        "en": {
+          "textHash": "869145e1a2c5cd21003064428884f71f2820f97113c03056690c87c8266b1719"
+        }
+      }
+    },
+    "ui.burning_ship.orbit.show": {
+      "sourceHash": "aaf8382c056fd023f9e2e16e7f4a9f5057a3dd681758b4ba036590cefdf4b1de",
+      "locales": {
+        "ru": {
+          "textHash": "aaf8382c056fd023f9e2e16e7f4a9f5057a3dd681758b4ba036590cefdf4b1de"
+        },
+        "en": {
+          "textHash": "fee28c5addc5e4376a67ae3b4c50b77bb496426594ee8aad19a35a6ac0154b87"
+        }
+      }
+    },
+    "ui.burning_ship.orbit.loading": {
+      "sourceHash": "687cf230ba2060f013cf57655c016012803e0557c9e479231155feb5d8252d98",
+      "locales": {
+        "ru": {
+          "textHash": "687cf230ba2060f013cf57655c016012803e0557c9e479231155feb5d8252d98"
+        },
+        "en": {
+          "textHash": "ef2c6af904d450b3fea8552db90d41fa1a5007628c1ed133a2104f6c2b6d7a8b"
+        }
+      }
+    },
+    "ui.burning_ship.orbit.error": {
+      "sourceHash": "e456c16b37ba03952fac77ec09a90bd7e29692e06425f95965059c4cb0e62391",
+      "locales": {
+        "ru": {
+          "textHash": "e456c16b37ba03952fac77ec09a90bd7e29692e06425f95965059c4cb0e62391"
+        },
+        "en": {
+          "textHash": "6058368b9332daf2d140be9e6e7723d9f6c027b7a66fb743a803e979ac66f1cc"
+        }
+      }
+    },
+    "ui.burning_ship.orbit.escape": {
+      "sourceHash": "adcf5d726a2ffde36655447080d42020a2bf5a72a9f62de37df4179ac4188ffb",
+      "locales": {
+        "ru": {
+          "textHash": "adcf5d726a2ffde36655447080d42020a2bf5a72a9f62de37df4179ac4188ffb"
+        },
+        "en": {
+          "textHash": "45604e34e7b7f82a00b62249753624e83f0ebc2e6820c09b2599564db9ad4b66"
+        }
+      }
+    },
+    "ui.burning_ship.orbit.bounded": {
+      "sourceHash": "cf2adab41e7d6346feb4c9ebaa2b84b69ba9b77005875c3ef83977159091fbe8",
+      "locales": {
+        "ru": {
+          "textHash": "cf2adab41e7d6346feb4c9ebaa2b84b69ba9b77005875c3ef83977159091fbe8"
+        },
+        "en": {
+          "textHash": "30e19ee4cd062cbf38af973280643ea8982c5c770fbd3d8093e54a2ce5e68c25"
+        }
+      }
+    },
+    "ui.burning_ship.orbit.limit": {
+      "sourceHash": "3737fa4b16ab18f12acd290918099562438d3798ec2841941d73f14a3150aa8e",
+      "locales": {
+        "ru": {
+          "textHash": "3737fa4b16ab18f12acd290918099562438d3798ec2841941d73f14a3150aa8e"
+        },
+        "en": {
+          "textHash": "187a11a774bda233bfe474efade3dcd4fcaeb2d7a823bbfe21dce6170eb5ed5b"
+        }
+      }
+    },
+    "ui.burning_ship.orbit.idle": {
+      "sourceHash": "8eac38eedc709e8eecce99207343adaa77a190ba463f9f5e079c6c3174a55865",
+      "locales": {
+        "ru": {
+          "textHash": "8eac38eedc709e8eecce99207343adaa77a190ba463f9f5e079c6c3174a55865"
+        },
+        "en": {
+          "textHash": "da27efced0c72aec659e220b991eae275a1cf5a0decb85826f79510ac0f2e0a4"
+        }
+      }
+    },
+    "ui.burning_ship.orbit.period": {
+      "sourceHash": "c06ab8e7238d876816c066ea5e2f7157795ab08133af77d3c0452d5c24626746",
+      "locales": {
+        "ru": {
+          "textHash": "c06ab8e7238d876816c066ea5e2f7157795ab08133af77d3c0452d5c24626746"
+        },
+        "en": {
+          "textHash": "51bbc5b20c9999ffd5164c8e36302f7d0629bae13a42c0dba81aac8570bac275"
+        }
+      }
     }
   }
 }

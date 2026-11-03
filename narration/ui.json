@@ -61,7 +61,17 @@
       "mandelbrot.orbit.escape": "Уход в бесконечность · шагов: {steps}",
       "mandelbrot.orbit.unknown": "Цикл не определён · шагов: {steps}",
       "mandelbrot.orbit.loading": "Вычисляем орбиту…",
-      "mandelbrot.orbit.error": "Не удалось вычислить орбиту"
+      "mandelbrot.orbit.error": "Не удалось вычислить орбиту",
+      "param.burning_ship.iterations": "Итерации",
+      "burning_ship.orbit.title": "Орбита z",
+      "burning_ship.orbit.show": "Показывать траекторию",
+      "burning_ship.orbit.loading": "Вычисляем орбиту…",
+      "burning_ship.orbit.error": "Не удалось вычислить орбиту",
+      "burning_ship.orbit.escape": "Уход в бесконечность · шагов: {steps}",
+      "burning_ship.orbit.bounded": "Не ушла за {steps} шагов",
+      "burning_ship.orbit.limit": "Показаны первые {steps} шагов",
+      "burning_ship.orbit.idle": "Наведите курсор или коснитесь карты",
+      "burning_ship.orbit.period": "Период цикла: {period}"
     },
     "en": {
       "settings": "Settings",
@@ -115,7 +125,17 @@
       "mandelbrot.orbit.escape": "Escapes to infinity · steps: {steps}",
       "mandelbrot.orbit.unknown": "Cycle undetermined · steps: {steps}",
       "mandelbrot.orbit.loading": "Computing orbit…",
-      "mandelbrot.orbit.error": "Failed to compute orbit"
+      "mandelbrot.orbit.error": "Failed to compute orbit",
+      "param.burning_ship.iterations": "Iterations",
+      "burning_ship.orbit.title": "Orbit z",
+      "burning_ship.orbit.show": "Show trajectory",
+      "burning_ship.orbit.loading": "Computing orbit…",
+      "burning_ship.orbit.error": "Failed to compute orbit",
+      "burning_ship.orbit.escape": "Escapes to infinity · steps: {steps}",
+      "burning_ship.orbit.bounded": "Did not escape after {steps} steps",
+      "burning_ship.orbit.limit": "First {steps} steps shown",
+      "burning_ship.orbit.idle": "Hover over or touch the map",
+      "burning_ship.orbit.period": "Cycle period: {period}"
     }
   }
 }

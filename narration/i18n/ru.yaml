@@ -35,6 +35,24 @@ ui.ask_prompt_tail:
   text: "Введите свой вопрос об этой карте ниже:"
 ui.attachment_points:
   text: Точки крепления
+ui.burning_ship.orbit.bounded:
+  text: Не ушла за {steps} шагов
+ui.burning_ship.orbit.error:
+  text: Не удалось вычислить орбиту
+ui.burning_ship.orbit.escape:
+  text: "Уход в бесконечность · шагов: {steps}"
+ui.burning_ship.orbit.idle:
+  text: Наведите курсор или коснитесь карты
+ui.burning_ship.orbit.limit:
+  text: Показаны первые {steps} шагов
+ui.burning_ship.orbit.loading:
+  text: Вычисляем орбиту…
+ui.burning_ship.orbit.period:
+  text: "Период цикла: {period}"
+ui.burning_ship.orbit.show:
+  text: Показывать траекторию
+ui.burning_ship.orbit.title:
+  text: Орбита z
 ui.copy_prompt:
   text: Копировать промпт
 ui.enable_sound:
@@ -96,6 +114,8 @@ ui.param.M2:
   text: Масса 2
 ui.param.R:
   text: Расстояние
+ui.param.burning_ship.iterations:
+  text: Итерации
 ui.param.lyapunov.accuracy:
   text: Точность
   frozen: true

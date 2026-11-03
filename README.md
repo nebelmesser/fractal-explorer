@@ -46,6 +46,29 @@ an ignored browser harness at `/fractal/test-output/deep-gpu.html` on the
 playground preview. It compares the real WebGPU shader with the CPU kernel
 and checks touch pinch anchoring.
 
+[Burning Ship](/fractal/burning-ship.html) iterates
+`z ← (|Re(z)| + i|Im(z)|)² + c`, starting at zero. Its warm palette shows
+smooth escape time; black points have not escaped within the iteration limit.
+The imaginary coordinate increases downward, following the conventional ship
+orientation. Increase iterations in settings to resolve finer boundaries.
+The trajectory overlay follows the Mandelbrot interaction and animation model:
+hover or tap selects a pixel, the complete curve fades in, and the previous
+curve crossfades into a newly completed orbit. After 500 ms of pointer rest,
+three fading dots advance every 65 ms on the map and in the overview. Detected
+numerical cycles repeat; escaping or unknown paths hold their last point.
+The selected parameter survives pan, zoom, and pointer leave. A connector
+relates the fixed start z₀ = 0 to the selected c, including when the origin is
+outside the current view. The overview shows the entire ship and the defining
+absolute-value formula. Workers use f32 steps for GPU views and f64 for CPU
+views with the current iteration budget. Long paths retain up to 1024 points.
+
+Burning Ship uses ordinary GPU f32 and CPU-worker f64, including `?cpu=1` and
+automatic CPU fallback. It stops at the shared f64 precision grid. Run
+`npm run test:maps` from `app/` for its mathematical and worker checks.
+Build the browser checks with `npm run test:maps:browser:build`, then open
+`/fractal/test-output/maps-browser.html` on the playground preview to compare
+the real GPU kernels and exercise both explicit CPU mode and adapter fallback.
+
 The square map panel fills the window. Compute resolution follows the frame
 budget; zoom animation can use more pixels if the GPU is idle. + / − above
 the preview zoom the view; the last zoom-out returns to the original map.
